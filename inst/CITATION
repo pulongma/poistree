@@ -1,0 +1,14 @@
+NOTE <- paste("R package version", meta$Version)
+bibentry(bibtype="Misc",
+     mheader = "Please cite poistree including its version number as",
+       title = "poistree: Bayesian Poisson Point Process Tree Models",
+      author =
+           c( 
+            person("Pulong", "Ma", role = c("aut", "cre"),
+               email = "plma@iastate.edu")
+            ),
+            note = NOTE,
+ organization = "Iowa State University",
+      address = "Ames, IA, USA",
+         year = 2026
+    )

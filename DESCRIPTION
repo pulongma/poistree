@@ -1,0 +1,26 @@
+Package: poistree
+Type: Package
+Title: Bayesian Poisson Point Process Tree Models
+Version: 0.1.1
+Date: 2026-08-10
+Authors@R: c(person("Pulong", "Ma", role=c("aut", "cre"), email="plma@iastate.edu"))
+Maintainer: Pulong Ma <mpulong@gmail.com>
+Description: Bayesian Poisson process trees for intensity estimation on
+    possibly high-dimensional input spaces. The extensible unified interface
+    separates the gating mechanism, intensity structure, scale prior, and
+    posterior sampler. The implemented model is a hard-gated terminal-leaf
+    Poisson process tree fitted by sequential Monte Carlo, reversible-jump
+    Markov chain Monte Carlo, or Particle Gibbs with ancestor sampling.
+License: GPL (>= 2)
+Encoding: UTF-8
+Imports:
+    graphics,
+    grDevices,
+    Rcpp (>= 1.0.1),
+    stats
+LinkingTo: Rcpp, RcppArmadillo, RcppProgress
+NeedsCompilation: yes
+RoxygenNote: 7.3.3
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
