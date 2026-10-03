@@ -8,6 +8,9 @@
   x,
   type = c("median", "mean"),
   dims = NULL,
+  n = 60L,
+  level = 0.95,
+  points = FALSE,
   main = NULL,
   xlab = NULL,
   ylab = NULL,
@@ -19,16 +22,33 @@
 
 \item{type}{Posterior median or mean.}
 
-\item{dims}{One dimension for a line plot or two dimensions for a colored
-point plot.}
+\item{dims}{One dimension for a curve or two dimensions for an intensity
+image.}
+
+\item{n}{Grid resolution per shown dimension.}
+
+\item{level}{Pointwise credible level for the one-dimensional band.}
+
+\item{points}{Overlay the observed points: a rug in one dimension, white
+points on the surface in two dimensions.}
 
 \item{main, xlab, ylab}{Optional labels.}
 
-\item{...}{Additional graphical arguments passed to [graphics::plot()].}
+\item{...}{Additional graphical arguments passed to [graphics::plot()] or
+[graphics::image()].}
 }
 \value{
 The fitted object, invisibly.
 }
 \description{
-Plot fitted PPT intensity summaries
+Plots the posterior intensity from the stored posterior state draws
+evaluated over an automatic grid (see [ppt_lambda()]), so it works for any
+fit whether or not `predict_at` was supplied. One selected dimension gives
+a curve with a shaded pointwise credible band; two selected dimensions
+give a raster image of the intensity surface. When the fit has more input
+dimensions than are shown, the remaining coordinates are fixed at the
+midpoints of their fitted ranges, so the display is a slice of the
+intensity. Fits from earlier package versions without stored state fall
+back to displaying the stored `predict_at` summaries. For
+publication-quality graphics use [ppt_lambda()] with \pkg{ggplot2}.
 }

@@ -1,0 +1,864 @@
+// ============================================================================
+// PPSTree.cpp -- Soft Poisson Process Tree (terminal-leaf PPT) using
+// RcppArmadillo and reversible-jump MCMC.
+//
+// This is distinct from MPPSTree: only terminal leaves carry intensities,
+//
+//   lambda(x) = sum_{ell in leaves(T)} lambda_ell phi_ell(x),
+//
+// where the default recursive logistic gates give nonnegative C-infinity leaf
+// bases satisfying sum_ell phi_ell(x)=1.  At a split c on coordinate j,
+//
+//   G_c(x)=logit^{-1}{gate_j (x_j-c)/(b_j-a_j)},
+//   phi_left=phi_parent*(1-G_c), phi_right=phi_parent*G_c.
+//
+// Thus children sum exactly to their parent.  With one shared slope per
+// dimension, the leaf exposure H_ell=int phi_ell is a product of analytic
+// one-dimensional rational integrals.  The former compact-cubic gate remains
+// available as an opt-in compatibility family.  With lambda_ell~Gamma(a,b),
+// latent leaf labels give
+//
+//   lambda_ell | ... ~ Gamma(a+m_ell, b+H_ell).
+//
+// Grow/prune/change-cut moves propose affected labels from q_left:q_right.
+// Their spatial factors cancel the corresponding label proposal probability,
+// leaving Gamma-Poisson block, CART-prior, and move-count ratios.
+// The wrapper defaults to one shared gate.  Optionally each dimension has its
+// own gate_j, with a (possibly lower-truncated) Gamma(shape,rate) prior and a
+// coordinate-wise log-RW MH update.
+//
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::plugins(cpp11)]]
+// ============================================================================
+#include <RcppArmadillo.h>
+#include <vector>
+#include <unordered_map>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include "soft_logistic.h"
+using namespace Rcpp;
+
+struct PPSTGate {
+  int axis;
+  double cut;
+  double parent_width;
+  int side;                         // -1 left, +1 right
+};
+
+struct PPSTNode {
+  arma::mat box;
+  arma::uvec idx;                   // hard routing indices, used for cut support
+  std::vector<PPSTGate> path;       // recursive soft path
+  double cut;
+  int axis;
+  int depth;
+  int m;                            // soft leaf-label count
+};
+typedef std::unordered_map<int,PPSTNode> PPSTree;
+
+static inline int ppst_runif_int(int k){
+  return (int)(R::unif_rand()*k);
+}
+static arma::vec ppst_expand_positive(const arma::vec&x,arma::uword d,
+    const char*name,bool allow_zero=false){
+  arma::vec out;
+  if(x.n_elem==1) out=arma::vec(d,arma::fill::value(x[0]));
+  else if(x.n_elem==d) out=x;
+  else stop(std::string(name)+" must have length 1 or dimension d");
+  if(!out.is_finite()||
+     (allow_zero?arma::any(out<0.0):arma::any(out<=0.0)))
+    stop(std::string(name)+(allow_zero?" must be finite and nonnegative":
+                                      " must be finite and positive"));
+  return out;
+}
+static inline double ppst_rho(int depth,double alpha,double eta){
+  double r=alpha*std::pow(1.0+depth,-eta);
+  return std::min(1.0-1e-12,std::max(1e-12,r));
+}
+static inline double ppst_log_g(int m,double H,double a,double b){
+  return R::lgammafn(a+m)-R::lgammafn(a)+a*std::log(b)
+       -(a+m)*std::log(b+H);
+}
+static inline double ppst_logsumexp(const std::vector<double>&x){
+  double mx=-std::numeric_limits<double>::infinity();
+  for(double z:x) if(z>mx) mx=z;
+  if(!std::isfinite(mx)) return mx;
+  double s=0.0; for(double z:x) s+=std::exp(z-mx);
+  return mx+std::log(s);
+}
+// ---- candidate cuts and CART support ---------------------------------------
+static inline double ppst_qtype1(const arma::vec&s,double p){
+  int n=s.n_elem; double h=(n-1)*p+1.0;
+  int i=std::max(1,(int)std::floor(h)); return s(i-1);
+}
+
+static std::vector<double> ppst_axis_cuts(const arma::mat&pts,
+    const arma::uvec&idx,const arma::mat&box,int axis,int mode,int ncand,
+    int nmin){
+  std::vector<double> cuts;
+  double lo=box(axis,0),hi=box(axis,1),buf=1e-3;
+  int n=idx.n_elem,nm=std::max(1,nmin);
+  if(n<2*nm) return cuts;
+  arma::vec col=pts.col(axis),s=arma::sort(col.elem(idx));
+  if(mode==2){
+    int M=std::max(30,ncand); double dx=(hi-lo)/(M+1.0);
+    cuts.reserve(M);
+    for(int j=1;j<=M;j++){
+      double c=lo+j*dx;
+      int nl=(int)(std::lower_bound(s.begin(),s.end(),c)-s.begin());
+      if(nl>=nm&&n-nl>=nm) cuts.push_back(c);
+    }
+    return cuts;
+  }
+  if(mode==0){
+    for(int j=nm-1;j<=n-1-nm;j++){
+      if(!(s[j]<s[j+1])) continue;
+      double c=0.5*(s[j]+s[j+1]);
+      if(c>lo+buf&&c<hi-buf){
+        int nl=(int)(std::lower_bound(s.begin(),s.end(),c)-s.begin());
+        if(nl>=nm&&n-nl>=nm) cuts.push_back(c);
+      }
+    }
+  }else{
+    int Q=std::max(2,ncand);
+    for(int q=0;q<Q;q++){
+      double p=0.05+0.90*q/(double)(Q-1),c=ppst_qtype1(s,p);
+      if(c>lo+buf&&c<hi-buf){
+        int nl=(int)(std::lower_bound(s.begin(),s.end(),c)-s.begin());
+        if(nl>=nm&&n-nl>=nm) cuts.push_back(c);
+      }
+    }
+  }
+  std::sort(cuts.begin(),cuts.end());
+  cuts.erase(std::unique(cuts.begin(),cuts.end()),cuts.end());
+  return cuts;
+}
+
+static bool ppst_can_split(const PPSTNode&nd,const arma::mat&pts,int Dmax,
+    int nmin,int mode,int ncand){
+  if(nd.axis>=0||nd.depth>=Dmax) return false;
+  if((int)nd.idx.n_elem<2*std::max(1,nmin)) return false;
+  for(arma::uword j=0;j<nd.box.n_rows;j++)
+    if(!ppst_axis_cuts(pts,nd.idx,nd.box,j,mode,ncand,nmin).empty())
+      return true;
+  return false;
+}
+
+static double ppst_stop_factor(const PPSTNode&nd,const arma::mat&pts,int Dmax,
+    int nmin,int mode,int ncand,double alpha,double eta){
+  PPSTNode tmp=nd; tmp.axis=-1;
+  return ppst_can_split(tmp,pts,Dmax,nmin,mode,ncand)
+    ? 1.0-ppst_rho(nd.depth,alpha,eta) : 1.0;
+}
+
+static void ppst_leaves(const PPSTree&T,std::vector<int>&out){
+  out.clear(); out.reserve(T.size());
+  for(const auto&kv:T) if(kv.second.axis<0) out.push_back(kv.first);
+}
+static void ppst_growable(const PPSTree&T,const arma::mat&pts,int Dmax,
+    int nmin,int mode,int ncand,std::vector<int>&out){
+  out.clear();
+  for(const auto&kv:T)
+    if(ppst_can_split(kv.second,pts,Dmax,nmin,mode,ncand))
+      out.push_back(kv.first);
+}
+static void ppst_prunable(const PPSTree&T,std::vector<int>&out){
+  out.clear();
+  for(const auto&kv:T) if(kv.second.axis>=0){
+    int id=kv.first,L=2*id,R=2*id+1;
+    auto il=T.find(L),ir=T.find(R);
+    if(il!=T.end()&&ir!=T.end()&&il->second.axis<0&&ir->second.axis<0)
+      out.push_back(id);
+  }
+}
+
+static void ppst_split_indices(const PPSTNode&nd,const arma::mat&pts,int axis,
+    double cut,arma::uvec&li,arma::uvec&ri){
+  arma::vec col=pts.col(axis);
+  std::vector<arma::uword>L,R;
+  for(arma::uword k=0;k<nd.idx.n_elem;k++){
+    arma::uword i=nd.idx[k];
+    if(col[i]<cut) L.push_back(i); else R.push_back(i);
+  }
+  li.set_size(L.size()); ri.set_size(R.size());
+  for(size_t k=0;k<L.size();k++) li[k]=L[k];
+  for(size_t k=0;k<R.size();k++) ri[k]=R[k];
+}
+
+static PPSTNode ppst_child(const PPSTNode&parent,const arma::uvec&idx,int axis,
+    double cut,int side){
+  PPSTNode ch;
+  ch.box=parent.box;
+  if(side<0) ch.box(axis,1)=cut; else ch.box(axis,0)=cut;
+  ch.idx=idx; ch.path=parent.path;
+  PPSTGate g={axis,cut,parent.box(axis,1)-parent.box(axis,0),side};
+  ch.path.push_back(g);
+  ch.cut=NA_REAL; ch.axis=-1; ch.depth=parent.depth+1; ch.m=0;
+  return ch;
+}
+
+// ---- recursive logistic gate and analytic exposure -------------------------
+static double ppst_log_phi_logistic(const PPSTNode&nd,const arma::rowvec&x,
+    const arma::mat&region,const arma::vec&gate){
+  double ans=0.0;
+  for(const PPSTGate&g:nd.path){
+    double width=region(g.axis,1)-region(g.axis,0);
+    double z=gate[g.axis]*(x[g.axis]-g.cut)/width;
+    ans+=g.side<0 ? pst_logistic_log_right(-z)
+                  : pst_logistic_log_right(z);
+  }
+  return ans;
+}
+
+static double ppst_exposure_logistic(const PPSTNode&nd,
+    const arma::mat&region,const arma::vec&gate){
+  double H=1.0;
+  for(arma::uword j=0;j<region.n_rows;j++){
+    std::vector<double>cuts;
+    std::vector<int>sides;
+    for(const PPSTGate&g:nd.path) if(g.axis==(int)j){
+      cuts.push_back(g.cut);
+      sides.push_back(g.side);
+    }
+    H*=pst_logistic_path_axis_integral(
+      cuts,sides,region(j,0),region(j,1),gate[j]
+    );
+  }
+  return std::max(H,1e-300);
+}
+
+// ---- opt-in compact-cubic gate and exact exposure --------------------------
+static inline double ppst_compact_gate_value(
+    const PPSTGate&g,double x,double gate){
+  double h=g.parent_width/gate;
+  double t=(x-(g.cut-h))/(2.0*h);
+  double r=t<=0.0?0.0:(t>=1.0?1.0:t*t*(3.0-2.0*t));
+  return g.side<0?1.0-r:r;
+}
+static double ppst_log_phi_compact(const PPSTNode&nd,const arma::rowvec&x,
+    const arma::vec&gate){
+  double ans=0.0;
+  for(const PPSTGate&g:nd.path){
+    double q=ppst_compact_gate_value(g,x[g.axis],gate[g.axis]);
+    if(q<=0.0) return -std::numeric_limits<double>::infinity();
+    ans+=std::log(q);
+  }
+  return ans;
+}
+static std::vector<double> ppst_poly_multiply(const std::vector<double>&a,
+    const std::vector<double>&b){
+  std::vector<double> out(a.size()+b.size()-1,0.0);
+  for(size_t i=0;i<a.size();i++)
+    for(size_t j=0;j<b.size();j++) out[i+j]+=a[i]*b[j];
+  return out;
+}
+static double ppst_axis_integral(const PPSTNode&nd,int axis,double dom_lo,
+    double dom_hi,double gate){
+  std::vector<const PPSTGate*> gates;
+  std::vector<double> breaks={dom_lo,dom_hi};
+  for(const PPSTGate&g:nd.path) if(g.axis==axis){
+    gates.push_back(&g); double h=g.parent_width/gate;
+    if(g.cut-h>dom_lo&&g.cut-h<dom_hi) breaks.push_back(g.cut-h);
+    if(g.cut+h>dom_lo&&g.cut+h<dom_hi) breaks.push_back(g.cut+h);
+  }
+  if(gates.empty()) return dom_hi-dom_lo;
+  std::sort(breaks.begin(),breaks.end());
+  std::vector<double> uniq;
+  for(double z:breaks)
+    if(uniq.empty()||std::abs(z-uniq.back())>1e-13*(1.0+std::abs(z)))
+      uniq.push_back(z);
+  double total=0.0;
+  for(size_t s=0;s+1<uniq.size();s++){
+    double lo=uniq[s],hi=uniq[s+1],dx=hi-lo;
+    if(dx<=0.0) continue;
+    std::vector<double> poly(1,1.0); bool zero=false;
+    for(const PPSTGate*gp:gates){
+      const PPSTGate&g=*gp; double h=g.parent_width/gate;
+      double tl=g.cut-h,tu=g.cut+h;
+      if(hi<=tl){ if(g.side>0){zero=true;break;} else continue; }
+      if(lo>=tu){ if(g.side<0){zero=true;break;} else continue; }
+      double t0=(lo-tl)/(2.0*h),q=dx/(2.0*h);
+      double t02=t0*t0,t03=t02*t0,q2=q*q,q3=q2*q;
+      std::vector<double> right(4);
+      right[0]=3.0*t02-2.0*t03;
+      right[1]=6.0*t0*q-6.0*t02*q;
+      right[2]=3.0*q2-6.0*t0*q2;
+      right[3]=-2.0*q3;
+      std::vector<double> f=right;
+      if(g.side<0){
+        f[0]=1.0-f[0];
+        for(size_t k=1;k<f.size();k++) f[k]=-f[k];
+      }
+      poly=ppst_poly_multiply(poly,f);
+    }
+    if(zero) continue;
+    double val=0.0;
+    for(size_t k=0;k<poly.size();k++) val+=poly[k]/(double)(k+1);
+    total+=dx*val;
+  }
+  if(total<0.0&&total>-1e-12*(dom_hi-dom_lo)) total=0.0;
+  return std::max(total,1e-300);
+}
+static double ppst_exposure_compact(const PPSTNode&nd,const arma::mat&region,
+    const arma::vec&gate){
+  double H=1.0;
+  for(arma::uword j=0;j<region.n_rows;j++)
+    H*=ppst_axis_integral(nd,j,region(j,0),region(j,1),gate[j]);
+  return std::max(H,1e-300);
+}
+
+static double ppst_log_phi(const PPSTNode&nd,const arma::rowvec&x,
+    const arma::mat&region,const arma::vec&gate,int gate_family){
+  return gate_family==0
+    ? ppst_log_phi_logistic(nd,x,region,gate)
+    : ppst_log_phi_compact(nd,x,gate);
+}
+
+static inline double ppst_phi(const PPSTNode&nd,const arma::rowvec&x,
+    const arma::mat&region,const arma::vec&gate,int gate_family){
+  double z=ppst_log_phi(nd,x,region,gate,gate_family);
+  return z < -745.0 ? 0.0 : std::exp(z);
+}
+
+static double ppst_exposure(const PPSTNode&nd,const arma::mat&region,
+    const arma::vec&gate,int gate_family){
+  return gate_family==0
+    ? ppst_exposure_logistic(nd,region,gate)
+    : ppst_exposure_compact(nd,region,gate);
+}
+
+// [[Rcpp::export]]
+List ppstree_geometry(IntegerVector axis,NumericVector cut,
+    NumericVector parent_width,IntegerVector side,arma::mat points,
+    arma::mat region,arma::vec gate){
+  int K=axis.size();
+  gate=ppst_expand_positive(gate,region.n_rows,"gate");
+  if(cut.size()!=K||parent_width.size()!=K||side.size()!=K)
+    stop("path vectors must have equal lengths");
+  PPSTNode nd; nd.box=region;
+  for(int k=0;k<K;k++){
+    if(axis[k]<1||axis[k]>(int)region.n_rows||parent_width[k]<=0.0||
+       (side[k]!=-1&&side[k]!=1)) stop("invalid soft path");
+    PPSTGate g={(int)axis[k]-1,cut[k],parent_width[k],side[k]};
+    nd.path.push_back(g);
+    if(side[k]<0) nd.box(axis[k]-1,1)=cut[k];
+    else nd.box(axis[k]-1,0)=cut[k];
+  }
+  arma::vec phi(points.n_rows),lp(points.n_rows);
+  for(arma::uword i=0;i<points.n_rows;i++){
+    lp[i]=ppst_log_phi_logistic(nd,points.row(i),region,gate);
+    phi[i]=lp[i] < -745.0 ? 0.0 : std::exp(lp[i]);
+  }
+  return List::create(_["phi"]=phi,_["log_phi"]=lp,
+                      _["H"]=ppst_exposure_logistic(nd,region,gate));
+}
+
+// ---- leaf labels and gate update -------------------------------------------
+static void ppst_label_sweep(PPSTree&T,std::vector<int>&labels,
+    const arma::mat&pts,const arma::mat&region,double a,double b,
+    const arma::vec&gate,int gate_family){
+  std::vector<int> leaves; ppst_leaves(T,leaves);
+  std::vector<double> H(leaves.size()),lw(leaves.size());
+  for(size_t k=0;k<leaves.size();k++)
+    H[k]=ppst_exposure(T.at(leaves[k]),region,gate,gate_family);
+  for(arma::uword i=0;i<pts.n_rows;i++){
+    T.at(labels[i]).m--;
+    for(size_t k=0;k<leaves.size();k++){
+      const PPSTNode&nd=T.at(leaves[k]);
+      lw[k]=ppst_log_phi(nd,pts.row(i),region,gate,gate_family)
+           +std::log(a+nd.m)-std::log(b+H[k]);
+    }
+    double den=ppst_logsumexp(lw),u=R::unif_rand(),cum=0.0;
+    int pick=leaves.back();
+    for(size_t k=0;k<leaves.size();k++){
+      cum+=std::exp(lw[k]-den);
+      if(u<=cum){pick=leaves[k];break;}
+    }
+    labels[i]=pick; T.at(pick).m++;
+  }
+}
+
+static double ppst_gate_target(const PPSTree&T,const std::vector<int>&labels,
+    const arma::mat&pts,const arma::mat&region,double a,double b,
+    const arma::vec&gate,const arma::vec&a_gate,const arma::vec&b_gate,
+    const arma::vec&gate_min,bool gate_shared,int gate_family){
+  if(!gate.is_finite()||arma::any(gate<=gate_min)||arma::any(gate<=0.0))
+    return -std::numeric_limits<double>::infinity();
+  double out=0.0;
+  arma::uword prior_n=gate_shared?1:gate.n_elem;
+  for(arma::uword j=0;j<prior_n;j++)
+    out+=(a_gate[j]-1.0)*std::log(gate[j])-b_gate[j]*gate[j];
+  for(const auto&kv:T) if(kv.second.axis<0)
+    out+=ppst_log_g(
+      kv.second.m,ppst_exposure(kv.second,region,gate,gate_family),a,b
+    );
+  for(arma::uword i=0;i<pts.n_rows;i++)
+    out+=ppst_log_phi(
+      T.at(labels[i]),pts.row(i),region,gate,gate_family
+    );
+  return out;
+}
+static int ppst_gate_update(const PPSTree&T,const std::vector<int>&labels,
+    const arma::mat&pts,const arma::mat&region,double a,double b,
+    arma::vec&gate,const arma::vec&a_gate,const arma::vec&b_gate,
+    const arma::vec&sd_gate,const arma::vec&gate_min,bool gate_shared,
+    int gate_family,int&which){
+  which=gate_shared?0:ppst_runif_int(gate.n_elem);
+  arma::vec prop=gate;
+  double cur=gate[which];
+  double proposed=std::exp(std::log(cur)+R::rnorm(0.0,sd_gate[which]));
+  if(gate_shared) prop.fill(proposed); else prop[which]=proposed;
+  double la=ppst_gate_target(T,labels,pts,region,a,b,prop,a_gate,b_gate,
+                            gate_min,gate_shared,gate_family)
+           -ppst_gate_target(T,labels,pts,region,a,b,gate,a_gate,b_gate,
+                             gate_min,gate_shared,gate_family)
+           +std::log(prop[which])-std::log(cur);
+  if(std::log(R::unif_rand())<la){gate=prop;return 1;}
+  return 0;
+}
+
+// ---- reversible tree moves -------------------------------------------------
+static int ppst_draw_side(const PPSTNode&left,const PPSTNode&right,
+    const arma::rowvec&x,const arma::mat&region,const arma::vec&gate,
+    int gate_family){
+  double ll=ppst_log_phi(left,x,region,gate,gate_family);
+  double lr=ppst_log_phi(right,x,region,gate,gate_family);
+  double den=std::max(ll,lr);
+  double p_left=std::exp(ll-den)/
+    (std::exp(ll-den)+std::exp(lr-den));
+  return R::unif_rand()<p_left ? -1 : 1;
+}
+
+static int ppst_grow_prune(PPSTree&T,std::vector<int>&labels,
+    const arma::mat&pts,const arma::mat&region,double a,double b,
+    const arma::vec&gate,int gate_family,
+    double alpha,double eta,int Dmax,int nmin,int mode,int ncand,int&which_move){
+  std::vector<int>G,P;
+  ppst_growable(T,pts,Dmax,nmin,mode,ncand,G);
+  ppst_prunable(T,P);
+  if(R::unif_rand()<0.5){
+    which_move=0;
+    if(G.empty()) return 0;
+    int v=G[ppst_runif_int(G.size())],L=2*v,R=2*v+1;
+    PPSTNode old=T.at(v); int axis=ppst_runif_int(pts.n_cols);
+    std::vector<double> cuts=ppst_axis_cuts(pts,old.idx,old.box,axis,mode,ncand,nmin);
+    if(cuts.empty()) return 0;
+    double cut=cuts[ppst_runif_int(cuts.size())];
+    arma::uvec li,ri; ppst_split_indices(old,pts,axis,cut,li,ri);
+    PPSTNode nl=ppst_child(old,li,axis,cut,-1);
+    PPSTNode nr=ppst_child(old,ri,axis,cut,1);
+    std::vector<std::pair<int,int> > reass;
+    int mL=0,mR=0;
+    for(size_t i=0;i<labels.size();i++) if(labels[i]==v){
+      int dest=ppst_draw_side(
+        nl,nr,pts.row(i),region,gate,gate_family
+      )<0?L:R;
+      reass.push_back(std::make_pair((int)i,dest));
+      if(dest==L) mL++; else mR++;
+    }
+    nl.m=mL; nr.m=mR;
+    T[v].axis=axis; T[v].cut=cut; T[v].m=0; T[L]=nl; T[R]=nr;
+    std::vector<int>Pnew; ppst_prunable(T,Pnew);
+    double Hp=ppst_exposure(old,region,gate,gate_family);
+    double HL=ppst_exposure(nl,region,gate,gate_family);
+    double HR=ppst_exposure(nr,region,gate,gate_family);
+    double dp=std::log(ppst_rho(old.depth,alpha,eta))
+      -std::log(1.0-ppst_rho(old.depth,alpha,eta))
+      +std::log(ppst_stop_factor(nl,pts,Dmax,nmin,mode,ncand,alpha,eta))
+      +std::log(ppst_stop_factor(nr,pts,Dmax,nmin,mode,ncand,alpha,eta));
+    double logA=ppst_log_g(mL,HL,a,b)+ppst_log_g(mR,HR,a,b)
+      -ppst_log_g(old.m,Hp,a,b)+dp
+      +std::log((double)G.size())-std::log((double)Pnew.size());
+    if(std::log(R::unif_rand())<logA){
+      for(const auto&z:reass) labels[z.first]=z.second;
+      return 1;
+    }
+    T.erase(L); T.erase(R); T[v]=old;
+    return 0;
+  }
+
+  which_move=1;
+  if(P.empty()) return 0;
+  int v=P[ppst_runif_int(P.size())],L=2*v,R=2*v+1;
+  PPSTNode oldp=T.at(v),oldL=T.at(L),oldR=T.at(R);
+  int M=oldL.m+oldR.m;
+  double Hp=ppst_exposure(oldp,region,gate,gate_family);
+  double HL=ppst_exposure(oldL,region,gate,gate_family);
+  double HR=ppst_exposure(oldR,region,gate,gate_family);
+  double dp=std::log(ppst_rho(oldp.depth,alpha,eta))
+    -std::log(1.0-ppst_rho(oldp.depth,alpha,eta))
+    +std::log(ppst_stop_factor(oldL,pts,Dmax,nmin,mode,ncand,alpha,eta))
+    +std::log(ppst_stop_factor(oldR,pts,Dmax,nmin,mode,ncand,alpha,eta));
+  T.erase(L); T.erase(R); T[v].axis=-1; T[v].cut=NA_REAL; T[v].m=M;
+  std::vector<int>Gnew; ppst_growable(T,pts,Dmax,nmin,mode,ncand,Gnew);
+  if(Gnew.empty()){T[v]=oldp;T[L]=oldL;T[R]=oldR;return 0;}
+  double logA=ppst_log_g(M,Hp,a,b)-ppst_log_g(oldL.m,HL,a,b)
+    -ppst_log_g(oldR.m,HR,a,b)-dp
+    +std::log((double)P.size())-std::log((double)Gnew.size());
+  if(std::log(R::unif_rand())<logA){
+    for(size_t i=0;i<labels.size();i++)
+      if(labels[i]==L||labels[i]==R) labels[i]=v;
+    return 1;
+  }
+  T[v]=oldp; T[L]=oldL; T[R]=oldR;
+  return 0;
+}
+
+static int ppst_change_cut(PPSTree&T,std::vector<int>&labels,
+    const arma::mat&pts,const arma::mat&region,double a,double b,
+    const arma::vec&gate,int gate_family,
+    double alpha,double eta,int Dmax,int nmin,int mode,int ncand){
+  std::vector<int>P; ppst_prunable(T,P); if(P.empty()) return 0;
+  int v=P[ppst_runif_int(P.size())],L=2*v,R=2*v+1;
+  PPSTNode parent=T.at(v),oldL=T.at(L),oldR=T.at(R);
+  int axis=ppst_runif_int(pts.n_cols);
+  std::vector<double>cuts=ppst_axis_cuts(pts,parent.idx,parent.box,axis,mode,ncand,nmin);
+  if(cuts.empty()) return 0;
+  double cut=cuts[ppst_runif_int(cuts.size())];
+  arma::uvec li,ri; ppst_split_indices(parent,pts,axis,cut,li,ri);
+  PPSTNode nl=ppst_child(parent,li,axis,cut,-1);
+  PPSTNode nr=ppst_child(parent,ri,axis,cut,1);
+  std::vector<std::pair<int,int> >reass;
+  int mL=0,mR=0;
+  for(size_t i=0;i<labels.size();i++) if(labels[i]==L||labels[i]==R){
+    int dest=ppst_draw_side(
+      nl,nr,pts.row(i),region,gate,gate_family
+    )<0?L:R;
+    reass.push_back(std::make_pair((int)i,dest));
+    if(dest==L)mL++;else mR++;
+  }
+  nl.m=mL; nr.m=mR;
+  double HoL=ppst_exposure(oldL,region,gate,gate_family);
+  double HoR=ppst_exposure(oldR,region,gate,gate_family);
+  double HnL=ppst_exposure(nl,region,gate,gate_family);
+  double HnR=ppst_exposure(nr,region,gate,gate_family);
+  double oldg=ppst_log_g(oldL.m,HoL,a,b)+ppst_log_g(oldR.m,HoR,a,b);
+  double newg=ppst_log_g(mL,HnL,a,b)+ppst_log_g(mR,HnR,a,b);
+  double oldS=std::log(ppst_stop_factor(oldL,pts,Dmax,nmin,mode,ncand,alpha,eta))
+             +std::log(ppst_stop_factor(oldR,pts,Dmax,nmin,mode,ncand,alpha,eta));
+  double newS=std::log(ppst_stop_factor(nl,pts,Dmax,nmin,mode,ncand,alpha,eta))
+             +std::log(ppst_stop_factor(nr,pts,Dmax,nmin,mode,ncand,alpha,eta));
+  if(std::log(R::unif_rand())<(newg-oldg)+(newS-oldS)){
+    T[v].axis=axis;T[v].cut=cut;T[L]=nl;T[R]=nr;
+    for(const auto&z:reass) labels[z.first]=z.second;
+    return 1;
+  }
+  return 0;
+}
+
+// ---- posterior draws and chain ---------------------------------------------
+static double ppst_eval_intensity(const PPSTree&T,
+    const std::unordered_map<int,double>&lam,const arma::rowvec&x,
+    const arma::mat&region,const arma::vec&gate,int gate_family){
+  double out=0.0;
+  for(const auto&kv:lam)
+    out+=kv.second*ppst_phi(
+      T.at(kv.first),x,region,gate,gate_family
+    );
+  return std::max(out,1e-300);
+}
+
+static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
+    const arma::mat&xt,const arma::mat&region,double a,double b,
+    const arma::vec&gate0,const arma::vec&a_gate,const arma::vec&b_gate,
+    const arma::vec&sd_gate,const arma::vec&gate_min,bool gate_shared,
+    int gate_family,double alpha,double eta,int Dmax,int nmin,int iters,
+    int burn,int thin,
+    int nmove,int ncc,int mode,int ncand,int update_gate,arma::mat&draws,
+    arma::vec&loglik,arma::vec&loglik_test,arma::vec&integrated_intensity,
+    int row0,double&mean_leaves,
+    double&mean_max_depth,arma::vec&mean_gate,arma::vec&accept,
+    arma::vec&gate_accept,
+    std::vector<arma::mat>&state_nodes,arma::mat&state_gate){
+  int n=pts.n_rows,si=0; double nls=0.0,mds=0.0;
+  arma::vec gate=gate0,gs(gate0.n_elem,arma::fill::zeros);
+  PPSTree T; PPSTNode root;
+  root.box=region; root.idx=arma::regspace<arma::uvec>(0,n-1);
+  root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;
+  std::vector<int>labels(n,1);
+  double ag=0,tg=0,ap=0,tp=0,ac=0,tc=0;
+  arma::vec aga(gate.n_elem,arma::fill::zeros);
+  arma::vec tga(gate.n_elem,arma::fill::zeros);
+  for(int it=0;it<iters;it++){
+    ppst_label_sweep(T,labels,pts,region,a,b,gate,gate_family);
+    if(update_gate){
+      int which=0;
+      int accepted=ppst_gate_update(T,labels,pts,region,a,b,gate,a_gate,b_gate,
+                                    sd_gate,gate_min,gate_shared,gate_family,
+                                    which);
+      aga[which]+=accepted; tga[which]++;
+    }
+    for(int r=0;r<nmove;r++){
+      int move=-1,ok=ppst_grow_prune(
+        T,labels,pts,region,a,b,gate,gate_family,alpha,eta,
+        Dmax,nmin,mode,ncand,move
+      );
+      if(move==0){ag+=ok;tg++;}else if(move==1){ap+=ok;tp++;}
+    }
+    for(int r=0;r<ncc;r++){
+      ac+=ppst_change_cut(
+        T,labels,pts,region,a,b,gate,gate_family,alpha,eta,Dmax,nmin,
+        mode,ncand
+      );tc++;
+    }
+    if(it>=burn&&(it-burn)%thin==0){
+      int row=row0+si; std::vector<int>leaves; ppst_leaves(T,leaves);
+      std::unordered_map<int,double>lam; double comp=0.0;
+      for(int id:leaves){
+        double H=ppst_exposure(T.at(id),region,gate,gate_family);
+        double lv=R::rgamma(a+T.at(id).m,1.0/(b+H));
+        lam[id]=lv;comp+=lv*H;
+      }
+      integrated_intensity[row]=comp;
+      for(arma::uword j=0;j<grid.n_rows;j++)
+        draws(row,j)=ppst_eval_intensity(
+          T,lam,grid.row(j),region,gate,gate_family
+        );
+      double ll=-comp;
+      for(int i=0;i<n;i++)
+        ll+=std::log(ppst_eval_intensity(
+          T,lam,pts.row(i),region,gate,gate_family
+        ));
+      loglik[row]=ll;
+      if(xt.n_rows>0){
+        double lt=-comp;
+        for(arma::uword i=0;i<xt.n_rows;i++)
+          lt+=std::log(ppst_eval_intensity(
+            T,lam,xt.row(i),region,gate,gate_family
+          ));
+        loglik_test[row]=lt;
+      }
+      int md=0;
+      for(const auto&kv:T) if(kv.second.depth>md) md=kv.second.depth;
+      // serialize the generative state of this retained draw: one row per
+      // node, columns (heap id, axis, cut, lambda, xi, m).  Internal nodes
+      // carry no rate in the terminal-leaf model (lambda = 0).
+      {
+        arma::mat st(T.size(),6);
+        int rr=0;
+        for(const auto&kv:T){
+          const PPSTNode&nd=kv.second;
+          st(rr,0)=(double)kv.first;
+          st(rr,1)=(double)nd.axis;
+          st(rr,2)=nd.axis>=0?nd.cut:NA_REAL;
+          st(rr,3)=nd.axis<0?lam[kv.first]:0.0;
+          st(rr,4)=NA_REAL;
+          st(rr,5)=(double)nd.m;
+          rr++;
+        }
+        state_nodes[row]=st;
+        state_gate.row(row)=gate.t();
+      }
+      nls+=leaves.size();mds+=md;gs+=gate;si++;
+    }
+    if((it&1023)==0) Rcpp::checkUserInterrupt();
+  }
+  mean_leaves=nls/std::max(1,si);
+  mean_max_depth=mds/std::max(1,si);
+  mean_gate=gs/std::max(1,si);
+  accept.set_size(3);
+  accept[0]=ag/std::max(1.0,tg);accept[1]=ap/std::max(1.0,tp);
+  accept[2]=ac/std::max(1.0,tc);
+  gate_accept.set_size(gate.n_elem);
+  if(gate_shared){
+    gate_accept.fill(aga[0]/std::max(1.0,tga[0]));
+  }else{
+    for(arma::uword j=0;j<gate.n_elem;j++)
+      gate_accept[j]=aga[j]/std::max(1.0,tga[j]);
+  }
+  return si;
+}
+
+static void ppst_summarize(const arma::mat&D,arma::vec&mn,arma::vec&md,
+    arma::vec&lo,arma::vec&hi){
+  mn=arma::mean(D,0).t();md=arma::median(D,0).t();
+  lo.set_size(D.n_cols);hi.set_size(D.n_cols);
+  arma::vec p={0.025,0.975};
+  for(arma::uword j=0;j<D.n_cols;j++){
+    arma::vec q=arma::quantile(D.col(j),p);lo[j]=q[0];hi[j]=q[1];
+  }
+}
+static double ppst_lse_vec(const arma::vec&x){
+  double mx=x.max();return mx+std::log(arma::sum(arma::exp(x-mx)));
+}
+
+// [[Rcpp::export]]
+List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
+    double a,double b,arma::vec gate,arma::vec a_gate,arma::vec b_gate,
+    arma::vec sd_gate,arma::vec gate_min,int gate_shared,double alpha,
+    double eta,int Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
+    int cut_mode,int ncand,int update_gate,int gate_family,int chains,
+    int verbose){
+  if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
+  if(region.n_rows!=X.n_cols||region.n_cols!=2||
+     grid.n_cols!=X.n_cols||Xtest.n_cols!=X.n_cols)
+    stop("X, grid, Xtest, and region have incompatible dimensions");
+  if(chains<1||iters<=burn||burn<0||thin<1||Dmax<0||nmin<1||
+     nmove<0||ncc<0||ncand<2)
+    stop("invalid MCMC or tree controls");
+  if(gate_family<0||gate_family>1)
+    stop("gate_family must be 0 (logistic) or 1 (compact)");
+  if(a<=0.0||b<=0.0) stop("a and b must be positive for the soft PPT");
+  gate=ppst_expand_positive(gate,X.n_cols,"gate");
+  a_gate=ppst_expand_positive(a_gate,X.n_cols,"a_gate");
+  b_gate=ppst_expand_positive(b_gate,X.n_cols,"b_gate");
+  sd_gate=ppst_expand_positive(sd_gate,X.n_cols,"sd_gate");
+  gate_min=ppst_expand_positive(gate_min,X.n_cols,"gate_min",true);
+  if(arma::any(gate<=gate_min)) stop("every gate must exceed gate_min");
+  int ns=0;for(int it=burn;it<iters;it++)if((it-burn)%thin==0)ns++;
+  int total=ns*chains,row=0;
+  arma::mat D(total,grid.n_rows,arma::fill::zeros);
+  arma::vec ll(total,arma::fill::zeros);
+  arma::vec llt(Xtest.n_rows>0?total:0,arma::fill::zeros);
+  arma::vec integrated_intensity(total,arma::fill::zeros);
+  arma::vec leaves(chains),maxdepth(chains);arma::mat gates(chains,X.n_cols);
+  arma::mat acc(chains,3),gacc(chains,X.n_cols);
+  std::vector<arma::mat> state_nodes(total);
+  arma::mat state_gate(total,X.n_cols,arma::fill::zeros);
+  if(verbose) Rcpp::Rcout<<"S-PPT [RJ-MCMC]: "<<chains
+                         <<" chains, "<<ns<<" draws/chain\n";
+  for(int k=0;k<chains;k++){
+    arma::vec ak,gak,gm;double nl,md;
+    int got=ppst_run_chain(X,grid,Xtest,region,a,b,gate,a_gate,b_gate,sd_gate,
+      gate_min,gate_shared,gate_family,alpha,eta,Dmax,nmin,iters,burn,thin,
+      nmove,ncc,cut_mode,ncand,update_gate,D,ll,llt,integrated_intensity,
+      row,nl,md,gm,ak,gak,state_nodes,state_gate);
+    row+=got;leaves[k]=nl;maxdepth[k]=md;gates.row(k)=gm.t();acc.row(k)=ak.t();
+    gacc.row(k)=gak.t();
+    if(verbose) Rcpp::Rcout<<"  chain "<<k+1<<"/"<<chains<<" done; leaves="
+      <<nl<<", max_depth="<<md<<", gate="<<arma::mean(gm)
+      <<", gate_accept="<<arma::mean(gak)<<"\n";
+  }
+  arma::vec mn,md,lo,hi;ppst_summarize(D,mn,md,lo,hi);
+  double lp=(Xtest.n_rows>0&&row>0)
+    ?ppst_lse_vec(llt)-std::log((double)row):NA_REAL;
+  List sn(row);
+  for(int s=0;s<row;s++) sn[s]=state_nodes[s];
+  List out=List::create(
+    _["mean"]=mn,_["median"]=md,_["lower95"]=lo,_["upper95"]=hi,
+    _["draws"]=D.t(),
+    _["loglik_mean"]=row>0?arma::mean(ll):NA_REAL,_["logpred"]=lp,
+    _["loglik_draws"]=ll,
+    _["integrated_intensity"]=integrated_intensity,
+    _["chain_mean_leaves"]=leaves,
+    _["chain_mean_max_depth"]=maxdepth,
+    _["mean_leaves"]=arma::mean(leaves),
+    _["mean_max_depth"]=arma::mean(maxdepth),
+    _["kappa_mean"]=NA_REAL,_["tau_mean"]=NA_REAL,
+    _["gate_mean"]=arma::mean(gates,0).t(),
+    _["accept"]=arma::mean(acc,0).t(),
+    _["gate_accept"]=arma::mean(gacc,0).t(),_["ndraws"]=row);
+  out["state_nodes"]=sn;
+  out["state_gate"]=state_gate.rows(0,std::max(0,row-1));
+  return out;
+}
+
+// [[Rcpp::export]]
+List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
+    double a,double b,arma::vec gate,arma::vec a_gate,arma::vec b_gate,
+    arma::vec sd_gate,arma::vec gate_min,int gate_shared,double alpha,
+    double eta,int Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
+    int cut_mode,int ncand,int update_gate,int gate_family){
+  if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
+  if(region.n_rows!=X.n_cols||region.n_cols!=2||mon.n_cols!=X.n_cols)
+    stop("X, mon, and region have incompatible dimensions");
+  if(iters<=burn||burn<0||thin<1||Dmax<0||nmin<1||
+     nmove<0||ncc<0||ncand<2)
+    stop("invalid MCMC or tree controls");
+  if(gate_family<0||gate_family>1)
+    stop("gate_family must be 0 (logistic) or 1 (compact)");
+  if(a<=0.0||b<=0.0) stop("a and b must be positive for the soft PPT");
+  gate=ppst_expand_positive(gate,X.n_cols,"gate");
+  a_gate=ppst_expand_positive(a_gate,X.n_cols,"a_gate");
+  b_gate=ppst_expand_positive(b_gate,X.n_cols,"b_gate");
+  sd_gate=ppst_expand_positive(sd_gate,X.n_cols,"sd_gate");
+  gate_min=ppst_expand_positive(gate_min,X.n_cols,"gate_min",true);
+  if(arma::any(gate<=gate_min)) stop("every gate must exceed gate_min");
+
+  int n=X.n_rows,ns=0,si=0;
+  for(int it=burn;it<iters;it++)
+    if((it-burn)%thin==0) ns++;
+
+  PPSTree T; PPSTNode root;
+  root.box=region; root.idx=arma::regspace<arma::uvec>(0,n-1);
+  root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;
+  std::vector<int>labels(n,1);
+
+  arma::vec tr_nleaf(ns,arma::fill::zeros);
+  arma::mat tr_gate(ns,gate.n_elem,arma::fill::zeros);
+  arma::vec tr_logdens(ns,arma::fill::zeros);
+  arma::mat tr_mon(ns,mon.n_rows,arma::fill::zeros);
+  double ag=0,tg=0,ap=0,tp=0,ac=0,tc=0;
+  arma::vec aga(gate.n_elem,arma::fill::zeros);
+  arma::vec tga(gate.n_elem,arma::fill::zeros);
+
+  for(int it=0;it<iters;it++){
+    ppst_label_sweep(T,labels,X,region,a,b,gate,gate_family);
+    if(update_gate){
+      int which=0;
+      int accepted=ppst_gate_update(T,labels,X,region,a,b,gate,a_gate,b_gate,
+                                    sd_gate,gate_min,gate_shared,gate_family,
+                                    which);
+      aga[which]+=accepted; tga[which]++;
+    }
+    for(int r=0;r<nmove;r++){
+      int move=-1;
+      int ok=ppst_grow_prune(
+        T,labels,X,region,a,b,gate,gate_family,alpha,eta,
+        Dmax,nmin,cut_mode,ncand,move
+      );
+      if(move==0){ag+=ok;tg++;}
+      else if(move==1){ap+=ok;tp++;}
+    }
+    for(int r=0;r<ncc;r++){
+      ac+=ppst_change_cut(
+        T,labels,X,region,a,b,gate,gate_family,alpha,eta,Dmax,nmin,
+        cut_mode,ncand
+      );
+      tc++;
+    }
+
+    if(it>=burn&&(it-burn)%thin==0){
+      std::vector<int>leaves;
+      ppst_leaves(T,leaves);
+      std::unordered_map<int,double>lam;
+      double compensator=0.0;
+      for(int id:leaves){
+        double H=ppst_exposure(T.at(id),region,gate,gate_family);
+        double lv=R::rgamma(a+T.at(id).m,1.0/(b+H));
+        lam[id]=lv;
+        compensator+=lv*H;
+      }
+      for(arma::uword j=0;j<mon.n_rows;j++)
+        tr_mon(si,j)=ppst_eval_intensity(
+          T,lam,mon.row(j),region,gate,gate_family
+        );
+      double ll=-compensator;
+      for(int i=0;i<n;i++)
+        ll+=std::log(ppst_eval_intensity(
+          T,lam,X.row(i),region,gate,gate_family
+        ));
+      tr_nleaf[si]=leaves.size();
+      tr_gate.row(si)=gate.t();
+      tr_logdens[si]=ll;
+      si++;
+    }
+    if((it&1023)==0) Rcpp::checkUserInterrupt();
+  }
+
+  arma::vec accept(3);
+  accept[0]=ag/std::max(1.0,tg);
+  accept[1]=ap/std::max(1.0,tp);
+  accept[2]=ac/std::max(1.0,tc);
+  arma::vec gate_accept(gate.n_elem);
+  if(gate_shared){
+    gate_accept.fill(aga[0]/std::max(1.0,tga[0]));
+  }else{
+    for(arma::uword j=0;j<gate.n_elem;j++)
+      gate_accept[j]=aga[j]/std::max(1.0,tga[j]);
+  }
+  return List::create(
+    _["nleaf"]=tr_nleaf,_["gate"]=tr_gate,_["logdens"]=tr_logdens,
+    _["mon"]=tr_mon,_["accept"]=accept,_["gate_accept"]=gate_accept,_["ns"]=si);
+}

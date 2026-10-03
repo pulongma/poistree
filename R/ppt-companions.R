@@ -1,8 +1,7 @@
 #' Summarize sampler diagnostics
 #'
-#' Reports the acceptance information exposed by the selected backend together
-#' with the number of retained draws. Full scalar traces will be added when the
-#' backends retain them in fitted objects.
+#' Reports the acceptance information and scalar traces exposed by the selected
+#' backend together with the number of retained draws.
 #'
 #' @param object A fitted `ppt` object.
 #' @param plot Draw an acceptance-rate bar plot.
@@ -16,6 +15,7 @@ ppt_diagnostics <- function(object, plot = FALSE) {
     list(
       model = object$model$label,
       sampler = object$model$sampler,
+      algorithm = object$model$algorithm %||% object$model$sampler,
       scale_prior = object$model$scale_prior,
       draws = object$posterior$draws,
       mean_leaves = object$posterior$mean_leaves,
@@ -26,7 +26,13 @@ ppt_diagnostics <- function(object, plot = FALSE) {
       gate_by_dimension = object$posterior$gate_by_dimension,
       particle_ess = object$diagnostics$particle_ess %||% NA_real_,
       ess_history = object$diagnostics$ess_history %||% numeric(),
-      unique_trees = object$diagnostics$unique_trees %||% NA_integer_
+      unique_trees = object$diagnostics$unique_trees %||% NA_integer_,
+      leaf_count_trace = object$diagnostics$leaf_count_trace %||% numeric(),
+      max_depth_trace = object$diagnostics$max_depth_trace %||% numeric(),
+      log_evidence_increment =
+        object$diagnostics$log_evidence_increment %||% numeric(),
+      log_evidence_running =
+        object$diagnostics$log_evidence_running %||% numeric()
     ),
     class = "ppt_diagnostics"
   )
@@ -40,6 +46,9 @@ print.ppt_diagnostics <- function(x, ...) {
   cat("poistree sampler diagnostics\n")
   cat("  Model       :", x$model, "\n")
   cat("  Sampler     :", x$sampler, "\n")
+  if (!identical(x$algorithm, x$sampler)) {
+    cat("  Algorithm   :", x$algorithm, "\n")
+  }
   cat("  Draws       :", x$draws, "\n")
   cat("  Mean leaves :", format(x$mean_leaves, digits = 5L), "\n")
   if (is.finite(x$mean_max_depth)) {

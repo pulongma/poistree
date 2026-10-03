@@ -9,6 +9,7 @@
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <limits>
 #endif
 
 #ifndef _USE_Utils
@@ -35,8 +36,9 @@ public:
     double b = 0.0;
 
     // tree tuning parameters
-    int min_leaf_n = 2;
+    int min_leaf_n = 1;
     int cut_grid_n = 30;
+    double max_aspect_ratio = std::numeric_limits<double>::infinity();
     double rho = 0.5;   // base split prob (alpha) at depth 0
     double lam = 1.0;   // axis selection prob (normalised per node)
     double eta = 2.0;   // depth penalty: P(split | depth d) = rho * (1+d)^{-eta}
@@ -85,6 +87,7 @@ public:
         dim = other.dim; max_depth = other.max_depth; max_nodes = other.max_nodes;
         a = other.a; b = other.b;
         min_leaf_n = other.min_leaf_n; cut_grid_n = other.cut_grid_n;
+        max_aspect_ratio = other.max_aspect_ratio;
         rho = other.rho; lam = other.lam; eta = other.eta;
         loglik = other.loglik; total_intensity = other.total_intensity;
     }
@@ -141,12 +144,15 @@ public:
 
     void initialize(const arma::mat& region_root, int n, int max_depth_) {
 
-        this->dim = region_root.n_cols;
+        // Regions are stored as a d x 2 matrix: rows are dimensions and the
+        // two columns are lower/upper bounds.
+        this->dim = region_root.n_rows;
         this->max_depth = max_depth_;
         this->a = 0.5;
         this->b = 0;
-        this->min_leaf_n = 2;
+        this->min_leaf_n = 1;
         this->cut_grid_n = 30;
+        this->max_aspect_ratio = std::numeric_limits<double>::infinity();
         this->rho = 0.5;
         this->eta = 2.0;   // depth penalty on the split prior (Chipman et al. 1998)
         this->lam = 1.0/this->dim;
@@ -165,14 +171,18 @@ public:
     }
     void initialize(const arma::mat& region_root, int n, int max_depth_, int min_leaf_n_,
         double a_=0.5, double b_=0.0,
-        double rho_=0.5, int cut_grid_n_=30, double eta_=2.0) {
+        double rho_=0.5, int cut_grid_n_=30, double eta_=2.0,
+        double max_aspect_ratio_=std::numeric_limits<double>::infinity()) {
 
-        this->dim = region_root.n_cols;
+        // Regions are stored as a d x 2 matrix: rows are dimensions and the
+        // two columns are lower/upper bounds.
+        this->dim = region_root.n_rows;
         this->max_depth = max_depth_;
         this->a = a_;
         this->b = b_;
         this->min_leaf_n = min_leaf_n_;
         this->cut_grid_n = cut_grid_n_;
+        this->max_aspect_ratio = max_aspect_ratio_;
         this->rho = rho_;
         this->eta = eta_;   // depth penalty on the split prior
         this->lam = 1.0/this->dim;
@@ -207,16 +217,28 @@ public:
     /**************************************************************/
     // PP tree routines
     void PPT_one_step_ahead(double& log_inc, int i, const arma::mat& pts);
+    // Apply the action stored at node i of a complete reference tree while
+    // evaluating the same importance increment as PPT_one_step_ahead().  This
+    // is the conditioning operation required by a valid conditional SMC
+    // kernel: the reference action is never redrawn.
+    void PPT_force_reference_step(double& log_inc, int i,
+                                  const PPT& ref_tree,
+                                  const arma::mat& pts);
     void PPT_draw_lambda();
     arma::vec predict_lambda(const arma::mat& XX); 
     double PPT_get_lppd(const arma::vec& new_lambda);
 
     double PPT_base_mloglik(int n, double area, double a=.5, double b=0.0){
-        // Jeffreys prior (a=0.5, b=0) leaf marginal, paper Remark 1:
-        //   Q0(A) = Gamma(n+0.5) / area^{n+0.5}
-        double loglik = lgamma(n+0.5) - (n+0.5)*log(area);
-
-        return loglik;
+        // For b > 0 this is the normalized Ga(a,b) marginal
+        //   b^a Gamma(n+a) / {Gamma(a) (b+area)^(n+a)}.
+        // The b=0 branch deliberately retains the package's historical
+        // improper-prior limit.  In particular a=0.5 reproduces exactly
+        // Gamma(n+0.5) / area^(n+0.5).
+        if (b > 0.0) {
+            return lgamma(n + a) - lgamma(a) + a * log(b) -
+                   (n + a) * log(b + area);
+        }
+        return lgamma(n + a) - (n + a) * log(area);
     }
      
 
@@ -244,11 +266,6 @@ public:
 
 
 #endif
-
-
-
-
-
 
 
 

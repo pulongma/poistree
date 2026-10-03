@@ -2,18 +2,29 @@
 % Please edit documentation in R/ppt-methods.R
 \name{ppt_lppd}
 \alias{ppt_lppd}
-\title{Extract test-pattern log predictive density}
+\title{Test-pattern log predictive density}
 \usage{
-ppt_lppd(object)
+ppt_lppd(object, test = NULL)
 }
 \arguments{
 \item{object}{A fitted `ppt` object.}
+
+\item{test}{Optional numeric matrix of test points (one column per
+input). If `NULL`, the lppd stored at fitting time is returned.}
 }
 \value{
-A numeric scalar.
+A numeric scalar with attributes `n_test` and `joint`.
 }
 \description{
-`test` must be supplied to `ppt_fit()`. The returned value is the joint
-posterior log predictive density of that test point pattern over the fitted
-observation region.
+The joint posterior log predictive density of a test point pattern over
+the fitted observation region,
+\deqn{\mathrm{lppd}
+  = \log \sum_s w_s \exp\Big\{\sum_i \log\lambda^{(s)}(t_i)
+    - \textstyle\int_{\mathcal D}\lambda^{(s)}\Big\},}
+with uniform draw weights for MCMC fits and particle weights for SMC.
+When `test` is supplied here, the intensities \eqn{\lambda^{(s)}(t_i)}
+are evaluated post hoc from the retained posterior state draws and the
+stored per-draw intensity integrals, so the test pattern does NOT have to
+be supplied at fitting time. When `test` is `NULL`, the value stored by
+`ppt_fit(..., test = )` is returned.
 }
