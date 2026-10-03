@@ -404,7 +404,8 @@ static int ppst_gate_update(const PPSTree&T,const std::vector<int>&labels,
     arma::vec&gate,const arma::vec&a_gate,const arma::vec&b_gate,
     const arma::vec&sd_gate,const arma::vec&gate_min,bool gate_shared,
     int gate_family,int&which){
-  which=gate_shared?0:ppst_runif_int(gate.n_elem);
+  // `which` is the coordinate updated (ignored for a shared gate)
+  if(gate_shared) which=0;
   arma::vec prop=gate;
   double cur=gate[which];
   double proposed=std::exp(std::log(cur)+R::rnorm(0.0,sd_gate[which]));
@@ -583,11 +584,15 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
   for(int it=0;it<iters;it++){
     ppst_label_sweep(T,labels,pts,region,a,b,gate,gate_family);
     if(update_gate){
-      int which=0;
-      int accepted=ppst_gate_update(T,labels,pts,region,a,b,gate,a_gate,b_gate,
-                                    sd_gate,gate_min,gate_shared,gate_family,
-                                    which);
-      aga[which]+=accepted; tga[which]++;
+      // one Metropolis proposal per coordinate (systematic scan), or one
+      // proposal for a shared gate
+      int nup=gate_shared?1:(int)gate.n_elem;
+      for(int which=0;which<nup;which++){
+        int accepted=ppst_gate_update(T,labels,pts,region,a,b,gate,a_gate,b_gate,
+                                      sd_gate,gate_min,gate_shared,gate_family,
+                                      which);
+        aga[which]+=accepted; tga[which]++;
+      }
     }
     for(int r=0;r<nmove;r++){
       int move=-1,ok=ppst_grow_prune(

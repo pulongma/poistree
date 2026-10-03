@@ -9,7 +9,7 @@
     gate = 12, a_gate = 36, b_gate = 3,
     sd_gate = 0.07, gate_min = 0,
     gate_family = c("logistic", "compact"),
-    gate_structure = c("shared", "dimension"),
+    gate_structure = c("dimension", "shared"),
     update_gate = TRUE,
     alpha = 0.95, eta = 2,
     max_depth = 8L, min_leaf_n = 1L,
