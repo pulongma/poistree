@@ -76,11 +76,13 @@ every tree level (`"level"`), optionally only when the ESS falls below
 `ess_threshold * particles`. Ancestor sampling is made valid by
 working on a complete decision tree with a fixed per-input cut grid (global
 quantiles by default, or a user-supplied `cut_grid`), so that the full
-suffix target ratio is defined for every particle. The gate is updated by
-Metropolis--Hastings and the leaf labels by Gibbs sweeps inside the cycle.
+suffix target ratio is defined for every particle. The gating parameters
+(one per input by default, `gate_structure = "dimension"`) are updated by a
+systematic Metropolis--Hastings scan and the allocation variables by Gibbs
+sweeps inside the cycle.
 The particle system uses a shared-path store in the spirit of the `ResTree`
-package: particles hold handles to coloured path nodes (geometric path plus
-the points coloured to the node), the candidate expansion of each distinct
+package: particles hold handles to path nodes (geometric path plus
+the observations allocated to the node), the candidate expansion of each distinct
 frontier node is computed once per level and shared by every particle holding
 it, and resampling moves or copies handle maps rather than trees
 (`fit$diagnostics$expanded_nodes` reports the distinct expansions per sweep).

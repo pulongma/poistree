@@ -52,7 +52,10 @@
 #'   points independently given them), and
 #'   `cut_grid` (a list of fixed cut locations per input; by default
 #'   `cut_candidates` global quantiles). Soft models additionally accept
-#'   `gate_family`, `gate_structure`, `gate`, and gate-prior controls.
+#'   `gate_family`, `gate_structure` (`"dimension"`, the default, one gating
+#'   parameter per input updated by a systematic Metropolis scan over the
+#'   inputs in every iteration; or `"shared"`, one common parameter), `gate`,
+#'   and gate-prior controls, which are scalars or vectors of length `d`.
 #'
 #' @return An object of S3 class `ppt`.
 #' @export

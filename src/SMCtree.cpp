@@ -865,18 +865,25 @@ double SoftSMCtree::log_target_gate(const SoftRef& ref, const arma::vec& gate,
 }
 
 // Log-random-walk Metropolis update of the gate (shared or per axis).
+// One Metropolis proposal per coordinate (systematic scan), or a single
+// proposal for a shared gate; returns the number of accepted proposals.
 int SoftSMCtree::gate_update(SoftRef& ref, arma::vec& gate, const arma::vec& a_gate,
                              const arma::vec& b_gate, const arma::vec& sd_gate,
                              const arma::vec& gate_min, bool shared) {
-  const int which = shared ? 0 : std::min((int)gate.n_elem - 1, (int)(R::unif_rand() * gate.n_elem));
-  arma::vec prop = gate;
-  const double cur = gate[which], proposed = std::exp(std::log(cur) + R::rnorm(0.0, sd_gate[which]));
-  if (shared) prop.fill(proposed); else prop[which] = proposed;
-  const double la = log_target_gate(ref, prop, a_gate, b_gate, gate_min, shared) -
-                    log_target_gate(ref, gate, a_gate, b_gate, gate_min, shared) +
-                    std::log(proposed) - std::log(cur);
-  if (std::log(R::unif_rand()) < la) { gate = prop; refresh_exposures(ref, gate); return 1; }
-  return 0;
+  const int nup = shared ? 1 : (int)gate.n_elem;
+  int accepted = 0;
+  double log_cur = log_target_gate(ref, gate, a_gate, b_gate, gate_min, shared);
+  for (int which = 0; which < nup; ++which) {
+    arma::vec prop = gate;
+    const double cur = gate[which], proposed = std::exp(std::log(cur) + R::rnorm(0.0, sd_gate[which]));
+    if (shared) prop.fill(proposed); else prop[which] = proposed;
+    const double log_prop = log_target_gate(ref, prop, a_gate, b_gate, gate_min, shared);
+    if (std::log(R::unif_rand()) < log_prop - log_cur + std::log(proposed) - std::log(cur)) {
+      gate = prop; log_cur = log_prop; ++accepted;
+    }
+  }
+  if (accepted) refresh_exposures(ref, gate);
+  return accepted;
 }
 
 // Particle Gibbs with ancestor sampling for S-PPT.  Gibbs cycle: conditional
@@ -916,7 +923,10 @@ Rcpp::List SoftSMCtree::PGAS(const arma::mat& grid, const arma::mat& xtest,
     const double as_frac = n_resampled > 0 ? (double)as_moved / n_resampled : NA_REAL;
 
     for (int k = 0; k < label_sweeps; ++k) label_sweep(ref, gate);
-    if (update_gate) { gate_acc += gate_update(ref, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared); gate_tot += 1.0; }
+    if (update_gate) {
+      gate_acc += gate_update(ref, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared);
+      gate_tot += gate_shared ? 1.0 : (double)gate.n_elem;
+    }
 
     if (it >= burn && (it - burn) % thin == 0) {
       std::vector<int> active;

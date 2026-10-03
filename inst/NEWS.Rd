@@ -22,7 +22,12 @@
         (\code{ess_threshold}). Above \code{exact_max} the allocation of a
         node's points to its children is proposed by sequential imputation
         (\code{allocation = "sequential"}) or through auxiliary child rates
-        (\code{allocation = "rates"}); both are exact importance proposals. Implemented in \code{SMCtree.cpp}
+        (\code{allocation = "rates"}); both are exact importance proposals.
+      \item Soft models default to one gating parameter per input
+        (\code{gate_structure = "dimension"}); the Metropolis update of the
+        gating parameters now proposes every coordinate once per iteration
+        (systematic scan) instead of one coordinate chosen at random, in
+        both the RJ-MCMC and the PGAS backends. Implemented in \code{SMCtree.cpp}
         (class \code{SoftSMCtree}) and \code{soft_smc.h}.
       \item The soft particle system is stored as a shared-path trie of
         coloured path nodes (\code{SoftPathNode} in \code{soft_smc.h}):

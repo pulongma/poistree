@@ -16,7 +16,7 @@
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = NULL,
     gate = 12, a_gate = 36, b_gate = 3, sd_gate = 0.07, gate_min = 0,
-    gate_structure = c("shared", "dimension"),
+    gate_structure = c("dimension", "shared"),
     update_gate = TRUE,
     alpha = 0.95, eta = 2,
     max_depth = 6L, cut_candidates = 30L, cut_grid = NULL,
