@@ -1,9 +1,5 @@
-.ppt_backend_key <- function(gating, scales, sampler, scale_prior) {
-  components <- c(gating, scales)
-  if (identical(scales, "multiscale")) {
-    components <- c(components, scale_prior)
-  }
-  paste(c(components, sampler), collapse = ":")
+.ppt_backend_key <- function(gating, scales, sampler) {
+  paste(c(gating, scales, sampler), collapse = ":")
 }
 
 # Backend names are stored as strings so this registry can be created before
@@ -14,32 +10,16 @@
   "hard:leaf:rjmcmc" = ".ppt_fit_hard_leaf_rjmcmc",
   "hard:leaf:pgas" = ".ppt_fit_hard_leaf_pgas",
   "soft:leaf:rjmcmc" = ".ppt_fit_soft_leaf_rjmcmc",
-  "hard:multiscale:markov:rjmcmc" =
-    ".ppt_fit_hard_multiscale_markov_rjmcmc",
-  "hard:multiscale:independent:rjmcmc" =
-    ".ppt_fit_hard_multiscale_independent_rjmcmc",
-  "soft:multiscale:independent:rjmcmc" =
-    ".ppt_fit_soft_multiscale_independent_rjmcmc",
-  "soft:multiscale:markov:rjmcmc" =
-    ".ppt_fit_soft_multiscale_markov_rjmcmc",
-  "hard:multiscale:independent:irjmcmc" =
-    ".ppt_fit_hard_multiscale_independent_irjmcmc",
-  "soft:multiscale:independent:irjmcmc" =
-    ".ppt_fit_soft_multiscale_independent_irjmcmc"
+  "soft:leaf:pgas" = ".ppt_fit_soft_leaf_pgas"
 )
 
 .ppt_model_components <- function(model) {
-  out <- unlist(model[c("gating", "scales", "scale_prior", "sampler")],
-                use.names = TRUE)
+  out <- unlist(model[c("gating", "scales", "sampler")], use.names = TRUE)
   out[!is.na(out)]
 }
 
-.ppt_model_label <- function(gating, scales, scale_prior = NA_character_) {
-  if (identical(scales, "leaf")) {
-    if (identical(gating, "soft")) "S-PPT" else "PPT"
-  } else {
-    if (identical(gating, "soft")) "S-MPPT" else "MPPT"
-  }
+.ppt_model_label <- function(gating, scales) {
+  if (identical(gating, "soft")) "S-PPT" else "PPT"
 }
 
 `%||%` <- function(x, y) if (is.null(x)) y else x
@@ -327,7 +307,6 @@
         gating = "hard",
         gate_family = NA_character_,
         scales = "leaf",
-        scale_prior = NA_character_,
         sampler = "smc",
         label = "PPT"
       ),
@@ -350,8 +329,6 @@
       posterior = list(
         mean_leaves = as.numeric(mean_leaves),
         mean_max_depth = as.numeric(mean_max_depth),
-        kappa = NA_real_,
-        tau = NA_real_,
         mean_gate = NA_real_,
         gate_by_dimension = stats::setNames(
           rep(NA_real_, d), input_names
@@ -526,7 +503,6 @@
         gating = "hard",
         gate_family = NA_character_,
         scales = "leaf",
-        scale_prior = NA_character_,
         sampler = "rjmcmc",
         label = "PPT"
       ),
@@ -549,8 +525,6 @@
       posterior = list(
         mean_leaves = mean(leaf_trace),
         mean_max_depth = mean(depth_trace),
-        kappa = NA_real_,
-        tau = NA_real_,
         mean_gate = NA_real_,
         gate_by_dimension = stats::setNames(
           rep(NA_real_, d), input_names
@@ -732,7 +706,6 @@
         gating = "hard",
         gate_family = NA_character_,
         scales = "leaf",
-        scale_prior = NA_character_,
         sampler = "pgas",
         label = "PPT"
       ),
@@ -755,8 +728,6 @@
       posterior = list(
         mean_leaves = mean(leaf_counts),
         mean_max_depth = mean(max_depths),
-        kappa = NA_real_,
-        tau = NA_real_,
         mean_gate = NA_real_,
         gate_by_dimension = stats::setNames(
           rep(NA_real_, d), input_names

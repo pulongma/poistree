@@ -16,12 +16,9 @@ ppt_diagnostics <- function(object, plot = FALSE) {
       model = object$model$label,
       sampler = object$model$sampler,
       algorithm = object$model$algorithm %||% object$model$sampler,
-      scale_prior = object$model$scale_prior,
       draws = object$posterior$draws,
       mean_leaves = object$posterior$mean_leaves,
       mean_max_depth = object$posterior$mean_max_depth %||% NA_real_,
-      kappa = object$posterior$kappa %||% NA_real_,
-      tau = object$posterior$tau %||% NA_real_,
       acceptance = object$diagnostics$acceptance,
       gate_by_dimension = object$posterior$gate_by_dimension,
       particle_ess = object$diagnostics$particle_ess %||% NA_real_,
@@ -53,12 +50,6 @@ print.ppt_diagnostics <- function(x, ...) {
   cat("  Mean leaves :", format(x$mean_leaves, digits = 5L), "\n")
   if (is.finite(x$mean_max_depth)) {
     cat("  Max depth   :", format(x$mean_max_depth, digits = 5L), "\n")
-  }
-  if (is.finite(x$kappa)) {
-    cat("  Kappa       :", format(x$kappa, digits = 5L), "\n")
-  }
-  if (is.finite(x$tau)) {
-    cat("  Tau         :", format(x$tau, digits = 5L), "\n")
   }
   if (is.finite(x$particle_ess)) {
     cat("  Particle ESS:", format(x$particle_ess, digits = 5L), "\n")

@@ -8,9 +8,8 @@ ppt_fit(
   x,
   region,
   gating = c("soft", "hard"),
-  scales = c("multiscale", "leaf"),
-  sampler = c("rjmcmc", "irjmcmc", "smc", "pgas"),
-  scale_prior = c("independent", "markov"),
+  scales = "leaf",
+  sampler = c("rjmcmc", "smc", "pgas"),
   ...
 )
 }
@@ -21,20 +20,17 @@ treated as input dimensions.}
 
 \item{region}{Numeric `d` by 2 matrix containing lower and upper bounds.}
 
-\item{gating}{Split mechanism: `soft` or `hard`. Soft gating is the
-default; supply `gating = "hard"` explicitly for PPT or MPPT.}
+\item{gating}{Split mechanism: `soft` (the default, S-PPT) or `hard`
+(PPT).}
 
-\item{scales}{Intensity structure: terminal `leaf` rates or
-`multiscale` rates.}
+\item{scales}{Intensity structure. Only terminal `leaf` rates are
+implemented; the argument is reserved so that existing calls with
+`scales = "leaf"` keep working.}
 
-\item{sampler}{Posterior sampler: `rjmcmc`, `irjmcmc`, `smc`, or `pgas`.
-The `irjmcmc` option is currently available for independent-scale MPPT
-and S-MPPT, with either logistic or compact soft gates. The legacy token
-`pgas` currently invokes Particle Gibbs
+\item{sampler}{Posterior sampler: `rjmcmc`, `smc` (hard gating only), or
+`pgas`. With `gating = "soft"` the `pgas` token runs Particle Gibbs
+with ancestor sampling; with `gating = "hard"` it runs conditional SMC
 without ancestor sampling.}
-
-\item{scale_prior}{Multiscale-prior selector: `independent` or `markov`.
-It is ignored by terminal-leaf models.}
 
 \item{...}{Backend arguments. Common arguments include `predict_at`, `test`,
 `max_depth`, and `min_leaf_n`; the minimum leaf occupancy defaults to 1
@@ -42,18 +38,26 @@ for every backend. SMC uses `particles`, `a`, `b`, and
 `resample_thresh`; hard-leaf SMC and Particle Gibbs also accept
 `max_aspect_ratio`, whose default `Inf` imposes no shape restriction on
 otherwise valid child regions. RJ-MCMC uses `chains`, `iter`, `burn`,
-`cut_candidates`, and `prediction_draws`. Informed RJ-MCMC always combines
-a collapsed-score informed cut proposal (with the fitted soft-gate
-exposure when applicable) and sequential conditional allocation
-proposals. Normalized forward and reverse proposal probabilities are
-included in every acceptance ratio.
-The implementation informs the cut conditional on the ordinary selection
-of move type, eligible node, and split dimension; it does not use the
-full-neighborhood informed-importance-tempering transition.
+`cut_candidates`, and `prediction_draws`.
 Particle Gibbs uses `particles`, `chains`,
-`iter`, and `burn`. Soft models additionally accept `gate_family`,
-`gate_structure`, `gate`, and gate-prior controls; multiscale models
-accept scale-prior and hyperparameter controls.}
+`iter`, and `burn`. The soft PGAS backend also accepts `thin`,
+`label_sweeps` (label Gibbs sweeps per iteration), `ancestor_sampling`,
+`exact_max` (largest node occupancy for which the exact Poisson-binomial
+one-step-ahead proposal is used, default 150; above it the same
+expectation is evaluated by a Laplace approximation of its Beta-integral
+representation, O(m) per candidate),
+`defensive` (mixture weight on the prior action proposal),
+`resampling` (`"node"`, the default, resamples after every heap node at
+which some particle advanced; `"level"` resamples after every tree
+level), `ess_threshold` (resample at such an event only when the ESS is
+at most this fraction of `particles`; default 1, i.e. always),
+`allocation` (`"sequential"`, the default, allocates the points of a node
+with more than `exact_max` points to its children by sequential
+imputation; `"rates"` draws auxiliary child rates and allocates the
+points independently given them), and
+`cut_grid` (a list of fixed cut locations per input; by default
+`cut_candidates` global quantiles). Soft models additionally accept
+`gate_family`, `gate_structure`, `gate`, and gate-prior controls.}
 }
 \value{
 An object of S3 class `ppt`.
@@ -61,21 +65,18 @@ An object of S3 class `ppt`.
 \description{
 `ppt_fit()` is the extensible interface for the `poistree` model family.
 Model components are selected independently: `gating` controls the split
-mechanism, `scales` controls the intensity representation, and `sampler`
-controls posterior computation. The current release implements terminal-
-leaf PPT and multiscale PPT intensity models with hard or soft gating.
-Hard terminal-leaf PPT is available with SMC, RJ-MCMC, or Particle Gibbs
-based on an exact conditional-SMC update; the other combinations use
-RJ-MCMC or informed RJ-MCMC (iRJ-MCMC).
-The legacy sampler token `pgas` selects Particle Gibbs for compatibility.
-Ancestor sampling is currently disabled because an exact tree-suffix
-backward weight has not yet been implemented.
+mechanism and `sampler` controls posterior computation. The current
+release implements two terminal-leaf intensity models: the hard-gated
+PPT, available with SMC, RJ-MCMC, or Particle Gibbs based on an exact
+conditional-SMC update, and the soft-gated S-PPT, available with RJ-MCMC
+or Particle Gibbs with ancestor sampling (PGAS), whose conditional SMC
+runs over the tree and the latent allocation variables of the observations jointly on an
+extended complete-tree space. For the hard PPT the `pgas` token runs
+conditional SMC without ancestor sampling.
 }
 \details{
 All samplers return the same S3 class and output schema. The default call
-fits S-MPPT with independent multiscale rates and RJ-MCMC. Supplying
-`scales = "leaf"` without changing `gating` fits S-PPT. Explicit hard-gated
-calls retain PPT and MPPT.
+fits S-PPT with RJ-MCMC; `gating = "hard"` selects PPT.
 }
 \examples{
 \dontrun{
@@ -84,13 +85,13 @@ x <- matrix(runif(200), ncol = 2)
 region <- matrix(c(0, 1, 0, 1), ncol = 2, byrow = TRUE)
 fit <- ppt_fit(
   x, region,
-  gating = "hard", scales = "multiscale", sampler = "rjmcmc",
+  gating = "hard", sampler = "rjmcmc",
   predict_at = x,
   chains = 1, iter = 1000, burn = 300
 )
 ppt_summary(fit)
 
-# Complete S-MPPT surface example with post-hoc intensity evaluation:
+# Complete S-PPT surface example with post-hoc intensity evaluation:
 demo("soft-tree-surface", package = "poistree")
 }
 }

@@ -1,4 +1,4 @@
-## S-MPPT surface estimation with post-hoc intensity evaluation.
+## S-PPT surface estimation with post-hoc intensity evaluation.
 ## This demonstration deliberately does not use `predict_at` in `ppt_fit()`.
 
 needed <- c("ggplot2", "patchwork")
@@ -44,12 +44,11 @@ x <- prop[keep, , drop = FALSE]
 colnames(x) <- c("x1", "x2")
 cat("simulated points:", nrow(x), "\n")
 
-## Fit S-MPPT (soft multiscale PPT with independent scales).
+## Fit S-PPT (soft-gated terminal-leaf PPT) by RJ-MCMC.
 ## No `predict_at` is needed.
 fit <- ppt_fit(
   x, region,
-  gating = "soft", scales = "leaf",
-  scale_prior = "independent", sampler = "rjmcmc",
+  gating = "soft", sampler = "rjmcmc",
   max_depth = 6, min_leaf_n = 1,
   chains = 4, iter = 3000, burn = 1000, thin = 4,
   cut_candidates = 15, gate = 15, update_gate = TRUE,
@@ -70,7 +69,7 @@ theme_sci <- theme_minimal(base_size = 11) +
         plot.title = element_text(size = 11, face = "bold"),
         plot.subtitle = element_text(size = 9, colour = "grey35"))
 fill_scale <- scale_fill_viridis_c(
-  name = expression(lambda(x)),
+  name = expression(lambda(x)), option = "plasma",
   limits = c(0, max(surface$true, surface$mean))
 )
 
@@ -80,15 +79,13 @@ p_true <- ggplot(surface, aes(x1, x2, fill = true)) +
 
 p_mean <- ggplot(surface, aes(x1, x2, fill = mean)) +
   geom_raster() + fill_scale + coord_equal(expand = FALSE) + theme_sci +
-  labs(title = "Posterior mean",
-       #subtitle = "ppt_lambda(fit, n = 90); no predict_at at fit time",
-       x = expression(x[1]), y = expression(x[2])) +
+  labs(title = "Posterior mean", x = expression(x[1]), y = expression(x[2])) +
   geom_point(data = as.data.frame(x), aes(x1, x2), inherit.aes = FALSE,
-             size = 0.15, alpha = 0.35, colour = "white")
+             size = 0.15, alpha = 0.35)
 
 p_ci <- ggplot(surface, aes(x1, x2, fill = ci_width)) +
   geom_raster() +
-  scale_fill_viridis_c(name = "95% CI\nwidth", option = "magma") +
+  scale_fill_viridis_c(name = "95% CI\nwidth", option = "plasma") +
   coord_equal(expand = FALSE) + theme_sci +
   labs(title = "Pointwise uncertainty", x = expression(x[1]),
        y = expression(x[2]))
@@ -100,13 +97,11 @@ line <- ppt_lambda(fit, at = transect)
 line$true <- lambda_true(transect)
 
 p_line <- ggplot(line, aes(x1)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "steelblue",
-              alpha = 0.25) +
-  geom_line(aes(y = mean, colour = "Posterior mean"), linewidth = 0.7) +
-  geom_line(aes(y = true, colour = "Truth"), linewidth = 0.6,
-            linetype = "22") +
-  scale_colour_manual(NULL, values = c("Posterior mean" = "steelblue4",
-                                       "Truth" = "black")) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.25) +
+  geom_line(aes(y = mean, linetype = "Posterior mean")) +
+  geom_line(aes(y = true, linetype = "Truth")) +
+  scale_linetype_manual(NULL, values = c("Posterior mean" = "solid",
+                                         "Truth" = "dashed")) +
   theme_sci +
   labs(title = expression("Transect at" ~ x[2] == 0.3),
        subtitle = "shaded: pointwise 95% credible band",

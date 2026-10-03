@@ -21,44 +21,8 @@ PPT_transition_probabilities <- function(pts, region, min_leaf_n, cut_grid_n, ma
     .Call(`_poistree_PPT_transition_probabilities`, pts, region, min_leaf_n, cut_grid_n, max_aspect_ratio)
 }
 
-mpptree_chain <- function(X, grid, Xtest, region, hp, update_hyper, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand) {
-    .Call(`_poistree_mpptree_chain`, X, grid, Xtest, region, hp, update_hyper, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand)
-}
-
-mpptree_multi <- function(X, grid, Xtest, region, hp, update_hyper, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, chains, verbose) {
-    .Call(`_poistree_mpptree_multi`, X, grid, Xtest, region, hp, update_hyper, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, chains, verbose)
-}
-
-mpptree_diag <- function(X, mon, region, hp, update_hyper, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand) {
-    .Call(`_poistree_mpptree_diag`, X, mon, region, hp, update_hyper, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand)
-}
-
-mppstree_soft_global_geometry <- function(box, points, region, gate) {
-    .Call(`_poistree_mppstree_soft_global_geometry`, box, points, region, gate)
-}
-
-mppstree_soft_geometry <- function(axis, cut, parent_width, side, points, region, gate, gate_depth = 0.0) {
-    .Call(`_poistree_mppstree_soft_geometry`, axis, cut, parent_width, side, points, region, gate, gate_depth)
-}
-
-mppstree_logistic_geometry <- function(axis, cut, side, points, region, gate) {
-    .Call(`_poistree_mppstree_logistic_geometry`, axis, cut, side, points, region, gate)
-}
-
-mppstree_chain <- function(X, grid, Xtest, region, hp, update_hyper, update_gate, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand) {
-    .Call(`_poistree_mppstree_chain`, X, grid, Xtest, region, hp, update_hyper, update_gate, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand)
-}
-
-mppstree_multi <- function(X, grid, Xtest, region, hp, update_hyper, update_gate, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, chains, verbose, proposal_mode = 0L) {
-    .Call(`_poistree_mppstree_multi`, X, grid, Xtest, region, hp, update_hyper, update_gate, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, chains, verbose, proposal_mode)
-}
-
-mppstree_diag <- function(X, mon, region, hp, update_hyper, update_gate, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand) {
-    .Call(`_poistree_mppstree_diag`, X, mon, region, hp, update_hyper, update_gate, model, al, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand)
-}
-
-mppstree_irj_balance_check <- function(X, region, soft, gate, gate_mode, kappa, a_xi, b_xi, alpha, eta, cut_mode, ncand) {
-    .Call(`_poistree_mppstree_irj_balance_check`, X, region, soft, gate, gate_mode, kappa, a_xi, b_xi, alpha, eta, cut_mode, ncand)
+SPPT_fit_PGAS <- function(X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose) {
+    .Call(`_poistree_SPPT_fit_PGAS`, X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose)
 }
 
 ppstree_geometry <- function(axis, cut, parent_width, side, points, region, gate) {
@@ -73,12 +37,12 @@ ppstree_diag <- function(X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, ga
     .Call(`_poistree_ppstree_diag`, X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family)
 }
 
-ppt_eval_state <- function(state_nodes, state_gate, region, newdata, multiscale, gate_mode, gate_depth) {
-    .Call(`_poistree_ppt_eval_state`, state_nodes, state_gate, region, newdata, multiscale, gate_mode, gate_depth)
+ppt_eval_state <- function(state_nodes, state_gate, region, newdata, gate_mode, gate_depth) {
+    .Call(`_poistree_ppt_eval_state`, state_nodes, state_gate, region, newdata, gate_mode, gate_depth)
 }
 
-ppt_marginal_state <- function(state_nodes, state_gate, region, grid, variable, multiscale, gate_mode, gate_depth, average) {
-    .Call(`_poistree_ppt_marginal_state`, state_nodes, state_gate, region, grid, variable, multiscale, gate_mode, gate_depth, average)
+ppt_marginal_state <- function(state_nodes, state_gate, region, grid, variable, gate_mode, gate_depth, average) {
+    .Call(`_poistree_ppt_marginal_state`, state_nodes, state_gate, region, grid, variable, gate_mode, gate_depth, average)
 }
 
 base_mloglik <- function(n, area, a = 1e-3, b = 1e-3) {

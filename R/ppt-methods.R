@@ -297,8 +297,6 @@ ppt_summary <- function(object, ...) {
       posterior_draws = object$posterior$draws,
       mean_leaves = object$posterior$mean_leaves,
       mean_max_depth = object$posterior$mean_max_depth %||% NA_real_,
-      kappa = object$posterior$kappa %||% NA_real_,
-      tau = object$posterior$tau %||% NA_real_,
       mean_gate = object$posterior$mean_gate,
       mean_log_likelihood = object$posterior$mean_log_likelihood,
       log_evidence = object$posterior$log_evidence %||% NA_real_,
@@ -346,12 +344,6 @@ print.summary.ppt <- function(x, ...) {
   cat("  Mean leaves    :", format(x$mean_leaves, digits = 5L), "\n")
   if (is.finite(x$mean_max_depth)) {
     cat("  Mean max depth :", format(x$mean_max_depth, digits = 5L), "\n")
-  }
-  if (is.finite(x$kappa)) {
-    cat("  Mean kappa     :", format(x$kappa, digits = 5L), "\n")
-  }
-  if (is.finite(x$tau)) {
-    cat("  Mean tau       :", format(x$tau, digits = 5L), "\n")
   }
   if (is.finite(x$mean_gate)) {
     cat("  Mean gate      :", format(x$mean_gate, digits = 5L), "\n")

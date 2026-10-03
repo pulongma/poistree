@@ -6,11 +6,9 @@
 #'
 #' \itemize{
 #'   \item `gating`: hard partitions or soft logistic/compact gates;
-#'   \item `scales`: terminal-leaf or additive multiscale intensities;
-#'   \item `sampler`: sequential Monte Carlo, reversible-jump MCMC, informed
-#'     reversible-jump MCMC, or Particle Gibbs with exact conditional SMC. The
-#'     legacy token `pgas` selects the Particle-Gibbs backend; ancestor
-#'     sampling is currently disabled.
+#'   \item `sampler`: sequential Monte Carlo, reversible-jump MCMC, or
+#'     Particle Gibbs with exact conditional SMC (with ancestor sampling for
+#'     the soft model).
 #' }
 #'
 #' The fitted object has class `ppt`. Use [ppt_predict()] for posterior
@@ -20,19 +18,18 @@
 #' predictive evaluation, and [ppt_diagnostics()] for sampler diagnostics.
 #'
 #' @section Model configurations:
-#' \tabular{llll}{
-#' Model \tab `gating` \tab `scales` / prior \tab `sampler` \cr
-#' PPT \tab `hard` \tab `leaf` \tab `smc` \cr
-#' PPT \tab `hard` \tab `leaf` \tab `rjmcmc` \cr
-#' PPT \tab `hard` \tab `leaf` \tab `pgas` \cr
-#' S-PPT \tab `soft` \tab `leaf` \tab `rjmcmc` \cr
-#' MPPT \tab `hard` \tab `multiscale`, Markov or independent \tab `rjmcmc`; `irjmcmc` for independent scales \cr
-#' S-MPPT \tab `soft` \tab `multiscale`, Markov or independent \tab `rjmcmc`; `irjmcmc` for independent scales \cr
+#' \tabular{lll}{
+#' Model \tab `gating` \tab `sampler` \cr
+#' PPT \tab `hard` \tab `smc` \cr
+#' PPT \tab `hard` \tab `rjmcmc` \cr
+#' PPT \tab `hard` \tab `pgas` \cr
+#' S-PPT \tab `soft` \tab `rjmcmc` \cr
+#' S-PPT \tab `soft` \tab `pgas` (ancestor sampling) \cr
 #' }
 #'
-#' The default is S-MPPT: soft gating, independent multiscale scales, and
-#' RJ-MCMC. Setting only `scales = "leaf"` selects S-PPT. Explicit
-#' `gating = "hard"` calls retain MPPT and PPT.
+#' Both models use terminal-leaf intensities (`scales = "leaf"`, the only
+#' value). The default is S-PPT: soft gating and RJ-MCMC. Explicit
+#' `gating = "hard"` calls select PPT.
 #'
 #' @section Basic workflow:
 #' Supply the observed event locations or covariate vectors as an `n` by `d`
@@ -74,16 +71,9 @@
 #'   predict_at = grid, particles = 200, iter = 500, burn = 100
 #' )
 #'
-#' # Soft multiscale PPT; this is also the default model. The remaining
-#' # defaults select independent scales and RJ-MCMC.
-#' fit_smppt <- ppt_fit(
-#'   x, region, predict_at = grid,
-#'   chains = 2, iter = 2000, burn = 500
-#' )
-#'
-#' # Soft terminal-leaf PPT; soft gating and RJ-MCMC remain at their defaults.
+#' # Soft terminal-leaf PPT fitted by RJ-MCMC; this is the default model.
 #' fit_sppt <- ppt_fit(
-#'   x, region, scales = "leaf", predict_at = grid,
+#'   x, region, predict_at = grid,
 #'   chains = 2, iter = 2000, burn = 500
 #' )
 #' }

@@ -1,86 +1,54 @@
 # poistree
 
 `poistree` fits Bayesian tree models for Poisson point-process intensities.
-Its component API separates the gating rule, intensity representation, scale
-prior, and posterior sampler:
+Its component API separates the gating rule from the posterior sampler:
 
 ```r
 fit <- ppt_fit(
   x, region,
   gating = c("soft", "hard"),
-  scales = c("multiscale", "leaf"),
-  sampler = c("rjmcmc", "irjmcmc", "smc", "pgas"),
-  scale_prior = c("independent", "markov"),
+  scales = "leaf",
+  sampler = c("rjmcmc", "smc", "pgas"),
   ...
 )
 ```
 
-The four primary models are:
+The two models are:
 
-| Model | Gating | Intensity scales | Available samplers |
+| Model | Gating | Intensity | Available samplers |
 |---|---|---|---|
 | PPT | hard | terminal leaf | SMC, RJ-MCMC, Particle Gibbs (`pgas` token) |
-| S-PPT | soft | terminal leaf | RJ-MCMC |
-| MPPT | hard | multiscale | RJ-MCMC; iRJ-MCMC for independent scales |
-| S-MPPT | soft | multiscale | RJ-MCMC; iRJ-MCMC for independent scales |
+| S-PPT | soft | terminal leaf | RJ-MCMC, Particle Gibbs with ancestor sampling (`pgas`) |
 
-For multiscale models, `scale_prior` selects independent or Markov scales.
-The default call fits S-MPPT with an independent scale prior. Setting only
-`scales = "leaf"` fits S-PPT:
+`scales` is reserved and accepts only `"leaf"`. The default call fits S-PPT
+by RJ-MCMC:
 
 ```r
-smppt <- ppt_fit(
-  x, region,
-  predict_at = prediction_grid,
-  chains = 4, iter = 10000, burn = 2500
-)
-
 sppt <- ppt_fit(
   x, region,
-  scales = "leaf",
   predict_at = prediction_grid,
   chains = 4, iter = 10000, burn = 2500
 )
 ```
 
-Explicit `gating = "hard"` choices retain the hard-gated models:
+Explicit `gating = "hard"` selects PPT:
 
 ```r
 ppt <- ppt_fit(
   x, region,
-  gating = "hard", scales = "leaf", sampler = "smc",
+  gating = "hard", sampler = "smc",
   predict_at = prediction_grid, particles = 1000
 )
 
-mppt <- ppt_fit(
+ppt_mcmc <- ppt_fit(
   x, region,
-  gating = "hard", scales = "multiscale", sampler = "rjmcmc",
+  gating = "hard", sampler = "rjmcmc",
   predict_at = prediction_grid,
   chains = 4, iter = 10000, burn = 2500
 )
 ```
 
-For independent-scale MPPT and S-MPPT, `sampler = "irjmcmc"` selects the
-informed reversible-jump kernel. It always combines likelihood-informed cut
-probabilities with sequential conditional allocation proposals. Their
-normalized forward and reverse probabilities enter the Metropolis--Hastings
-ratio, so the kernel retains the ordinary posterior target.
-
-The current implementation informs the cut only after the grow/change action,
-eligible node, and split dimension have been selected by their ordinary
-proposal laws. It is therefore an exact locally informed RJ-MCMC proposal,
-not the full-neighborhood informed-importance-tempering (IIT) transition.
-
-```r
-fit_irj <- ppt_fit(
-  x, region,
-  gating = "soft", scales = "multiscale",
-  scale_prior = "independent", sampler = "irjmcmc",
-  chains = 4, iter = 10000, burn = 2500
-)
-```
-
-Run `demo("soft-tree-surface", package = "poistree")` for a complete S-MPPT
+Run `demo("soft-tree-surface", package = "poistree")` for a complete S-PPT
 example that simulates a two-bump Poisson process, fits without `predict_at`,
 and evaluates a posterior surface and transect afterward with `ppt_lambda()`.
 
@@ -91,10 +59,39 @@ constraints remain active in either case. The default minimum child occupancy
 is `min_leaf_n = 1` for every model and sampler; larger values can be supplied
 as an explicit regularization or computational control.
 
-For backward compatibility, `sampler = "pgas"` selects the exact
-conditional-SMC Particle-Gibbs backend. Ancestor sampling is currently
-disabled: its valid tree-specific implementation requires a full suffix
-target ratio, rather than only the probability of the next reference action.
+For the hard PPT, `sampler = "pgas"` selects the exact conditional-SMC
+Particle-Gibbs backend without ancestor sampling. For S-PPT it selects
+Particle Gibbs with ancestor sampling (PGAS): the conditional SMC runs over
+the tree and the latent allocation variables of the observations jointly, one heap node per step,
+with the exact one-step-ahead proposal (a Poisson-binomial expectation over
+the allocations of the node's observations to its children) for nodes with at most `exact_max`
+points and, above that, a Laplace approximation of the same expectation written
+as a one-dimensional Beta integral (O(m) per candidate, correct tails).
+Above `exact_max` the allocation of the node's points is proposed either by
+sequential imputation or through auxiliary child rates (`allocation`), with
+exact importance weights in both cases.
+Conditional multinomial resampling with ancestor sampling takes place after
+every heap node at which a particle advanced (`resampling = "node"`) or after
+every tree level (`"level"`), optionally only when the ESS falls below
+`ess_threshold * particles`. Ancestor sampling is made valid by
+working on a complete decision tree with a fixed per-input cut grid (global
+quantiles by default, or a user-supplied `cut_grid`), so that the full
+suffix target ratio is defined for every particle. The gate is updated by
+Metropolis--Hastings and the leaf labels by Gibbs sweeps inside the cycle.
+The particle system uses a shared-path store in the spirit of the `ResTree`
+package: particles hold handles to coloured path nodes (geometric path plus
+the points coloured to the node), the candidate expansion of each distinct
+frontier node is computed once per level and shared by every particle holding
+it, and resampling moves or copies handle maps rather than trees
+(`fit$diagnostics$expanded_nodes` reports the distinct expansions per sweep).
+
+```r
+sppt_pg <- ppt_fit(
+  x, region,
+  gating = "soft", scales = "leaf", sampler = "pgas",
+  particles = 30, iter = 1000, burn = 200, max_depth = 6
+)
+```
 
 Every backend returns class `ppt` with the same major fields. Use
 `ppt_lambda()`, `ppt_predict()`, `ppt_marginal()`, `plot()`, `ppt_summary()`,

@@ -50,27 +50,7 @@ test_that("heap state reproduces stored draws: soft leaf, compact", {
   expect_state_matches_prediction(fit, grid)
 })
 
-test_that("heap state reproduces stored draws: hard multiscale", {
-  x <- make_data(103)
-  grid <- matrix(runif(24), ncol = 2)
-  fit <- do.call(ppt_fit, fit_args(
-    x, grid,
-    gating = "hard", scales = "multiscale", sampler = "rjmcmc"
-  ))
-  expect_identical(fit$posterior$state$mode, "heap")
-  expect_state_matches_prediction(fit, grid)
-})
 
-test_that("heap state reproduces stored draws: soft multiscale", {
-  x <- make_data(104)
-  grid <- matrix(runif(24), ncol = 2)
-  fit <- do.call(ppt_fit, fit_args(
-    x, grid,
-    gating = "soft", scales = "multiscale", sampler = "rjmcmc",
-    gate = 12, update_gate = TRUE
-  ))
-  expect_state_matches_prediction(fit, grid)
-})
 
 test_that("leaf-box state reproduces stored draws: hard leaf RJ and SMC", {
   x <- make_data(105)
@@ -120,9 +100,9 @@ test_that("ppt_lambda summarizes on a grid and matches raw draws", {
   x1 <- matrix(runif(40), ncol = 1)
   fit1 <- ppt_fit(
     x1, matrix(c(0, 1), nrow = 1),
-    gating = "hard", scales = "multiscale", sampler = "rjmcmc",
+    gating = "soft", scales = "leaf", sampler = "rjmcmc",
     max_depth = 3, min_leaf_n = 3, chains = 1, iter = 40, burn = 10,
-    cut_candidates = 4, verbose = FALSE
+    cut_candidates = 4, update_gate = FALSE, verbose = FALSE
   )
   line <- ppt_lambda(fit1, n = 15)
   expect_equal(nrow(line), 15L)
@@ -134,7 +114,7 @@ test_that("ppt_predict evaluates locations outside predict_at", {
   grid <- matrix(runif(20), ncol = 2)
   fit <- do.call(ppt_fit, fit_args(
     x, grid,
-    gating = "soft", scales = "multiscale", sampler = "rjmcmc",
+    gating = "soft", scales = "leaf", sampler = "rjmcmc",
     gate = 12, update_gate = FALSE
   ))
   fresh <- matrix(runif(10), ncol = 2)
@@ -187,7 +167,7 @@ test_that("plot.ppt renders from state without predict_at", {
   x <- make_data(110)
   fit <- ppt_fit(
     x, region2,
-    gating = "soft", scales = "multiscale", sampler = "rjmcmc",
+    gating = "soft", scales = "leaf", sampler = "rjmcmc",
     gate = 12, update_gate = FALSE,
     max_depth = 3, min_leaf_n = 3, chains = 1, iter = 40, burn = 10,
     cut_candidates = 4, verbose = FALSE

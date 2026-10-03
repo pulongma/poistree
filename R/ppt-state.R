@@ -14,7 +14,6 @@
   if (identical(state$mode, "heap")) {
     return(ppt_eval_state(
       state$nodes, state$gate, object$data$region, at,
-      as.integer(identical(object$model$scales, "multiscale")),
       as.integer(state$gate_mode), as.numeric(state$gate_depth %||% 0)
     ))
   }
@@ -50,7 +49,6 @@
     object$data$region,
     as.numeric(grid),
     as.integer(variable - 1L),
-    as.integer(identical(object$model$scales, "multiscale")),
     as.integer(state$gate_mode),
     as.numeric(state$gate_depth %||% 0),
     isTRUE(average)

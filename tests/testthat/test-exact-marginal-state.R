@@ -114,30 +114,6 @@ test_that("hard terminal-leaf PPT keeps exact box marginalization", {
   expect_equal(as.numeric(projected), as.numeric(draws) * 3)
 })
 
-test_that("hard multiscale MPPT integrates every node exactly", {
-  fit <- make_heap_marginal_fit(
-    "hard", "multiscale", rates = c(1, 2, 3, 4, 5), gate_mode = 0L
-  )
-  grid <- c(0, 0.4, 0.8, 1.5, 2)
-  draws <- ppt_marginal(fit, "x", grid = grid, type = "draws")
-
-  left_average <- 1 + 2 + (4 * 1.2 + 5 * 1.8) / 3
-  expect_equal(as.numeric(draws[, 1]), c(left_average, left_average, 4, 4, 4))
-  expect_identical(
-    attr(draws, "method"), "exact posterior-state integration"
-  )
-
-  # Supplying a reference remains an explicit approximation request. This
-  # one-row design samples only the lower y child on the left branch.
-  reference <- matrix(c(0.1, -0.75), nrow = 1L)
-  approximate <- ppt_marginal(
-    fit, "x", grid = grid, reference = reference, type = "draws"
-  )
-  expect_equal(as.numeric(approximate[, 1]), c(7, 7, 4, 4, 4))
-  expect_identical(
-    attr(approximate, "method"), "uniform reference-design approximation"
-  )
-})
 
 test_that("logistic S-PPT uses draw-specific analytic path integrals", {
   rates <- c(0, 0, 7, 2, 5)
@@ -163,48 +139,11 @@ test_that("logistic S-PPT uses draw-specific analytic path integrals", {
   expect_equal(as.numeric(draws[, 1]), numerical, tolerance = 2e-9)
 })
 
-test_that("compact S-MPPT integrates all additive path bases exactly", {
-  gate <- matrix(c(4, 4), nrow = 1L)
-  gate_depth <- 0.75
-  fit <- make_heap_marginal_fit(
-    "soft", "multiscale", rates = c(1, 2, 3, 4, 5),
-    gate_mode = 1L, gate = gate, gate_depth = gate_depth
-  )
-  grid <- c(0, 0.35, 0.8, 1.2, 2)
-  draws <- ppt_marginal(fit, "x", grid = grid, type = "draws")
-
-  right_x <- compact_right(grid, cut = 0.8, width = 2, gate = gate[1, 1])
-  child_average <- (4 * 1.2 + 5 * 1.8) / 3
-  expected <- 1 + (1 - right_x) * (2 + child_average) + right_x * 3
-  expect_equal(as.numeric(draws[, 1]), expected, tolerance = 2e-12)
-
-  numerical <- vapply(grid, integrate_state_over_y, numeric(1), fit = fit)
-  expect_equal(as.numeric(draws[, 1]), numerical, tolerance = 2e-9)
-
-  projected <- ppt_marginal(
-    fit, "x", grid = grid, average = FALSE, type = "draws"
-  )
-  expect_equal(as.numeric(projected), expected * 3, tolerance = 2e-12)
-})
 
 test_that("compact S-PPT agrees with numerical domain integration", {
   fit <- make_heap_marginal_fit(
     "soft", "leaf", rates = c(0, 0, 7, 2, 5), gate_mode = 1L,
     gate = matrix(c(5, 7), nrow = 1L)
-  )
-  grid <- c(0, 0.35, 0.8, 1.2, 2)
-  draws <- ppt_marginal(fit, "x", grid = grid, type = "draws")
-  numerical <- vapply(grid, integrate_state_over_y, numeric(1), fit = fit)
-  expect_equal(as.numeric(draws[, 1]), numerical, tolerance = 2e-9)
-  expect_identical(
-    attr(draws, "method"), "exact posterior-state integration"
-  )
-})
-
-test_that("logistic S-MPPT integrates every additive basis", {
-  fit <- make_heap_marginal_fit(
-    "soft", "multiscale", rates = c(1, 2, 3, 4, 5),
-    gate_mode = 2L, gate = matrix(c(6, 9), nrow = 1L)
   )
   grid <- c(0, 0.35, 0.8, 1.2, 2)
   draws <- ppt_marginal(fit, "x", grid = grid, type = "draws")

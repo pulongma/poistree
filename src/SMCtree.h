@@ -149,4 +149,66 @@ public:
 
 };
 
+
+#include "soft_smc.h"
+
+// SMC, conditional SMC with ancestor sampling, and Particle Gibbs for the soft
+// terminal-leaf PPT (S-PPT).  Steps are heap nodes visited breadth first; the
+// state at step t is the decision (S_t, J_t, L_t) and the colouring of the
+// points at node t.  Methods are implemented in SMCtree.cpp.
+class SoftSMCtree {
+public:
+    SoftModel M;
+    int P;
+    bool use_as;
+    SoftGateTable G;                       // gate values for the current gate vector
+    arma::vec cur_gate;                    // gate vector of the current sweep
+    std::vector<SoftPathNode> store;       // shared coloured path nodes of one sweep
+    std::vector<SoftParticleS> particles;
+    arma::vec weights;
+    double final_ess = 0.0;
+    int as_moved = 0;                      // ancestor sampling chose a non-reference ancestor
+    int as_stamp = 0;
+    int n_expanded = 0;                    // distinct nodes expanded in the last sweep
+    int n_resampled = 0;                   // resampling events in the last sweep
+    bool resample_node = true;             // candidate events: every heap position (true) or level ends
+    double ess_threshold = 1.0;            // resample at a candidate event iff ESS <= threshold * P
+    bool alloc_rates = false;              // above exact_max: allocation via auxiliary child rates
+
+    SoftSMCtree(const SoftModel& M_, int P_, bool use_as_) : M(M_), P(P_), use_as(use_as_) {}
+
+    // shared-path machinery
+    void build_gate_table(const arma::vec& gate);
+    std::vector<SoftGateStep> path_of(int v) const;
+    int make_root();
+    int make_child(int parent, int cand, int side, std::vector<int>&& pts);
+    void expand_node(int v);
+    void expand_level(int level);
+    bool sample_position(int t, SoftRef* ref);   // true if some particle advanced at t
+    void resample(SoftRef* ref);
+    void export_particle(const SoftParticleS& p, SoftRef& out);
+
+    // reference (conditional SMC) and ancestor sampling
+    const SoftNodeP& ref_decision(SoftRef& ref, int h);
+    int ref_bit(SoftRef& ref, int i, int h);
+    double glued_logQ(SoftRef& ref, int h, const std::vector<int>& pts,
+                      const std::vector<SoftGateStep>& path);
+    double as_log_weight(const SoftParticleS& p, SoftRef& ref);
+
+    void sweep(SoftRef* ref_in, const arma::vec& gate, SoftRef& ref_out);
+    void label_sweep(SoftRef& ref, const arma::vec& gate);
+    int gate_update(SoftRef& ref, arma::vec& gate, const arma::vec& a_gate,
+                    const arma::vec& b_gate, const arma::vec& sd_gate,
+                    const arma::vec& gate_min, bool shared);
+    double log_target_gate(const SoftRef& ref, const arma::vec& gate,
+                           const arma::vec& a_gate, const arma::vec& b_gate,
+                           const arma::vec& gate_min, bool shared);
+    void refresh_exposures(SoftRef& ref, const arma::vec& gate);
+    Rcpp::List PGAS(const arma::mat& grid, const arma::mat& xtest,
+                    arma::vec gate, const arma::vec& a_gate, const arma::vec& b_gate,
+                    const arma::vec& sd_gate, const arma::vec& gate_min, bool gate_shared,
+                    int niter, int burn, int thin, int label_sweeps, bool update_gate,
+                    bool verbose);
+};
+
 #endif

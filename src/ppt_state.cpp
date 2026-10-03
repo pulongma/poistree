@@ -174,7 +174,7 @@ static double soft_axis_integral(const std::vector<SGate>&path, int axis,
 // [[Rcpp::export]]
 arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
                          arma::mat region, arma::mat newdata,
-                         int multiscale, int gate_mode, double gate_depth) {
+                         int gate_mode, double gate_depth) {
   using namespace pstate;
   const int S = state_nodes.size();
   const arma::uword np = newdata.n_rows, d = newdata.n_cols;
@@ -224,11 +224,11 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
       if (!gate.is_finite() || arma::any(gate <= 0.0))
         stop("soft state draw has an invalid gate vector");
     }
-    // contributing nodes and, for soft fits, their ancestor gate paths
+    // contributing leaves and, for soft fits, their ancestor gate paths
     std::vector<int> contrib;
     contrib.reserve(nn);
     for (int r = 0; r < nn; r++)
-      if (multiscale || nd[r].axis < 0) contrib.push_back(r);
+      if (nd[r].axis < 0) contrib.push_back(r);
     std::vector<std::vector<SGate> > paths;
     if (gate_mode != 0) {
       paths.resize(contrib.size());
@@ -252,13 +252,11 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
       const arma::rowvec x = newdata.row(i);
       double val = 0.0;
       if (gate_mode == 0) {
-        // hard: route from the root; leaf model takes the leaf rate,
-        // the additive model sums the rates along the path
+        // hard: route from the root and take the leaf rate
         long h = 1;
         for (;;) {
           const SNode&z = nd[at[h]];
-          if (multiscale) val += z.lambda;
-          if (z.axis < 0) { if (!multiscale) val = z.lambda; break; }
+          if (z.axis < 0) { val = z.lambda; break; }
           h = (x[z.axis] < z.cut) ? 2 * h : 2 * h + 1;
           if (!at.count(h)) stop("state draw routing reached a missing node");
         }
@@ -292,7 +290,7 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
 // [[Rcpp::export]]
 arma::mat ppt_marginal_state(List state_nodes, arma::mat state_gate,
                              arma::mat region, arma::vec grid,
-                             int variable, int multiscale, int gate_mode,
+                             int variable, int gate_mode,
                              double gate_depth, bool average) {
   using namespace pstate;
   const int S = state_nodes.size();
@@ -367,7 +365,7 @@ arma::mat ppt_marginal_state(List state_nodes, arma::mat state_gate,
     std::vector<int> contrib;
     contrib.reserve(nn);
     for (int r = 0; r < nn; r++)
-      if (multiscale || nd[r].axis < 0) contrib.push_back(r);
+      if (nd[r].axis < 0) contrib.push_back(r);
     std::vector<std::vector<SGate> > paths(contrib.size());
     if (gate_mode != 0) {
       for (size_t k = 0; k < contrib.size(); k++) {
