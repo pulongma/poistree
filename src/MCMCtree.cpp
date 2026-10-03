@@ -38,8 +38,10 @@ struct MNode {
   arma::uvec idx;      // indices of points in this node
   int depth;
   MNode* L; MNode* R; int axis; double cut;
+  double lambda;
   MNode(const arma::mat& b, const arma::uvec& i, int d)
-    : box(b), idx(i), depth(d), L(nullptr), R(nullptr), axis(-1), cut(NA_REAL) {}
+    : box(b), idx(i), depth(d), L(nullptr), R(nullptr), axis(-1),
+      cut(NA_REAL), lambda(NA_REAL) {}
   ~MNode() { if (L) delete L; if (R) delete R; }
   bool   leaf() const { return L == nullptr; }
   double area() const { return arma::prod(box.col(1) - box.col(0)); }
@@ -61,6 +63,33 @@ static int maximum_leaf_depth(MNode* root) {
   for (size_t k = 0; k < leaves.size(); ++k)
     depth = std::max(depth, leaves[k]->depth);
   return depth;
+}
+static void collect_nodes(MNode* nd, std::vector<MNode*>& out) {
+  out.push_back(nd);
+  if (!nd->leaf()) {
+    collect_nodes(nd->L, out);
+    collect_nodes(nd->R, out);
+  }
+}
+static Rcpp::List mtree_to_R(MNode* root) {
+  std::vector<MNode*> nodes;
+  collect_nodes(root, nodes);
+  Rcpp::List out(nodes.size());
+  for (size_t k = 0; k < nodes.size(); ++k) {
+    MNode* node = nodes[k];
+    out[k] = Rcpp::List::create(
+      Rcpp::_["region"] = node->box,
+      Rcpp::_["idx"] = node->idx + 1,
+      Rcpp::_["depth"] = node->depth,
+      Rcpp::_["is_empty"] = false,
+      Rcpp::_["is_leaf"] = node->leaf(),
+      Rcpp::_["S"] = node->leaf() ? 0 : 1,
+      Rcpp::_["J"] = node->axis,
+      Rcpp::_["L"] = node->cut,
+      Rcpp::_["lambda"] = node->lambda
+    );
+  }
+  return out;
 }
 
 // ---- valid quantile cuts at a node (filtered by min_leaf & a small buffer) --
@@ -118,6 +147,7 @@ static arma::vec predict_grid(MNode* root, const arma::mat& grid,
   poisson_loglik = 0.0;
   for (size_t k = 0; k < lv.size(); ++k) {
     MNode* lf = lv[k]; double lam = R::rgamma(a + lf->n(), 1.0 / (b + lf->area()));
+    lf->lambda = lam;
     integral += lam * lf->area();
     if (lf->n() > 0)
       poisson_loglik += lf->n() * std::log(std::max(lam, std::numeric_limits<double>::min()));
@@ -141,7 +171,7 @@ static double tree_loglik(MNode* root, double a, double b) {
 // ===========================================================================
 // [[Rcpp::export]]
 Rcpp::List PPT_fit_MCMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region,
-                        int niter = 4000, int burnin = 1000, int max_depth = 8, int min_leaf_n = 5,
+                        int niter = 4000, int burnin = 1000, int max_depth = 8, int min_leaf_n = 1,
                         int cut_grid_n = 30, double a = 0.5, double b = 0.0,
                         double alpha = 0.95, double eta = 2.0, int n_pred = 300) {
   int N = pts.n_rows, d = pts.n_cols, np = grid.n_rows;
@@ -153,6 +183,7 @@ Rcpp::List PPT_fit_MCMC(const arma::mat& pts, const arma::mat& grid, const arma:
   std::vector<arma::vec> preds;
   std::vector<double> integrals;
   std::vector<double> poisson_loglik;
+  std::vector<Rcpp::List> tree_draws;
   long acc_g=0, acc_p=0, acc_c=0, tot_g=0, tot_p=0, tot_c=0;
 
   for (int it = 0; it < niter + burnin; ++it) {
@@ -236,6 +267,7 @@ Rcpp::List PPT_fit_MCMC(const arma::mat& pts, const arma::mat& grid, const arma:
         preds.push_back(predict_grid(root, grid, a, b, integral, pp_loglik));
         integrals.push_back(integral);
         poisson_loglik.push_back(pp_loglik);
+        tree_draws.push_back(mtree_to_R(root));
       }
     }
     if ((it & 1023) == 0) Rcpp::checkUserInterrupt();
@@ -251,6 +283,8 @@ Rcpp::List PPT_fit_MCMC(const arma::mat& pts, const arma::mat& grid, const arma:
   arma::vec lam_mean = arma::mean(draws, 1), lam_med = arma::median(draws, 1);
   arma::vec lam_lo = arma::quantile(draws, arma::vec({0.025}), 1);
   arma::vec lam_hi = arma::quantile(draws, arma::vec({0.975}), 1);
+  Rcpp::List trees(K);
+  for (int k = 0; k < K; ++k) trees[k] = tree_draws[k];
   delete root;
 
   return Rcpp::List::create(
@@ -260,6 +294,7 @@ Rcpp::List PPT_fit_MCMC(const arma::mat& pts, const arma::mat& grid, const arma:
     Rcpp::_["loglik"]=ll_trace,
     Rcpp::_["poisson_loglik"]=poisson_loglik_draws,
     Rcpp::_["integrated_intensity"]=integral_draws,
+    Rcpp::_["tree_draws"]=trees,
     Rcpp::_["accept"]=Rcpp::NumericVector::create(Rcpp::_["grow"]=(double)acc_g/std::max(1L,tot_g),
               Rcpp::_["prune"]=(double)acc_p/std::max(1L,tot_p), Rcpp::_["change"]=(double)acc_c/std::max(1L,tot_c)),
     Rcpp::_["niter"]=niter, Rcpp::_["burnin"]=burnin);

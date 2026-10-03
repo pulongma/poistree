@@ -1,12 +1,16 @@
 #' Predict intensity from a fitted PPT
 #'
-#' All current backends store posterior intensity summaries at the locations
-#' supplied through `predict_at` during fitting. New prediction rows must
-#' therefore be among those stored locations.
+#' Rows of `newdata` that were part of `predict_at` during fitting are served
+#' from the stored posterior summaries. Any other rows are evaluated
+#' post hoc from the retained posterior state draws via the same machinery as
+#' [ppt_lambda()], so prediction no longer requires listing every location
+#' in `predict_at` before fitting. (The two paths can differ very slightly in
+#' the interval convention: stored summaries follow the fitting backend,
+#' post-hoc summaries use the weighted quantile of [ppt_lambda()].)
 #'
 #' @param object A fitted `ppt` object.
-#' @param newdata Optional matrix selecting rows from the stored prediction
-#'   locations. If `NULL`, all stored predictions are returned.
+#' @param newdata Optional matrix of prediction locations. If `NULL`, all
+#'   stored predictions are returned.
 #' @param type Posterior mean, median, or interval.
 #' @param ... Reserved for future prediction backends.
 #'
@@ -29,11 +33,23 @@ ppt_predict <- function(object, newdata = NULL,
       newdata, object$prediction$locations
     )
     if (anyNA(index)) {
-      stop(
-        "Some `newdata` rows were not evaluated during fitting. Refit with ",
-        "those rows included in `predict_at`.",
-        call. = FALSE
-      )
+      if (!.ppt_has_state(object)) {
+        stop(
+          "Some `newdata` rows were not evaluated during fitting and this ",
+          "fit carries no posterior state draws. Refit with the current ",
+          "poistree version, or include those rows in `predict_at`.",
+          call. = FALSE
+        )
+      }
+      lambda <- ppt_lambda(object, at = newdata, type = "summary")
+      if (identical(type, "interval")) {
+        return(data.frame(
+          median = lambda$median,
+          lower = lambda$lower,
+          upper = lambda$upper
+        ))
+      }
+      return(lambda[[type]])
     }
   }
 
@@ -47,6 +63,206 @@ ppt_predict <- function(object, newdata = NULL,
   object$prediction[[type]][index]
 }
 
+#' Posterior marginal intensity for one input
+#'
+#' For input coordinate \eqn{x_j}, this function computes, for every posterior
+#' tree draw,
+#' \deqn{m_j(u)=|\mathcal D_{-j}|^{-1}
+#'   \int_{\mathcal D_{-j}}\lambda(u,x_{-j})\,d x_{-j}.}
+#' By default, the integral is evaluated from every retained posterior state:
+#' exactly from axis-aligned boxes for hard models, from exact
+#' piecewise-polynomial path integrals for compact soft gates, and from the
+#' stable analytic logistic path integrals used during fitting (with adaptive
+#' quadrature for numerically ill-conditioned logistic paths). Supplying
+#' `reference` explicitly instead uses a uniform reference-design
+#' approximation. Its one-coordinate substitution designs are evaluated from
+#' the stored posterior state draws, so `reference` need not have appeared in
+#' `predict_at` (rows that were pre-evaluated during fitting are reused when
+#' available). Set `average = FALSE` to omit the volume normalization and
+#' obtain the projected point-process intensity.
+#'
+#' @param object A fitted `ppt` object.
+#' @param variable One input name or one-based column index.
+#' @param grid Optional numeric vector of values for the selected input. The
+#'   default is an equally spaced grid over its fitted region.
+#' @param n Number of default grid values when `grid` is `NULL`.
+#' @param level Pointwise posterior credible level.
+#' @param average Divide by the volume of the other input dimensions. The
+#'   default preserves the units and overall scale of the fitted intensity.
+#' @param reference Optional numeric reference-design matrix with one column
+#'   per input. When supplied, its rows approximate the uniform measure on the
+#'   fitted region and explicitly select reference-design approximation instead
+#'   of state-based integration.
+#' @param type Return posterior summaries or the grid-by-draw matrix.
+#'
+#' @return For `type = "summary"`, a data frame containing the input value,
+#'   posterior mean and median, and pointwise credible limits. For
+#'   `type = "draws"`, a matrix with grid values in rows and posterior draws
+#'   in columns. Draw weights are stored in the `weights` attribute.
+#' @export
+ppt_marginal <- function(object, variable, grid = NULL, n = 100L,
+                         level = 0.95, average = TRUE,
+                         reference = NULL,
+                         type = c("summary", "draws")) {
+  if (!inherits(object, "ppt")) {
+    stop("`object` must inherit from class \"ppt\".", call. = FALSE)
+  }
+  type <- match.arg(type)
+  d <- object$data$dimension
+  region <- object$data$region
+  input_names <- colnames(object$data$x)
+  if (is.null(input_names)) input_names <- paste0("x", seq_len(d))
+
+  if (is.character(variable)) {
+    if (length(variable) != 1L || is.na(variable) ||
+        !variable %in% input_names) {
+      stop("`variable` must be one input name or column index.",
+           call. = FALSE)
+    }
+    j <- match(variable, input_names)
+  } else {
+    if (length(variable) != 1L || !is.finite(variable) ||
+        variable != floor(variable) || variable < 1L || variable > d) {
+      stop("`variable` must be one input name or column index.",
+           call. = FALSE)
+    }
+    j <- as.integer(variable)
+  }
+
+  if (is.null(grid)) {
+    if (length(n) != 1L || !is.finite(n) || n != floor(n) || n < 2L) {
+      stop("`n` must be an integer of at least 2.", call. = FALSE)
+    }
+    grid <- seq(region[j, 1L], region[j, 2L], length.out = as.integer(n))
+  } else {
+    grid <- as.numeric(grid)
+    if (!length(grid) || any(!is.finite(grid))) {
+      stop("`grid` must be a non-empty finite numeric vector.",
+           call. = FALSE)
+    }
+    tolerance <- sqrt(.Machine$double.eps) *
+      max(1, abs(region[j, ]))
+    if (any(grid < region[j, 1L] - tolerance |
+            grid > region[j, 2L] + tolerance)) {
+      stop("Every value in `grid` must lie inside the fitted region.",
+           call. = FALSE)
+    }
+    grid <- pmin(region[j, 2L], pmax(region[j, 1L], grid))
+  }
+  if (length(level) != 1L || !is.finite(level) ||
+      level <= 0 || level >= 1) {
+    stop("`level` must lie strictly between 0 and 1.", call. = FALSE)
+  }
+  if (!is.logical(average) || length(average) != 1L || is.na(average)) {
+    stop("`average` must be `TRUE` or `FALSE`.", call. = FALSE)
+  }
+
+  trees <- object$posterior$tree_draws
+  exact_hard_leaf <- identical(object$model$gating, "hard") &&
+    identical(object$model$scales, "leaf") && length(trees)
+  exact_heap_state <- identical(object$posterior$state$mode, "heap") &&
+    length(object$posterior$state$nodes)
+  marginal_method <- "exact tree integration"
+
+  if (is.null(reference) && exact_hard_leaf) {
+    draws <- vapply(
+      trees, .ppt_tree_marginal,
+      numeric(length(grid)), grid = grid, variable = j,
+      region = region, average = isTRUE(average)
+    )
+    if (is.null(dim(draws))) {
+      draws <- matrix(draws, nrow = length(grid), ncol = 1L)
+    }
+  } else if (is.null(reference) && exact_heap_state) {
+    draws <- .ppt_state_marginal(
+      object, grid = grid, variable = j, average = isTRUE(average)
+    )
+    marginal_method <- "exact posterior-state integration"
+  } else {
+    if (is.null(reference)) {
+      stop(
+        "This fit predates the posterior state required for exact marginal ",
+        "integration. Supply a uniform `reference` design or refit with the ",
+        "current poistree version.",
+        call. = FALSE
+      )
+    }
+    reference <- .ppt_validate_points(
+      reference, d, region, "reference", allow_empty = FALSE
+    )
+    evaluation <- do.call(rbind, lapply(grid, function(value) {
+      out <- reference
+      out[, j] <- value
+      out
+    }))
+    index <- if (is.null(object$prediction$locations)) NA_integer_ else
+      .ppt_match_prediction_rows(evaluation, object$prediction$locations)
+    if (!anyNA(index) && !is.null(object$prediction$draws) &&
+        ncol(as.matrix(object$prediction$draws))) {
+      evaluated_draws <- as.matrix(object$prediction$draws)[
+        index, , drop = FALSE
+      ]
+    } else if (.ppt_has_state(object)) {
+      evaluated_draws <- .ppt_state_eval(object, evaluation)
+    } else {
+      stop(
+        "The required marginal-design rows were not evaluated during ",
+        "fitting and this fit predates the posterior state store. Refit ",
+        "with the current poistree version (or include the rows in ",
+        "`predict_at`).",
+        call. = FALSE
+      )
+    }
+    n_reference <- nrow(reference)
+    draws <- vapply(seq_along(grid), function(k) {
+      rows <- (k - 1L) * n_reference + seq_len(n_reference)
+      colMeans(evaluated_draws[rows, , drop = FALSE])
+    }, numeric(ncol(evaluated_draws)))
+    # `vapply()` drops its matrix dimension when there is only one posterior
+    # draw. Restore the draws-by-grid layout before transposing so single-draw
+    # fits follow the same grid-by-draw contract as all other fits.
+    draws <- t(matrix(
+      draws, nrow = ncol(evaluated_draws), ncol = length(grid)
+    ))
+    if (!isTRUE(average) && d > 1L) {
+      other_axes <- setdiff(seq_len(d), j)
+      draws <- draws * prod(
+        region[other_axes, 2L] - region[other_axes, 1L]
+      )
+    }
+    marginal_method <- "uniform reference-design approximation"
+  }
+  weights <- .ppt_posterior_weights(object, ncol(draws))
+  colnames(draws) <- paste0("draw", seq_len(ncol(draws)))
+  rownames(draws) <- format(grid, digits = 10L, trim = TRUE)
+  attr(draws, "grid") <- grid
+  attr(draws, "variable") <- input_names[j]
+  attr(draws, "weights") <- weights
+  attr(draws, "average") <- isTRUE(average)
+  attr(draws, "method") <- marginal_method
+  if (identical(type, "draws")) return(draws)
+
+  alpha <- (1 - level) / 2
+  posterior_quantile <- function(probability) {
+    apply(draws, 1L, .ppt_weighted_quantile,
+          weights = weights, probability = probability)
+  }
+  out <- data.frame(
+    variable = rep(input_names[j], length(grid)),
+    value = grid,
+    mean = as.numeric(draws %*% weights),
+    median = posterior_quantile(0.5),
+    lower = posterior_quantile(alpha),
+    upper = posterior_quantile(1 - alpha),
+    stringsAsFactors = FALSE
+  )
+  attr(out, "level") <- level
+  attr(out, "average") <- isTRUE(average)
+  attr(out, "method") <- marginal_method
+  class(out) <- c("ppt_marginal", "data.frame")
+  out
+}
+
 #' @rdname ppt_predict
 #' @param newdata Optional prediction matrix.
 #' @method predict ppt
@@ -56,6 +272,11 @@ predict.ppt <- function(object, newdata = NULL, ...) {
 }
 
 #' Summarize a fitted PPT
+#'
+#' SMC fits report their log marginal-likelihood (evidence) estimate, which is
+#' stored in the fitted object as `posterior$log_evidence`; the RJ-MCMC and
+#' Particle-Gibbs backends do not estimate the marginal likelihood, so the field is `NA`
+#' and the summary omits the line.
 #'
 #' @param object A fitted `ppt` object.
 #' @param ... Reserved for future methods.
@@ -76,10 +297,9 @@ ppt_summary <- function(object, ...) {
       posterior_draws = object$posterior$draws,
       mean_leaves = object$posterior$mean_leaves,
       mean_max_depth = object$posterior$mean_max_depth %||% NA_real_,
-      kappa = object$posterior$kappa %||% NA_real_,
-      tau = object$posterior$tau %||% NA_real_,
       mean_gate = object$posterior$mean_gate,
       mean_log_likelihood = object$posterior$mean_log_likelihood,
+      log_evidence = object$posterior$log_evidence %||% NA_real_,
       mean_integrated_intensity =
         object$posterior$mean_integrated_intensity %||% NA_real_,
       lppd = object$posterior$lppd,
@@ -101,6 +321,9 @@ print.ppt <- function(x, ...) {
   cat("  configuration : ",
       paste(.ppt_model_components(x$model), collapse = " + "),
       "\n", sep = "")
+  if (!is.null(x$model$algorithm)) {
+    cat("  algorithm     : ", x$model$algorithm, "\n", sep = "")
+  }
   cat("  observations  : ", x$data$n, " in ", x$data$dimension,
       " dimension(s)\n", sep = "")
   cat("  posterior     : ", x$posterior$draws, " draws; mean leaves ",
@@ -122,16 +345,13 @@ print.summary.ppt <- function(x, ...) {
   if (is.finite(x$mean_max_depth)) {
     cat("  Mean max depth :", format(x$mean_max_depth, digits = 5L), "\n")
   }
-  if (is.finite(x$kappa)) {
-    cat("  Mean kappa     :", format(x$kappa, digits = 5L), "\n")
-  }
-  if (is.finite(x$tau)) {
-    cat("  Mean tau       :", format(x$tau, digits = 5L), "\n")
-  }
   if (is.finite(x$mean_gate)) {
     cat("  Mean gate      :", format(x$mean_gate, digits = 5L), "\n")
   }
   cat("  Mean logLik    :", format(x$mean_log_likelihood, digits = 7L), "\n")
+  if (is.finite(x$log_evidence %||% NA_real_)) {
+    cat("  Log evidence   :", format(x$log_evidence, digits = 7L), "\n")
+  }
   if (is.finite(x$mean_integrated_intensity)) {
     cat("  Mean integral  :",
         format(x$mean_integrated_intensity, digits = 7L), "\n")
@@ -173,56 +393,68 @@ ppt_logLik <- function(object, ...) {
 #' @export
 logLik.ppt <- function(object, ...) ppt_logLik(object, ...)
 
-#' Extract model evidence
+#' Test-pattern log predictive density
 #'
-#' SMC fits return their log marginal-likelihood estimate. RJ-MCMC and PGAS do
-#' not currently estimate the marginal likelihood and return `NA` with an
-#' explanatory attribute.
+#' The joint posterior log predictive density of a test point pattern over
+#' the fitted observation region,
+#' \deqn{\mathrm{lppd}
+#'   = \log \sum_s w_s \exp\Big\{\sum_i \log\lambda^{(s)}(t_i)
+#'     - \textstyle\int_{\mathcal D}\lambda^{(s)}\Big\},}
+#' with uniform draw weights for MCMC fits and particle weights for SMC.
+#' When `test` is supplied here, the intensities \eqn{\lambda^{(s)}(t_i)}
+#' are evaluated post hoc from the retained posterior state draws and the
+#' stored per-draw intensity integrals, so the test pattern does NOT have to
+#' be supplied at fitting time. When `test` is `NULL`, the value stored by
+#' `ppt_fit(..., test = )` is returned.
 #'
 #' @param object A fitted `ppt` object.
-#' @param warn Emit a warning when evidence is unavailable.
-#' @return A numeric scalar.
+#' @param test Optional numeric matrix of test points (one column per
+#'   input). If `NULL`, the lppd stored at fitting time is returned.
+#' @return A numeric scalar with attributes `n_test` and `joint`.
 #' @export
-ppt_evidence <- function(object, warn = TRUE) {
+ppt_lppd <- function(object, test = NULL) {
   if (!inherits(object, "ppt")) {
     stop("`object` must inherit from class \"ppt\".", call. = FALSE)
   }
-  log_evidence <- object$posterior$log_evidence %||% NA_real_
-  if (length(log_evidence) == 1L && is.finite(log_evidence)) {
+  if (is.null(test)) {
+    if (!is.finite(object$posterior$lppd)) {
+      stop(
+        "No lppd is stored. Supply `test` here, or refit with a non-empty ",
+        "`test` matrix.",
+        call. = FALSE
+      )
+    }
     return(structure(
-      as.numeric(log_evidence),
-      sampler = object$model$sampler,
-      estimate = "log marginal likelihood"
+      object$posterior$lppd,
+      n_test = nrow(object$data$test),
+      joint = TRUE
     ))
   }
-  reason <- paste(
-    "Marginal likelihood is not estimated by the current",
-    "RJ-MCMC or PGAS backend."
+  test <- .ppt_validate_points(
+    test, object$data$dimension, object$data$region, "test",
+    allow_empty = FALSE
   )
-  if (isTRUE(warn)) warning(reason, call. = FALSE)
-  structure(NA_real_, reason = reason)
-}
-
-#' Extract test-pattern log predictive density
-#'
-#' `test` must be supplied to `ppt_fit()`. The returned value is the joint
-#' posterior log predictive density of that test point pattern over the fitted
-#' observation region.
-#'
-#' @param object A fitted `ppt` object.
-#' @return A numeric scalar.
-#' @export
-ppt_lppd <- function(object) {
-  if (!inherits(object, "ppt")) {
-    stop("`object` must inherit from class \"ppt\".", call. = FALSE)
+  integral <- object$posterior$integrated_intensity_draws
+  if (is.null(integral) || !length(integral)) {
+    stop(
+      "This fit predates exact-integral storage; refit it with the current ",
+      "poistree version.",
+      call. = FALSE
+    )
   }
-  if (!is.finite(object$posterior$lppd)) {
-    stop("No lppd is stored. Refit with a non-empty `test` matrix.",
+  draws <- .ppt_state_eval(object, test)
+  if (ncol(draws) != length(integral)) {
+    stop("Posterior state draws and integral draws are inconsistent.",
          call. = FALSE)
   }
+  draws <- pmax(draws, .Machine$double.xmin)
+  log_predictive_draw <- colSums(log(draws)) - as.numeric(integral)
+  weights <- .ppt_posterior_weights(object, length(log_predictive_draw))
+  log_weighted <- log(weights) + log_predictive_draw
+  center <- max(log_weighted)
   structure(
-    object$posterior$lppd,
-    n_test = nrow(object$data$test),
+    center + log(sum(exp(log_weighted - center))),
+    n_test = nrow(test),
     joint = TRUE
   )
 }
@@ -257,32 +489,124 @@ ppt_integral <- function(object, type = c("mean", "draws")) {
 
 #' Plot fitted PPT intensity summaries
 #'
+#' Plots the posterior intensity from the stored posterior state draws
+#' evaluated over an automatic grid (see [ppt_lambda()]), so it works for any
+#' fit whether or not `predict_at` was supplied. One selected dimension gives
+#' a curve with a shaded pointwise credible band; two selected dimensions
+#' give a raster image of the intensity surface. When the fit has more input
+#' dimensions than are shown, the remaining coordinates are fixed at the
+#' midpoints of their fitted ranges, so the display is a slice of the
+#' intensity. Fits from earlier package versions without stored state fall
+#' back to displaying the stored `predict_at` summaries. For
+#' publication-quality graphics use [ppt_lambda()] with \pkg{ggplot2}.
+#'
 #' @param x A fitted `ppt` object.
 #' @param type Posterior median or mean.
-#' @param dims One dimension for a line plot or two dimensions for a colored
-#'   point plot.
+#' @param dims One dimension for a curve or two dimensions for an intensity
+#'   image.
+#' @param n Grid resolution per shown dimension.
+#' @param level Pointwise credible level for the one-dimensional band.
+#' @param points Overlay the observed points: a rug in one dimension, white
+#'   points on the surface in two dimensions.
 #' @param main,xlab,ylab Optional labels.
-#' @param ... Additional graphical arguments passed to [graphics::plot()].
+#' @param ... Additional graphical arguments passed to [graphics::plot()] or
+#'   [graphics::image()].
 #' @return The fitted object, invisibly.
 #' @method plot ppt
 #' @export
 plot.ppt <- function(x, type = c("median", "mean"), dims = NULL,
+                     n = 60L, level = 0.95, points = FALSE,
                      main = NULL, xlab = NULL, ylab = NULL, ...) {
   type <- match.arg(type)
-  locations <- x$prediction$locations
-  d <- ncol(locations)
+  d <- x$data$dimension
+  region <- x$data$region
+  input_names <- colnames(x$data$x)
+  if (is.null(input_names)) input_names <- paste0("x", seq_len(d))
   if (is.null(dims)) dims <- if (d == 1L) 1L else c(1L, 2L)
   dims <- as.integer(dims)
-  if (!length(dims) || length(dims) > 2L ||
-      anyNA(dims) || any(dims < 1L | dims > d)) {
-    stop("`dims` must select one or two valid input dimensions.",
+  if (!length(dims) || length(dims) > 2L || anyNA(dims) ||
+      any(dims < 1L | dims > d) || anyDuplicated(dims)) {
+    stop("`dims` must select one or two distinct input dimensions.",
          call. = FALSE)
+  }
+  if (length(n) != 1L || !is.finite(n) || n != floor(n) || n < 2L) {
+    stop("`n` must be an integer of at least 2.", call. = FALSE)
+  }
+  n <- as.integer(n)
+  if (!.ppt_has_state(x)) {
+    return(.ppt_plot_stored(x, type, dims, main, xlab, ylab, ...))
+  }
+  if (is.null(main)) {
+    main <- paste(x$model$label, type, "intensity")
+    if (d > length(dims)) main <- paste0(main, " (midpoint slice)")
+  }
+  midpoints <- (region[, 1L] + region[, 2L]) / 2
+
+  if (length(dims) == 1L) {
+    j <- dims[1L]
+    grid <- seq(region[j, 1L], region[j, 2L], length.out = n)
+    at <- matrix(rep(midpoints, each = n), nrow = n)
+    at[, j] <- grid
+    colnames(at) <- input_names
+    lambda <- ppt_lambda(x, at = at, level = level)
+    if (is.null(xlab)) xlab <- input_names[j]
+    if (is.null(ylab)) ylab <- "Intensity"
+    graphics::plot(
+      grid, lambda[[type]], type = "n",
+      ylim = range(0, lambda$upper, na.rm = TRUE),
+      main = main, xlab = xlab, ylab = ylab, ...
+    )
+    graphics::polygon(
+      c(grid, rev(grid)), c(lambda$lower, rev(lambda$upper)),
+      col = grDevices::adjustcolor("steelblue", 0.25), border = NA
+    )
+    graphics::lines(grid, lambda[[type]], lwd = 2, col = "steelblue4")
+    if (isTRUE(points)) graphics::rug(x$data$x[, j])
+  } else {
+    j <- dims[1L]
+    k <- dims[2L]
+    grid_j <- seq(region[j, 1L], region[j, 2L], length.out = n)
+    grid_k <- seq(region[k, 1L], region[k, 2L], length.out = n)
+    pairs <- as.matrix(expand.grid(grid_j, grid_k))
+    at <- matrix(rep(midpoints, each = nrow(pairs)), nrow = nrow(pairs))
+    at[, j] <- pairs[, 1L]
+    at[, k] <- pairs[, 2L]
+    colnames(at) <- input_names
+    lambda <- ppt_lambda(x, at = at, level = level)
+    z <- matrix(lambda[[type]], n, n)
+    if (is.null(xlab)) xlab <- input_names[j]
+    if (is.null(ylab)) ylab <- input_names[k]
+    graphics::image(
+      grid_j, grid_k, z, col = grDevices::hcl.colors(64L, "Viridis"),
+      useRaster = TRUE, main = main, xlab = xlab, ylab = ylab, ...
+    )
+    if (isTRUE(points)) {
+      graphics::points(
+        x$data$x[, j], x$data$x[, k], pch = 16, cex = 0.4,
+        col = grDevices::adjustcolor("white", 0.7)
+      )
+    }
+  }
+  invisible(x)
+}
+
+# Legacy display for fits from package versions without stored posterior
+# state: show the summaries stored at the `predict_at` locations.
+#' @keywords internal
+.ppt_plot_stored <- function(x, type, dims, main, xlab, ylab, ...) {
+  locations <- x$prediction$locations
+  if (is.null(locations) || !nrow(locations)) {
+    stop(
+      "This fit has neither posterior state draws nor stored predictions; ",
+      "refit with the current poistree version.", call. = FALSE
+    )
   }
   z <- x$prediction[[type]]
   if (is.null(main)) main <- paste(x$model$label, type, "intensity")
   input_names <- colnames(locations)
-  if (is.null(input_names)) input_names <- paste0("x", seq_len(d))
-
+  if (is.null(input_names)) {
+    input_names <- paste0("x", seq_len(ncol(locations)))
+  }
   if (length(dims) == 1L) {
     j <- dims[1L]
     ord <- order(locations[, j])

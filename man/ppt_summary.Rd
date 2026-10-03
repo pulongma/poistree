@@ -18,5 +18,8 @@ ppt_summary(object, ...)
 An object of class `summary.ppt`.
 }
 \description{
-Summarize a fitted PPT
+SMC fits report their log marginal-likelihood (evidence) estimate, which is
+stored in the fitted object as `posterior$log_evidence`; the RJ-MCMC and
+Particle-Gibbs backends do not estimate the marginal likelihood, so the field is `NA`
+and the summary omits the line.
 }

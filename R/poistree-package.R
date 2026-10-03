@@ -5,35 +5,38 @@
 #' separates modeling and computational choices:
 #'
 #' \itemize{
-#'   \item `gating`: the partition mechanism; hard partitions are currently
-#'     implemented and other gates are reserved for future backends;
-#'   \item `scales`: the intensity representation; terminal-leaf intensities
-#'     are currently implemented and multiscale intensities are reserved for
-#'     future backends;
-#'   \item `sampler`: sequential Monte Carlo, reversible-jump MCMC, or Particle
-#'     Gibbs with ancestor sampling.
+#'   \item `gating`: hard partitions or soft logistic/compact gates;
+#'   \item `scales`: terminal-leaf intensities;
+#'   \item `sampler`: sequential Monte Carlo, reversible-jump MCMC,
+#'     or Particle Gibbs with exact conditional SMC. The
+#'     legacy token `pgas` selects the Particle-Gibbs backend; ancestor
+#'     sampling is currently disabled.
 #' }
 #'
 #' The fitted object has class `ppt`. Use [ppt_predict()] for posterior
-#' intensity summaries, [plot.ppt()] for fitted intensities, [ppt_summary()]
+#' intensity summaries, [ppt_marginal()] for one-input marginal intensity
+#' curves, [plot.ppt()] for fitted intensities, [ppt_summary()]
 #' for model summaries, [ppt_logLik()] and [ppt_lppd()] for likelihood and
 #' predictive evaluation, and [ppt_diagnostics()] for sampler diagnostics.
 #'
 #' @section Model configurations:
 #' \tabular{llll}{
-#' Model \tab `gating` \tab `scales` / prior \tab `sampler` \cr
+#' Model \tab `gating` \tab `scales` \tab `sampler` \cr
 #' PPT \tab `hard` \tab `leaf` \tab `smc` \cr
 #' PPT \tab `hard` \tab `leaf` \tab `rjmcmc` \cr
 #' PPT \tab `hard` \tab `leaf` \tab `pgas` \cr
+#' S-PPT \tab `soft` \tab `leaf` \tab `rjmcmc` \cr
 #' }
 #'
-#' The component-based wrapper is intentionally retained. Future backends can
-#' be registered internally without changing calls to [ppt_fit()].
+#' The default is S-PPT: soft gating, terminal-leaf intensities, and RJ-MCMC.
+#' Use `gating = "hard"` to fit PPT.
 #'
 #' @section Basic workflow:
 #' Supply the observed event locations or covariate vectors as an `n` by `d`
 #' numeric matrix and the bounded observation window as a `d` by 2 matrix.
-#' Prediction locations are passed through `predict_at`.
+#' The optional `predict_at` argument precomputes posterior intensities at
+#' selected locations. It is not required: arbitrary locations can be
+#' evaluated after fitting with [ppt_lambda()] or [ppt_predict()].
 #'
 #' @examples
 #' \dontrun{
@@ -62,10 +65,16 @@
 #' plot(fit_ppt_mcmc)
 #' ppt_diagnostics(fit_ppt_mcmc)
 #'
-#' # Hard terminal-leaf PPT fitted by PGAS
+#' # Hard terminal-leaf PPT fitted by conditional-SMC Particle Gibbs
 #' fit_ppt_pgas <- ppt_fit(
 #'   x, region, gating = "hard", scales = "leaf", sampler = "pgas",
 #'   predict_at = grid, particles = 200, iter = 500, burn = 100
+#' )
+#'
+#' # Soft terminal-leaf PPT; soft gating and RJ-MCMC remain at their defaults.
+#' fit_sppt <- ppt_fit(
+#'   x, region, scales = "leaf", predict_at = grid,
+#'   chains = 2, iter = 2000, burn = 500
 #' )
 #' }
 #'

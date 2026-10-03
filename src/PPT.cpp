@@ -57,6 +57,8 @@ bool good_shape(const arma::mat& R, double lmin, double rmax)
 {
     arma::vec side = R.col(1) - R.col(0);
     if (side.min() < lmin) return false;
+    if (std::isinf(rmax) && rmax > 0) return true;
+    if (!std::isfinite(rmax) || rmax < 1.0) return false;
     double asp = side.max() / side.min();
     return asp <= rmax;
 }
@@ -98,7 +100,8 @@ std::vector<std::vector<double> > PPT::find_valid_cuts(
         double areaL = arma::prod(regionL.col(1) - regionL.col(0));
         double areaR = arma::prod(regionR.col(1) - regionR.col(0));
 
-        if (good_shape(regionL, 1e-2, 6) && good_shape(regionR, 1e-2, 6) &&
+        if (good_shape(regionL, 1e-2, max_aspect_ratio) &&
+            good_shape(regionR, 1e-2, max_aspect_ratio) &&
             left_idx.n_elem >= (unsigned)min_leaf_n &&
             right_idx.n_elem >= (unsigned)min_leaf_n &&
             areaL > 0 && areaR > 0) {
@@ -128,8 +131,8 @@ std::vector<std::vector<double> > PPT::find_valid_cuts(
           regionL(j, 1) = cut;
           regionR(j, 0) = cut;
 
-          if (!good_shape(regionL, 1e-2, 6)) continue;
-          if (!good_shape(regionR, 1e-2, 6)) continue;
+          if (!good_shape(regionL, 1e-2, max_aspect_ratio)) continue;
+          if (!good_shape(regionR, 1e-2, max_aspect_ratio)) continue;
 
           double areaL = arma::prod(regionL.col(1) - regionL.col(0));
           double areaR = arma::prod(regionR.col(1) - regionR.col(0));
@@ -152,6 +155,8 @@ std::vector<std::vector<double> > PPT::find_valid_cuts(
           arma::mat regionR = region;
           regionL(j, 1) = med_cut;
           regionR(j, 0) = med_cut;
+          if (!good_shape(regionL, 1e-2, max_aspect_ratio)) continue;
+          if (!good_shape(regionR, 1e-2, max_aspect_ratio)) continue;
           double areaL = arma::prod(regionL.col(1) - regionL.col(0));
           double areaR = arma::prod(regionR.col(1) - regionR.col(0));
           if (left_idx.n_elem >= (unsigned)min_leaf_n &&
@@ -189,7 +194,7 @@ Rcpp::List PPT::to_R_list() {
                 Rcpp::Named("S")        = nodes[i]->S,
                 Rcpp::Named("J")        = nodes[i]->J,
                 Rcpp::Named("L")        = nodes[i]->L,
-                Rcpp::Named("prob_split") = nodes[i]->S,
+                Rcpp::Named("prob_split") = nodes[i]->prob_split,
                 Rcpp::Named("prob_axis") = nodes[i]->prob_axis,
                 Rcpp::Named("prob_cut") = nodes[i]->prob_cut,
                 Rcpp::Named("lambda") = nodes[i]->lambda
@@ -366,6 +371,127 @@ void PPT::PPT_one_step_ahead(double& log_inc, int i,
 }
 
 
+void PPT::PPT_force_reference_step(double& log_inc, int i,
+                                   const PPT& ref_tree,
+                                   const arma::mat& pts)
+{
+    log_inc = 0.0;
+
+    const TreeNode* ref_node =
+        (i >= 0 && i < static_cast<int>(ref_tree.nodes.size()))
+            ? ref_tree.nodes[i] : nullptr;
+    TreeNode* node =
+        (i >= 0 && i < static_cast<int>(nodes.size())) ? nodes[i] : nullptr;
+
+    // An absent heap node is a deterministic no-op.  Under a valid reference
+    // prefix it must also be absent from the reference trajectory.
+    if (node == nullptr || node->is_empty) {
+        if (ref_node != nullptr && !ref_node->is_empty) {
+            Rcpp::stop("Invalid conditional-SMC reference: incompatible node prefix");
+        }
+        return;
+    }
+    if (ref_node == nullptr || ref_node->is_empty) {
+        Rcpp::stop("Invalid conditional-SMC reference: missing reference node");
+    }
+
+    arma::mat region = node->region;
+    arma::uvec idx = node->idx;
+    arma::mat x = pts.rows(idx);
+    const int d = x.n_cols;
+    const int n = idx.n_elem;
+
+    std::vector<std::vector<double> > valid_cuts =
+        find_valid_cuts(x, region, false);
+    int total_cuts = 0;
+    for (int axis = 0; axis < d; ++axis)
+        total_cuts += static_cast<int>(valid_cuts[axis].size());
+
+    // PPT_one_step_ahead treats a node with no valid split as a forced stop,
+    // with proposal and target increment both equal to one.
+    if (total_cuts == 0) {
+        if (ref_node->S == 1) {
+            Rcpp::stop("Invalid conditional-SMC reference: split is no longer valid");
+        }
+        node->S = 0;
+        node->J = -1;
+        node->L = NA_REAL;
+        node->is_leaf = true;
+        return;
+    }
+
+    const double log_q = PPT_log_transition_prob(node, ref_node, pts);
+    if (!std::isfinite(log_q)) {
+        Rcpp::stop("Invalid conditional-SMC reference action under the proposal law");
+    }
+
+    double rho_d = rho * std::pow(1.0 + node->depth, -eta);
+    if (rho_d < 1e-12)       rho_d = 1e-12;
+    if (rho_d > 1.0 - 1e-12) rho_d = 1.0 - 1e-12;
+
+    if (ref_node->S == 0) {
+        node->S = 0;
+        node->J = -1;
+        node->L = NA_REAL;
+        node->is_leaf = true;
+        log_inc = std::log(1.0 - rho_d) - log_q;
+        return;
+    }
+    if (ref_node->S != 1) {
+        Rcpp::stop("Invalid conditional-SMC reference action");
+    }
+
+    const int J = ref_node->J;
+    const double L = ref_node->L;
+    if (J < 0 || J >= d || !std::isfinite(L)) {
+        Rcpp::stop("Invalid conditional-SMC reference split");
+    }
+
+    int cut_index = -1;
+    int n_valid_J = 0;
+    for (size_t k = 0; k < valid_cuts[J].size(); ++k) {
+        arma::mat candidate_left = region;
+        candidate_left(J, 1) = valid_cuts[J][k];
+        const int candidate_nL = arma::accu(in_region_nd(x, candidate_left));
+        const int candidate_nR = n - candidate_nL;
+        if (candidate_nL < min_leaf_n || candidate_nR < min_leaf_n) continue;
+        if (std::abs(valid_cuts[J][k] - L) < 1e-10)
+            cut_index = static_cast<int>(k);
+        ++n_valid_J;
+    }
+    if (cut_index < 0 || n_valid_J == 0) {
+        Rcpp::stop("Invalid conditional-SMC reference cut");
+    }
+
+    arma::mat regionL = region;
+    arma::mat regionR = region;
+    regionL(J, 1) = L;
+    regionR(J, 0) = L;
+    const arma::uvec inside_L = in_region_nd(x, regionL);
+    const int nL = arma::accu(inside_L);
+    const int nR = n - nL;
+    if (nL < min_leaf_n || nR < min_leaf_n) {
+        Rcpp::stop("Invalid conditional-SMC reference child count");
+    }
+
+    const double area = arma::prod(region.col(1) - region.col(0));
+    const double areaL = arma::prod(regionL.col(1) - regionL.col(0));
+    const double areaR = arma::prod(regionR.col(1) - regionR.col(0));
+    const double logBF =
+        PPT_base_mloglik(nL, areaL, a, b) +
+        PPT_base_mloglik(nR, areaR, a, b) -
+        PPT_base_mloglik(n, area, a, b);
+
+    // Axis selection is uniform after normalization, and cuts are uniform
+    // within the selected axis, exactly as in PPT_one_step_ahead().
+    const double log_prior =
+        std::log(rho_d) - std::log(static_cast<double>(d)) -
+        std::log(static_cast<double>(n_valid_J));
+    log_inc = log_prior + logBF - log_q;
+    split_node(i, pts, J, L, min_leaf_n);
+}
+
+
 
 
 
@@ -384,6 +510,9 @@ double PPT::PPT_log_transition_prob(const TreeNode* parent_node,
 
     // ---- Recompute the axis priors and logliks as in proposal ----
     arma::vec lamvec = lam * arma::vec(d, arma::fill::ones);
+    // Match PPT_one_step_ahead exactly.  In particular, replay must remain a
+    // probability law even if the stored scalar axis weight is not 1 / d.
+    lamvec /= arma::sum(lamvec);
     arma::vec log_axis_prior = arma::log(lamvec);
 
     // depth-dependent split prior, matching PPT_one_step_ahead
@@ -478,9 +607,14 @@ double PPT::PPT_log_transition_prob(const TreeNode* parent_node,
             }
         }
         if (match_idx < 0) return -arma::datum::inf; // L not found among valid cuts
-        double norm_post_loc = log_sum_exp(prob_J.elem(valid_id));
-        arma::vec log_loc_prior(valid_id.n_elem); log_loc_prior.fill(-std::log(valid_id.n_elem));
+        arma::vec log_loc_prior(valid_id.n_elem);
+        log_loc_prior.fill(-std::log(valid_id.n_elem));
         arma::vec log_post_loc = log_loc_prior + prob_J.elem(valid_id);
+        // Normalize the same log masses used in the numerator.  Previously
+        // the uniform 1 / K cut prior appeared only in the numerator, so the
+        // replayed conditional cut probabilities summed to 1 / K rather than
+        // one and biased the PGAS ancestor weights whenever K differed.
+        double norm_post_loc = log_sum_exp(log_post_loc);
         arma::vec post_loc = arma::exp(log_post_loc - norm_post_loc);
 
         logprob += std::log(post_loc[match_idx]);
@@ -496,13 +630,15 @@ double PPT::PPT_log_transition_prob(const TreeNode* parent_node,
 void PPT::PPT_draw_lambda()
 {
 
-    // draw lambda from the Jeffreys posterior  lambda_leaf | x ~ Ga(0.5+n, area)
+    // Draw from the posterior matching PPT_base_mloglik:
+    // lambda_leaf | x ~ Ga(a+n, b+area), with the b=0 branch interpreted as
+    // the historical improper-prior limit.
     double temp = 0.0;
     for (auto* node : nodes) {
         if (node && node->is_leaf && !node->is_empty) {
             int n = node->idx.n_elem;        // number of points in this leaf
             double area = arma::prod(node->region.col(1) - node->region.col(0));
-            node->lambda = R::rgamma(0.5 + n, 1.0 / area); // Jeffreys prior
+            node->lambda = R::rgamma(a + n, 1.0 / (b + area));
             temp += area * node->lambda;
         }
     }
@@ -556,4 +692,3 @@ int PPT::get_counts(int id){
   }
   return nodes[id]->idx.n_elem;
 }
-

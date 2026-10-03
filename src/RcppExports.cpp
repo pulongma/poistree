@@ -35,8 +35,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // PPT_fit_PG
-Rcpp::List PPT_fit_PG(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int max_depth, int niter, int P, int min_leaf_n, double resample_thresh, double a, double b, bool verbose);
-RcppExport SEXP _poistree_PPT_fit_PG(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP max_depthSEXP, SEXP niterSEXP, SEXP PSEXP, SEXP min_leaf_nSEXP, SEXP resample_threshSEXP, SEXP aSEXP, SEXP bSEXP, SEXP verboseSEXP) {
+Rcpp::List PPT_fit_PG(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int max_depth, int niter, int P, int min_leaf_n, double resample_thresh, double a, double b, bool verbose, double max_aspect_ratio);
+RcppExport SEXP _poistree_PPT_fit_PG(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP max_depthSEXP, SEXP niterSEXP, SEXP PSEXP, SEXP min_leaf_nSEXP, SEXP resample_threshSEXP, SEXP aSEXP, SEXP bSEXP, SEXP verboseSEXP, SEXP max_aspect_ratioSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -51,13 +51,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type a(aSEXP);
     Rcpp::traits::input_parameter< double >::type b(bSEXP);
     Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
-    rcpp_result_gen = Rcpp::wrap(PPT_fit_PG(pts, grid, region, max_depth, niter, P, min_leaf_n, resample_thresh, a, b, verbose));
+    Rcpp::traits::input_parameter< double >::type max_aspect_ratio(max_aspect_ratioSEXP);
+    rcpp_result_gen = Rcpp::wrap(PPT_fit_PG(pts, grid, region, max_depth, niter, P, min_leaf_n, resample_thresh, a, b, verbose, max_aspect_ratio));
     return rcpp_result_gen;
 END_RCPP
 }
 // PPT_fit_SMC
-Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int max_depth, int P, int min_leaf_n, double resample_thresh, double a, double b);
-RcppExport SEXP _poistree_PPT_fit_SMC(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP min_leaf_nSEXP, SEXP resample_threshSEXP, SEXP aSEXP, SEXP bSEXP) {
+Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int max_depth, int P, int min_leaf_n, double resample_thresh, double a, double b, double max_aspect_ratio);
+RcppExport SEXP _poistree_PPT_fit_SMC(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP min_leaf_nSEXP, SEXP resample_threshSEXP, SEXP aSEXP, SEXP bSEXP, SEXP max_aspect_ratioSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -70,7 +71,161 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type resample_thresh(resample_threshSEXP);
     Rcpp::traits::input_parameter< double >::type a(aSEXP);
     Rcpp::traits::input_parameter< double >::type b(bSEXP);
-    rcpp_result_gen = Rcpp::wrap(PPT_fit_SMC(pts, grid, region, max_depth, P, min_leaf_n, resample_thresh, a, b));
+    Rcpp::traits::input_parameter< double >::type max_aspect_ratio(max_aspect_ratioSEXP);
+    rcpp_result_gen = Rcpp::wrap(PPT_fit_SMC(pts, grid, region, max_depth, P, min_leaf_n, resample_thresh, a, b, max_aspect_ratio));
+    return rcpp_result_gen;
+END_RCPP
+}
+// PPT_valid_cuts
+Rcpp::List PPT_valid_cuts(const arma::mat& pts, const arma::mat& region, int min_leaf_n, int cut_grid_n, double max_aspect_ratio, bool force_mid_cut);
+RcppExport SEXP _poistree_PPT_valid_cuts(SEXP ptsSEXP, SEXP regionSEXP, SEXP min_leaf_nSEXP, SEXP cut_grid_nSEXP, SEXP max_aspect_ratioSEXP, SEXP force_mid_cutSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type pts(ptsSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< int >::type min_leaf_n(min_leaf_nSEXP);
+    Rcpp::traits::input_parameter< int >::type cut_grid_n(cut_grid_nSEXP);
+    Rcpp::traits::input_parameter< double >::type max_aspect_ratio(max_aspect_ratioSEXP);
+    Rcpp::traits::input_parameter< bool >::type force_mid_cut(force_mid_cutSEXP);
+    rcpp_result_gen = Rcpp::wrap(PPT_valid_cuts(pts, region, min_leaf_n, cut_grid_n, max_aspect_ratio, force_mid_cut));
+    return rcpp_result_gen;
+END_RCPP
+}
+// PPT_transition_probabilities
+Rcpp::List PPT_transition_probabilities(const arma::mat& pts, const arma::mat& region, int min_leaf_n, int cut_grid_n, double max_aspect_ratio);
+RcppExport SEXP _poistree_PPT_transition_probabilities(SEXP ptsSEXP, SEXP regionSEXP, SEXP min_leaf_nSEXP, SEXP cut_grid_nSEXP, SEXP max_aspect_ratioSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type pts(ptsSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< int >::type min_leaf_n(min_leaf_nSEXP);
+    Rcpp::traits::input_parameter< int >::type cut_grid_n(cut_grid_nSEXP);
+    Rcpp::traits::input_parameter< double >::type max_aspect_ratio(max_aspect_ratioSEXP);
+    rcpp_result_gen = Rcpp::wrap(PPT_transition_probabilities(pts, region, min_leaf_n, cut_grid_n, max_aspect_ratio));
+    return rcpp_result_gen;
+END_RCPP
+}
+// ppstree_geometry
+List ppstree_geometry(IntegerVector axis, NumericVector cut, NumericVector parent_width, IntegerVector side, arma::mat points, arma::mat region, arma::vec gate);
+RcppExport SEXP _poistree_ppstree_geometry(SEXP axisSEXP, SEXP cutSEXP, SEXP parent_widthSEXP, SEXP sideSEXP, SEXP pointsSEXP, SEXP regionSEXP, SEXP gateSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type axis(axisSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type cut(cutSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type parent_width(parent_widthSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type side(sideSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type points(pointsSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gate(gateSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_geometry(axis, cut, parent_width, side, points, region, gate));
+    return rcpp_result_gen;
+END_RCPP
+}
+// ppstree_multi
+List ppstree_multi(arma::mat X, arma::mat grid, arma::mat Xtest, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, int Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, int chains, int verbose);
+RcppExport SEXP _poistree_ppstree_multi(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP chainsSEXP, SEXP verboseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type X(XSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type grid(gridSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type Xtest(XtestSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< double >::type a(aSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gate(gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type a_gate(a_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type b_gate(b_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type sd_gate(sd_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gate_min(gate_minSEXP);
+    Rcpp::traits::input_parameter< int >::type gate_shared(gate_sharedSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< double >::type eta(etaSEXP);
+    Rcpp::traits::input_parameter< int >::type Dmax(DmaxSEXP);
+    Rcpp::traits::input_parameter< int >::type nmin(nminSEXP);
+    Rcpp::traits::input_parameter< int >::type iters(itersSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    Rcpp::traits::input_parameter< int >::type thin(thinSEXP);
+    Rcpp::traits::input_parameter< int >::type nmove(nmoveSEXP);
+    Rcpp::traits::input_parameter< int >::type ncc(nccSEXP);
+    Rcpp::traits::input_parameter< int >::type cut_mode(cut_modeSEXP);
+    Rcpp::traits::input_parameter< int >::type ncand(ncandSEXP);
+    Rcpp::traits::input_parameter< int >::type update_gate(update_gateSEXP);
+    Rcpp::traits::input_parameter< int >::type gate_family(gate_familySEXP);
+    Rcpp::traits::input_parameter< int >::type chains(chainsSEXP);
+    Rcpp::traits::input_parameter< int >::type verbose(verboseSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_multi(X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose));
+    return rcpp_result_gen;
+END_RCPP
+}
+// ppstree_diag
+List ppstree_diag(arma::mat X, arma::mat mon, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, int Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family);
+RcppExport SEXP _poistree_ppstree_diag(SEXP XSEXP, SEXP monSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type X(XSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type mon(monSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< double >::type a(aSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gate(gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type a_gate(a_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type b_gate(b_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type sd_gate(sd_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gate_min(gate_minSEXP);
+    Rcpp::traits::input_parameter< int >::type gate_shared(gate_sharedSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< double >::type eta(etaSEXP);
+    Rcpp::traits::input_parameter< int >::type Dmax(DmaxSEXP);
+    Rcpp::traits::input_parameter< int >::type nmin(nminSEXP);
+    Rcpp::traits::input_parameter< int >::type iters(itersSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    Rcpp::traits::input_parameter< int >::type thin(thinSEXP);
+    Rcpp::traits::input_parameter< int >::type nmove(nmoveSEXP);
+    Rcpp::traits::input_parameter< int >::type ncc(nccSEXP);
+    Rcpp::traits::input_parameter< int >::type cut_mode(cut_modeSEXP);
+    Rcpp::traits::input_parameter< int >::type ncand(ncandSEXP);
+    Rcpp::traits::input_parameter< int >::type update_gate(update_gateSEXP);
+    Rcpp::traits::input_parameter< int >::type gate_family(gate_familySEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_diag(X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family));
+    return rcpp_result_gen;
+END_RCPP
+}
+// ppt_eval_state
+arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate, arma::mat region, arma::mat newdata, int gate_mode, double gate_depth);
+RcppExport SEXP _poistree_ppt_eval_state(SEXP state_nodesSEXP, SEXP state_gateSEXP, SEXP regionSEXP, SEXP newdataSEXP, SEXP gate_modeSEXP, SEXP gate_depthSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type state_nodes(state_nodesSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type state_gate(state_gateSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type newdata(newdataSEXP);
+    Rcpp::traits::input_parameter< int >::type gate_mode(gate_modeSEXP);
+    Rcpp::traits::input_parameter< double >::type gate_depth(gate_depthSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppt_eval_state(state_nodes, state_gate, region, newdata, gate_mode, gate_depth));
+    return rcpp_result_gen;
+END_RCPP
+}
+// ppt_marginal_state
+arma::mat ppt_marginal_state(List state_nodes, arma::mat state_gate, arma::mat region, arma::vec grid, int variable, int gate_mode, double gate_depth, bool average);
+RcppExport SEXP _poistree_ppt_marginal_state(SEXP state_nodesSEXP, SEXP state_gateSEXP, SEXP regionSEXP, SEXP gridSEXP, SEXP variableSEXP, SEXP gate_modeSEXP, SEXP gate_depthSEXP, SEXP averageSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type state_nodes(state_nodesSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type state_gate(state_gateSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type grid(gridSEXP);
+    Rcpp::traits::input_parameter< int >::type variable(variableSEXP);
+    Rcpp::traits::input_parameter< int >::type gate_mode(gate_modeSEXP);
+    Rcpp::traits::input_parameter< double >::type gate_depth(gate_depthSEXP);
+    Rcpp::traits::input_parameter< bool >::type average(averageSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppt_marginal_state(state_nodes, state_gate, region, grid, variable, gate_mode, gate_depth, average));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -121,8 +276,15 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_poistree_PPT_fit_MCMC", (DL_FUNC) &_poistree_PPT_fit_MCMC, 13},
-    {"_poistree_PPT_fit_PG", (DL_FUNC) &_poistree_PPT_fit_PG, 11},
-    {"_poistree_PPT_fit_SMC", (DL_FUNC) &_poistree_PPT_fit_SMC, 9},
+    {"_poistree_PPT_fit_PG", (DL_FUNC) &_poistree_PPT_fit_PG, 12},
+    {"_poistree_PPT_fit_SMC", (DL_FUNC) &_poistree_PPT_fit_SMC, 10},
+    {"_poistree_PPT_valid_cuts", (DL_FUNC) &_poistree_PPT_valid_cuts, 6},
+    {"_poistree_PPT_transition_probabilities", (DL_FUNC) &_poistree_PPT_transition_probabilities, 5},
+    {"_poistree_ppstree_geometry", (DL_FUNC) &_poistree_ppstree_geometry, 7},
+    {"_poistree_ppstree_multi", (DL_FUNC) &_poistree_ppstree_multi, 27},
+    {"_poistree_ppstree_diag", (DL_FUNC) &_poistree_ppstree_diag, 24},
+    {"_poistree_ppt_eval_state", (DL_FUNC) &_poistree_ppt_eval_state, 6},
+    {"_poistree_ppt_marginal_state", (DL_FUNC) &_poistree_ppt_marginal_state, 8},
     {"_poistree_base_mloglik", (DL_FUNC) &_poistree_base_mloglik, 4},
     {"_poistree_split_mloglik", (DL_FUNC) &_poistree_split_mloglik, 8},
     {"_poistree_log_sum_exp_two", (DL_FUNC) &_poistree_log_sum_exp_two, 2},

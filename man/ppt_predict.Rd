@@ -28,7 +28,11 @@ A numeric vector for `mean` or `median`, or a data frame for
   `interval`.
 }
 \description{
-All current backends store posterior intensity summaries at the locations
-supplied through `predict_at` during fitting. New prediction rows must
-therefore be among those stored locations.
+Rows of `newdata` that were part of `predict_at` during fitting are served
+from the stored posterior summaries. Any other rows are evaluated
+post hoc from the retained posterior state draws via the same machinery as
+[ppt_lambda()], so prediction no longer requires listing every location
+in `predict_at` before fitting. (The two paths can differ very slightly in
+the interval convention: stored summaries follow the fitting backend,
+post-hoc summaries use the weighted quantile of [ppt_lambda()].)
 }

@@ -26,14 +26,41 @@ test_that("hard leaf RJ-MCMC uses the unified ppt API", {
   expect_true(all(is.finite(ppt_predict(fit))))
   expect_true(is.finite(as.numeric(ppt_logLik(fit))))
   expect_true(is.finite(as.numeric(ppt_lppd(fit))))
-  expect_true(is.na(ppt_evidence(fit, warn = FALSE)))
+  expect_true(is.na(fit$posterior$log_evidence))
   expect_true(is.finite(fit$posterior$mean_leaves))
   expect_true(is.finite(fit$posterior$mean_max_depth))
   expect_true(is.finite(ppt_integral(fit)))
   expect_length(ppt_integral(fit, "draws"), fit$posterior$draws)
+  expect_equal(nrow(fit$prediction$draws), nrow(grid))
+  expect_equal(ncol(fit$prediction$draws), fit$posterior$draws)
+  expect_length(
+    ppt_diagnostics(fit)$leaf_count_trace,
+    fit$control$chains * (fit$control$iter - fit$control$burn)
+  )
   expect_named(
     fit$diagnostics$tree_acceptance,
     c("grow", "prune", "change")
+  )
+  expect_length(fit$posterior$tree_draws, fit$posterior$draws)
+  marginal_draws <- ppt_marginal(
+    fit, "x", grid = grid[, 1L], type = "draws"
+  )
+  expect_true(all(is.finite(marginal_draws)))
+  x_edges <- sort(unique(c(
+    region[1L, ],
+    unlist(lapply(fit$posterior$tree_draws, function(tree) {
+      unlist(lapply(Filter(function(node) isTRUE(node$is_leaf), tree),
+                    function(node) as.matrix(node$region)[1L, ]))
+    }))
+  )))
+  x_width <- diff(x_edges)
+  exact_marginal <- ppt_marginal(
+    fit, "x", grid = head(x_edges, -1L) + x_width / 2,
+    average = FALSE, type = "draws"
+  )
+  expect_equal(
+    unname(colSums(exact_marginal * x_width)),
+    ppt_integral(fit, "draws"), tolerance = 1e-10
   )
 })
 
@@ -63,12 +90,264 @@ test_that("hard leaf PGAS uses the unified ppt API", {
   expect_true(all(is.finite(ppt_predict(fit))))
   expect_true(is.finite(as.numeric(ppt_logLik(fit))))
   expect_true(is.finite(as.numeric(ppt_lppd(fit))))
-  expect_true(is.na(ppt_evidence(fit, warn = FALSE)))
+  expect_true(is.na(fit$posterior$log_evidence))
   expect_true(is.finite(fit$posterior$mean_leaves))
   expect_true(is.finite(fit$posterior$mean_max_depth))
   expect_true(is.finite(ppt_integral(fit)))
   expect_length(ppt_integral(fit, "draws"), fit$posterior$draws)
   expect_true(is.finite(fit$diagnostics$particle_ess))
+  expect_true(isTRUE(fit$control$conditional_smc))
+  expect_false(isTRUE(fit$control$ancestor_sampling))
+  expect_identical(fit$control$resampling_schedule, "tree_level")
+  expect_equal(dim(fit$prediction$draws),
+               c(nrow(grid), fit$posterior$draws))
+  expect_length(fit$posterior$tree_draws, fit$posterior$draws)
+  marginal_draws <- ppt_marginal(
+    fit, "x", grid = grid[, 1L], type = "draws"
+  )
+  expect_true(all(is.finite(marginal_draws)))
+  x_edges <- sort(unique(c(
+    region[1L, ],
+    unlist(lapply(fit$posterior$tree_draws, function(tree) {
+      unlist(lapply(Filter(function(node) isTRUE(node$is_leaf), tree),
+                    function(node) as.matrix(node$region)[1L, ]))
+    }))
+  )))
+  x_width <- diff(x_edges)
+  exact_marginal <- ppt_marginal(
+    fit, "x", grid = head(x_edges, -1L) + x_width / 2,
+    average = FALSE, type = "draws"
+  )
+  expect_equal(
+    unname(colSums(exact_marginal * x_width)),
+    ppt_integral(fit, "draws"), tolerance = 1e-10
+  )
+  expect_length(
+    ppt_diagnostics(fit)$leaf_count_trace,
+    fit$posterior$draws
+  )
+})
+
+test_that("transition replay law matches the one-step-ahead proposal", {
+  cases <- list(
+    list(
+      x = matrix(seq(0.05, 0.95, length.out = 20L), ncol = 1L),
+      region = matrix(c(0, 1), nrow = 1L)
+    ),
+    list(
+      x = matrix(
+        ((seq_len(90L) * c(17, 31, 43)) %% 97) / 97,
+        ncol = 3L, byrow = TRUE
+      ),
+      region = matrix(rep(c(0, 1), 3L), ncol = 2L, byrow = TRUE)
+    )
+  )
+
+  for (case in cases) {
+    law <- poistree:::PPT_transition_probabilities(
+      case$x, case$region,
+      min_leaf_n = 1L, cut_grid_n = 5L,
+      max_aspect_ratio = Inf
+    )
+
+    expect_gt(sum(law$action == "split"), 1L)
+    expect_true(all(is.finite(law$log_probability)))
+    expect_equal(sum(law$probability), 1, tolerance = 1e-12)
+    expect_equal(
+      law$replay_split_probability,
+      law$proposal_split_probability,
+      tolerance = 1e-12
+    )
+  }
+})
+
+test_that("serialized split probability is a probability rather than S", {
+  x <- matrix(seq(0.03, 0.97, length.out = 30L), ncol = 1L)
+  region <- matrix(c(0, 1), nrow = 1L)
+  raw <- poistree:::PPT_fit_SMC(
+    x, matrix(0.5, ncol = 1L), region,
+    max_depth = 1L, P = 12L, min_leaf_n = 1L,
+    resample_thresh = 0.5, a = 0.5, b = 0,
+    max_aspect_ratio = Inf
+  )
+  probability <- vapply(
+    raw$particle, function(tree) as.numeric(tree[[1L]]$prob_split),
+    numeric(1)
+  )
+  decision <- vapply(
+    raw$particle, function(tree) as.numeric(tree[[1L]]$S), numeric(1)
+  )
+
+  expect_true(all(is.finite(probability)))
+  expect_true(all(probability > 0 & probability < 1))
+  expect_false(isTRUE(all.equal(probability, decision)))
+})
+
+test_that("conditional SMC preserves the complete reference when P equals one", {
+  x <- matrix(
+    c(seq(0.02, 0.16, length.out = 20L),
+      seq(0.82, 0.98, length.out = 20L)),
+    ncol = 1L
+  )
+  region <- matrix(c(0, 1), nrow = 1L)
+
+  set.seed(1)
+  raw <- poistree:::PPT_fit_PG(
+    x, matrix(0.5, ncol = 1L), region,
+    max_depth = 2L, niter = 8L, P = 1L,
+    min_leaf_n = 2L, resample_thresh = 0.5,
+    a = 0.5, b = 0, verbose = FALSE,
+    max_aspect_ratio = Inf
+  )
+
+  topology_signature <- function(tree) {
+    paste(vapply(tree, function(node) {
+      if (is.null(node)) return("_")
+      paste(
+        as.integer(node$S), as.integer(node$J),
+        format(as.numeric(node$L), digits = 16), sep = ":"
+      )
+    }, character(1)), collapse = "|")
+  }
+  signatures <- vapply(
+    raw$particles, topology_signature, character(1)
+  )
+
+  # This data set makes the initial reference nontrivial, so preservation is
+  # testing more than a root-only stop tree.
+  expect_identical(as.integer(raw$particles[[1L]][[1L]]$S), 1L)
+  expect_length(unique(signatures), 1L)
+  expect_equal(as.numeric(raw$weights), rep(1, ncol(raw$weights)))
+})
+
+test_that("Particle Gibbs honors a proper nondefault Gamma leaf prior", {
+  x <- matrix(seq(2.1, 3.9, length.out = 6L), ncol = 1L)
+  region <- matrix(c(2, 4), nrow = 1L)
+  a <- 2.3
+  b <- 4.0
+
+  set.seed(730)
+  raw <- poistree:::PPT_fit_PG(
+    x, matrix(3, ncol = 1L), region,
+    max_depth = 0L, niter = 8000L, P = 1L,
+    min_leaf_n = 1L, resample_thresh = 0.5,
+    a = a, b = b, verbose = FALSE,
+    max_aspect_ratio = Inf
+  )
+  lambda <- as.numeric(raw$lambda$draws)
+
+  # On a region of length two the exact posterior is Ga(a+n, b+2).
+  expected_mean <- (a + nrow(x)) / (b + 2)
+  expected_variance <- (a + nrow(x)) / (b + 2)^2
+  expect_equal(mean(lambda), expected_mean, tolerance = 0.03)
+  expect_equal(stats::var(lambda), expected_variance, tolerance = 0.03)
+})
+
+test_that("depth-one Particle Gibbs has the enumerated posterior law", {
+  x <- matrix(
+    c(seq(0.03, 0.23, length.out = 15L),
+      seq(0.75, 0.97, length.out = 15L)),
+    ncol = 1L
+  )
+  region <- matrix(c(0, 1), nrow = 1L)
+  law <- poistree:::PPT_transition_probabilities(
+    x, region, min_leaf_n = 1L, cut_grid_n = 30L,
+    max_aspect_ratio = Inf
+  )
+
+  set.seed(11)
+  raw <- poistree:::PPT_fit_PG(
+    x, matrix(0.5, ncol = 1L), region,
+    max_depth = 1L, niter = 12000L, P = 4L,
+    min_leaf_n = 1L, resample_thresh = 0.5,
+    a = 0.5, b = 0, verbose = FALSE,
+    max_aspect_ratio = Inf
+  )
+  roots <- lapply(raw$particles, `[[`, 1L)
+
+  observed <- numeric(length(law$probability))
+  observed[law$action == "stop"] <- mean(vapply(
+    roots, function(node) node$S == 0L, logical(1)
+  ))
+  split_rows <- which(law$action == "split")
+  for (k in split_rows) {
+    observed[k] <- mean(vapply(roots, function(node) {
+      node$S == 1L && node$J == law$axis[k] - 1L &&
+        abs(node$L - law$cut[k]) < 1e-10
+    }, logical(1)))
+  }
+
+  expect_equal(sum(observed), 1, tolerance = 1e-12)
+  expect_lt(max(abs(observed - law$probability)), 0.02)
+})
+
+test_that("conditional-SMC Particle Gibbs returns valid tree partitions", {
+  set.seed(912)
+  x <- cbind(runif(50), runif(50))
+  region <- matrix(rep(c(0, 1), 2L), ncol = 2L, byrow = TRUE)
+  fit <- ppt_fit(
+    x, region, gating = "hard", scales = "leaf", sampler = "pgas",
+    max_depth = 3L, min_leaf_n = 1L,
+    particles = 12L, chains = 1L, iter = 14L, burn = 2L,
+    seed = 913L, verbose = FALSE
+  )
+
+  check_tree <- function(tree) {
+    leaves <- integer()
+    for (i in seq_along(tree)) {
+      node <- tree[[i]]
+      if (is.null(node)) next
+
+      if (i > 1L) {
+        parent <- tree[[i %/% 2L]]
+        expect_false(is.null(parent))
+        expect_false(isTRUE(parent$is_leaf))
+        expect_equal(node$depth, parent$depth + 1L)
+      }
+
+      box <- as.matrix(node$region)
+      expect_true(all(is.finite(box)))
+      expect_true(all(box[, 2L] > box[, 1L]))
+
+      if (isTRUE(node$is_leaf)) {
+        leaves <- c(leaves, i)
+        next
+      }
+
+      expect_identical(as.integer(node$S), 1L)
+      left_id <- 2L * i
+      right_id <- left_id + 1L
+      expect_lte(right_id, length(tree))
+      left <- tree[[left_id]]
+      right <- tree[[right_id]]
+      expect_false(is.null(left))
+      expect_false(is.null(right))
+      expect_equal(
+        sort(c(as.integer(left$idx), as.integer(right$idx))),
+        sort(as.integer(node$idx))
+      )
+      expect_length(intersect(left$idx, right$idx), 0L)
+
+      axis <- as.integer(node$J) + 1L
+      expect_gte(axis, 1L)
+      expect_lte(axis, nrow(box))
+      expect_equal(as.matrix(left$region)[axis, 2L], node$L)
+      expect_equal(as.matrix(right$region)[axis, 1L], node$L)
+    }
+
+    leaf_nodes <- tree[leaves]
+    expect_equal(
+      sort(unlist(lapply(leaf_nodes, `[[`, "idx"), use.names = FALSE)),
+      seq_len(nrow(x))
+    )
+    leaf_volume <- sum(vapply(leaf_nodes, function(node) {
+      box <- as.matrix(node$region)
+      prod(box[, 2L] - box[, 1L])
+    }, numeric(1)))
+    expect_equal(leaf_volume, 1, tolerance = 1e-12)
+  }
+
+  invisible(lapply(fit$posterior$tree_draws, check_tree))
 })
 
 test_that("all PPT samplers return the same unified schema", {
@@ -103,43 +382,22 @@ test_that("all PPT samplers return the same unified schema", {
   expect_identical(names(pgas$diagnostics), names(smc$diagnostics))
 })
 
-test_that("non-PPT component combinations are reserved", {
+test_that("PGAS rejects non-hard-leaf configurations", {
   x <- matrix(seq(0.1, 0.9, length.out = 20), ncol = 1)
   region <- matrix(c(0, 1), nrow = 1)
 
   expect_error(
     ppt_fit(
       x, region, gating = "soft", scales = "leaf",
-      sampler = "rjmcmc"
-    ),
-    "reserved for future model backends"
-  )
-  expect_error(
-    ppt_fit(
-      x, region, gating = "hard", scales = "multiscale",
-      sampler = "rjmcmc"
-    ),
-    "reserved for future model backends"
-  )
-  expect_error(
-    ppt_fit(
-      x, region, gating = "soft", scales = "leaf",
-      sampler = "pgas"
-    ),
-    "available only for the hard-gated, terminal-leaf PPT"
-  )
-  expect_error(
-    ppt_fit(
-      x, region, gating = "hard", scales = "multiscale",
       sampler = "pgas"
     ),
     "available only for the hard-gated, terminal-leaf PPT"
   )
 })
 
-test_that("soft-gating native functions are absent", {
+test_that("new native functions are present and legacy exports are absent", {
   native_names <- ls(asNamespace("poistree"), all.names = TRUE)
-  expect_false(any(grepl("ppstree|soft", native_names, ignore.case = TRUE)))
+  expect_true(any(grepl("ppstree", native_names, ignore.case = TRUE)))
   expect_false("PPT.MCMC" %in% getNamespaceExports("poistree"))
   expect_false("PPT.lppd" %in% getNamespaceExports("poistree"))
   expect_false(exists("PPT.MCMC", envir = asNamespace("poistree"), inherits = FALSE))

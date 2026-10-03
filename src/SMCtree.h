@@ -32,12 +32,11 @@ public:
 	// members
 	int P; // number of particles
 	int niter; // number of PG iterations
-	double resample_thresh; // resampling rate
-	double force_mid_cut; 
+	double resample_thresh = 0.5; // resampling rate
+	double force_mid_cut = 0.0;
 
     std::vector< PPT > particles; // List of particles (each a tree)
     arma::vec weights;     // Particle weights over time
-    arma::imat ancestors;  // Ancestor indices
     arma::vec ESS_hist;    // Effective sample size history
     double logZ_hat = 0.0; // SMC log marginal-evidence estimate, relative to the root model (Z/Q0(D))
     arma::vec logZ_inc;    // per-step increment Delta_t (sum = logZ_hat; aligned with ESS_hist)
@@ -64,27 +63,28 @@ public:
 	    }
 	    particles.clear();    // clears the vector itself
 	    weights.reset();      // set to empty
-	    ancestors.reset();
 	    ESS_hist.reset();
 	}
    // member function declarations
-    void init(const arma::mat& region_root, int n, int max_depth, int min_leaf_n, 
+   void init(const arma::mat& region_root, int n, int max_depth, int min_leaf_n, 
         double a=.5, double b=0.0,
-        double rho=0.95, int cut_grid_n=30
+        double rho=0.95, int cut_grid_n=30,
+        double max_aspect_ratio=std::numeric_limits<double>::infinity()
     	){
 	    for (int p = 0; p < P; ++p) {
 	        particles[p].initialize(region_root, n, max_depth, 
-	        	min_leaf_n, a, b, rho, cut_grid_n);
+	        	min_leaf_n, a, b, rho, cut_grid_n, 2.0,
+                max_aspect_ratio);
 	    
         }
-        resample_thresh = 0.5;
     }
 
 
     void init_AS(const PPT& ref_tree, const arma::mat& region_root, int n, 
     	int max_depth, int min_leaf_n, 
         double a=.5, double b=0.0,
-        double rho=0.95, int cut_grid_n=30
+        double rho=0.95, int cut_grid_n=30,
+        double max_aspect_ratio=std::numeric_limits<double>::infinity()
     	) {
         int P = particles.size();
         for (int p = 0; p < P; ++p) {
@@ -93,7 +93,7 @@ public:
                 particles[p] = ref_tree.deep_copy();
             } else {
                 particles[p].initialize(region_root, n, max_depth, min_leaf_n, 
-	        	a, b, rho, cut_grid_n);
+	        	a, b, rho, cut_grid_n, 2.0, max_aspect_ratio);
             }
         }
 
@@ -117,15 +117,13 @@ public:
     	int idmax = arma::index_max(weights);
         return idmax;
     }
-    PPT get_trajectory(const arma::imat& ancestors,
-                const std::vector< PPT >& particles);
-
     // PPT routines 
     void PPT_SMC(const arma::mat& pts,
                    int max_depth,
 				   int min_leaf_n, 
 				   double a, double b,
 				   double rho, double lam, int cut_grid_n,
+                   double max_aspect_ratio,
                    bool verbose = true);
 
 
@@ -135,12 +133,14 @@ public:
 						   int min_leaf_n, 
 						   double a, double b, 
 						   double rho, double lam, int cut_grid_n,
+                           double max_aspect_ratio,
                            bool verbose = true);
 	Rcpp::List PPT_PGAS(const arma::mat& pts, const arma::mat& grid,
 						   int niter, int max_depth, 
 						   int min_leaf_n, 
 						   double a, double b,
-						   double rho, double lam, int cut_grid_n,                          
+						   double rho, double lam, int cut_grid_n,                         
+                           double max_aspect_ratio,
                            bool verbose=true);
 
 

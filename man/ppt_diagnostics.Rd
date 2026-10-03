@@ -15,7 +15,6 @@ ppt_diagnostics(object, plot = FALSE)
 An object of class `ppt_diagnostics`.
 }
 \description{
-Reports the acceptance information exposed by the selected backend together
-with the number of retained draws. Full scalar traces will be added when the
-backends retain them in fitted objects.
+Reports the acceptance information and scalar traces exposed by the selected
+backend together with the number of retained draws.
 }
