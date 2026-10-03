@@ -1,14 +1,16 @@
 .ppt_backend_key <- function(gating, scales, sampler) {
-  paste(gating, scales, sampler, sep = ":")
+  paste(c(gating, scales, sampler), collapse = ":")
 }
 
-# Backend names are stored as strings so the registry can be created before
-# the implementation functions are loaded.
+# Backend names are stored as strings so this registry can be created before
+# the implementation functions are loaded. Add future models here; the public
+# `ppt_fit()` signature and fitted-object contract need not change.
 .ppt_backend_registry <- c(
   "hard:leaf:smc" = ".ppt_fit_hard_leaf_smc",
   "hard:leaf:rjmcmc" = ".ppt_fit_hard_leaf_rjmcmc",
   "hard:leaf:pgas" = ".ppt_fit_hard_leaf_pgas",
-  "soft:leaf:rjmcmc" = ".ppt_fit_soft_leaf_rjmcmc"
+  "soft:leaf:rjmcmc" = ".ppt_fit_soft_leaf_rjmcmc",
+  "soft:leaf:pgas" = ".ppt_fit_soft_leaf_pgas"
 )
 
 .ppt_model_components <- function(model) {

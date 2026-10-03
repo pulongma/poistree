@@ -382,16 +382,17 @@ test_that("all PPT samplers return the same unified schema", {
   expect_identical(names(pgas$diagnostics), names(smc$diagnostics))
 })
 
-test_that("PGAS rejects non-hard-leaf configurations", {
+test_that("only terminal-leaf scales are accepted", {
   x <- matrix(seq(0.1, 0.9, length.out = 20), ncol = 1)
   region <- matrix(c(0, 1), nrow = 1)
 
   expect_error(
-    ppt_fit(
-      x, region, gating = "soft", scales = "leaf",
-      sampler = "pgas"
-    ),
-    "available only for the hard-gated, terminal-leaf PPT"
+    ppt_fit(x, region, gating = "hard", scales = "other"),
+    "'arg' should be"
+  )
+  expect_error(
+    ppt_fit(x, region, gating = "soft", sampler = "smc"),
+    "not available"
   )
 })
 

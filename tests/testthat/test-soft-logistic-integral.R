@@ -55,19 +55,17 @@ test_that("deep logistic child exposures add to their parent", {
   split <- 0.50
   region <- matrix(c(0, 1), nrow = 1L)
   points <- matrix(seq(0, 1, length.out = 31L), ncol = 1L)
+  geometry <- function(cuts, sides, gate) {
+    poistree:::ppstree_geometry(
+      rep(1L, length(cuts)), cuts, rep(1, length(cuts)), sides,
+      points, region, gate
+    )
+  }
 
   for (gate in c(2, 10, 30, 500)) {
-    parent <- poistree:::ppstree_geometry(
-      rep(1L, length(cuts)), cuts, rep(1, length(cuts)), sides, points, region, gate
-    )
-    left <- poistree:::ppstree_geometry(
-      rep(1L, length(cuts) + 1L), c(cuts, split), rep(1, length(cuts) + 1L), c(sides, -1L),
-      points, region, gate
-    )
-    right <- poistree:::ppstree_geometry(
-      rep(1L, length(cuts) + 1L), c(cuts, split), rep(1, length(cuts) + 1L), c(sides, 1L),
-      points, region, gate
-    )
+    parent <- geometry(cuts, sides, gate)
+    left <- geometry(c(cuts, split), c(sides, -1L), gate)
+    right <- geometry(c(cuts, split), c(sides, 1L), gate)
     expected <- logistic_path_integral(cuts, sides, gate)
 
     expect_equal(parent$H, expected, tolerance = 2e-9)

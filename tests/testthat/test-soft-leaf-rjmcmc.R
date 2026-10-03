@@ -1,17 +1,26 @@
-test_that("defaults select S-PPT and hard gating selects PPT", {
+test_that("defaults select S-PPT; hard gating selects PPT", {
   x <- matrix(seq(0.1, 0.9, length.out = 20), ncol = 1)
   region <- matrix(c(0, 1), nrow = 1)
-  soft <- ppt_fit(x, region, chains = 1, iter = 20, burn = 5,
-    thin = 2, max_depth = 1, tree_moves = 0, change_moves = 0,
-    cut_candidates = 3, update_gate = FALSE, verbose = FALSE)
-  hard <- ppt_fit(x, region, gating = "hard", chains = 1,
-    iter = 20, burn = 5, max_depth = 1, cut_candidates = 3,
-    verbose = FALSE)
+  soft <- ppt_fit(
+    x, region, chains = 1, iter = 20, burn = 5, thin = 2, max_depth = 1,
+    tree_moves = 0, change_moves = 0, cut_candidates = 3,
+    update_gate = FALSE, verbose = FALSE
+  )
+  hard <- ppt_fit(
+    x, region, gating = "hard", chains = 1, iter = 20, burn = 5,
+    max_depth = 1, cut_candidates = 3, prediction_draws = 5, verbose = FALSE
+  )
   expect_identical(soft$model$label, "S-PPT")
   expect_identical(hard$model$label, "PPT")
+  expect_identical(soft$model$sampler, "rjmcmc")
+  expect_identical(hard$model$sampler, "rjmcmc")
   expect_identical(soft$model$scales, "leaf")
+  expect_identical(hard$model$scales, "leaf")
   expect_identical(soft$control$min_leaf_n, 1L)
   expect_identical(hard$control$min_leaf_n, 1L)
+
+  ## The default S-PPT stores enough state for post-hoc evaluation, even
+  ## though no `predict_at` locations were supplied during fitting.
   surface <- ppt_lambda(soft, n = 7)
   expect_equal(nrow(surface), 7L)
   expect_true(all(is.finite(surface$mean)))
@@ -84,17 +93,6 @@ test_that("default logistic children partition their parent exactly", {
 
   expect_equal(left$phi + right$phi, root$phi, tolerance = 1e-12)
   expect_equal(left$H + right$H, root$H, tolerance = 1e-12)
-
-  deep <- poistree:::ppstree_geometry(
-    c(1L, 1L), c(0.4, 0.2), c(1, 0.4), c(-1L, 1L),
-    points, region, gate = 9
-  )
-  expected_x <- stats::integrate(
-    function(z) stats::plogis(-9 * (z - 0.4)) *
-      stats::plogis(9 * (z - 0.2)),
-    0, 1, rel.tol = 1e-12
-  )$value
-  expect_equal(deep$H, 3 * expected_x, tolerance = 1e-9)
 })
 
 test_that("compact gate remains available as an explicit option", {
@@ -110,8 +108,6 @@ test_that("compact gate remains available as an explicit option", {
     verbose = FALSE
   )
   expect_identical(fit$model$gate_family, "compact")
-
-
 })
 
 test_that("all unified models use the same output schema", {
@@ -165,7 +161,7 @@ test_that("all unified models use the same output schema", {
 test_that("soft-tree native identifiers put S before T", {
   native_names <- ls(asNamespace("poistree"), all.names = TRUE)
   expect_true(any(grepl("ppstree", native_names, fixed = TRUE)))
-  forbidden_order <- paste0("pp", "ts")
+  forbidden_order <- "ppts"
   expect_false(any(vapply(
     forbidden_order,
     function(pattern) any(grepl(pattern, native_names, ignore.case = TRUE)),

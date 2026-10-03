@@ -3,7 +3,7 @@
 // state draws.
 //
 // Every RJ-MCMC backend stores, for each retained draw, one matrix with a row
-// per node and columns (heap id, axis, cut, lambda, reserved, m), plus the gate
+// per node and columns (heap id, axis, cut, lambda, xi, m), plus the gate
 // vector of the draw for soft fits.  Given that state, the intensity
 //   lambda(s) = sum_v lambda_v phi_v(s)
 // is reproducible EXACTLY at arbitrary locations: the node boxes follow from
@@ -224,7 +224,7 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
       if (!gate.is_finite() || arma::any(gate <= 0.0))
         stop("soft state draw has an invalid gate vector");
     }
-    // contributing nodes and, for soft fits, their ancestor gate paths
+    // contributing leaves and, for soft fits, their ancestor gate paths
     std::vector<int> contrib;
     contrib.reserve(nn);
     for (int r = 0; r < nn; r++)
@@ -252,7 +252,7 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
       const arma::rowvec x = newdata.row(i);
       double val = 0.0;
       if (gate_mode == 0) {
-        // Hard routing takes the rate of the terminal leaf.
+        // hard: route from the root and take the leaf rate
         long h = 1;
         for (;;) {
           const SNode&z = nd[at[h]];

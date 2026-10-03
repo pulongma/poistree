@@ -1,7 +1,7 @@
 # poistree
 
-`poistree` fits Bayesian terminal-leaf tree models for Poisson point-process
-intensities. Select the gating rule and posterior sampler with `ppt_fit()`:
+`poistree` fits Bayesian tree models for Poisson point-process intensities.
+Its component API separates the gating rule from the posterior sampler:
 
 ```r
 fit <- ppt_fit(
@@ -13,22 +13,38 @@ fit <- ppt_fit(
 )
 ```
 
+The two models are:
+
 | Model | Gating | Intensity | Available samplers |
 |---|---|---|---|
 | PPT | hard | terminal leaf | SMC, RJ-MCMC, Particle Gibbs (`pgas` token) |
-| S-PPT | soft | terminal leaf | RJ-MCMC |
+| S-PPT | soft | terminal leaf | RJ-MCMC, Particle Gibbs with ancestor sampling (`pgas`) |
 
-The default call fits S-PPT:
+`scales` is reserved and accepts only `"leaf"`. The default call fits S-PPT
+by RJ-MCMC:
 
 ```r
 sppt <- ppt_fit(
-  x, region, predict_at = prediction_grid,
+  x, region,
+  predict_at = prediction_grid,
   chains = 4, iter = 10000, burn = 2500
 )
+```
 
+Explicit `gating = "hard"` selects PPT:
+
+```r
 ppt <- ppt_fit(
-  x, region, gating = "hard", sampler = "smc",
+  x, region,
+  gating = "hard", sampler = "smc",
   predict_at = prediction_grid, particles = 1000
+)
+
+ppt_mcmc <- ppt_fit(
+  x, region,
+  gating = "hard", sampler = "rjmcmc",
+  predict_at = prediction_grid,
+  chains = 4, iter = 10000, burn = 2500
 )
 ```
 
@@ -43,10 +59,39 @@ constraints remain active in either case. The default minimum child occupancy
 is `min_leaf_n = 1` for every model and sampler; larger values can be supplied
 as an explicit regularization or computational control.
 
-For backward compatibility, `sampler = "pgas"` selects the exact
-conditional-SMC Particle-Gibbs backend. Ancestor sampling is currently
-disabled: its valid tree-specific implementation requires a full suffix
-target ratio, rather than only the probability of the next reference action.
+For the hard PPT, `sampler = "pgas"` selects the exact conditional-SMC
+Particle-Gibbs backend without ancestor sampling. For S-PPT it selects
+Particle Gibbs with ancestor sampling (PGAS): the conditional SMC runs over
+the tree and the latent allocation variables of the observations jointly, one heap node per step,
+with the exact one-step-ahead proposal (a Poisson-binomial expectation over
+the allocations of the node's observations to its children) for nodes with at most `exact_max`
+points and, above that, a Laplace approximation of the same expectation written
+as a one-dimensional Beta integral (O(m) per candidate, correct tails).
+Above `exact_max` the allocation of the node's points is proposed either by
+sequential imputation or through auxiliary child rates (`allocation`), with
+exact importance weights in both cases.
+Conditional multinomial resampling with ancestor sampling takes place after
+every heap node at which a particle advanced (`resampling = "node"`) or after
+every tree level (`"level"`), optionally only when the ESS falls below
+`ess_threshold * particles`. Ancestor sampling is made valid by
+working on a complete decision tree with a fixed per-input cut grid (global
+quantiles by default, or a user-supplied `cut_grid`), so that the full
+suffix target ratio is defined for every particle. The gate is updated by
+Metropolis--Hastings and the leaf labels by Gibbs sweeps inside the cycle.
+The particle system uses a shared-path store in the spirit of the `ResTree`
+package: particles hold handles to coloured path nodes (geometric path plus
+the points coloured to the node), the candidate expansion of each distinct
+frontier node is computed once per level and shared by every particle holding
+it, and resampling moves or copies handle maps rather than trees
+(`fit$diagnostics$expanded_nodes` reports the distinct expansions per sweep).
+
+```r
+sppt_pg <- ppt_fit(
+  x, region,
+  gating = "soft", scales = "leaf", sampler = "pgas",
+  particles = 30, iter = 1000, burn = 200, max_depth = 6
+)
+```
 
 Every backend returns class `ppt` with the same major fields. Use
 `ppt_lambda()`, `ppt_predict()`, `ppt_marginal()`, `plot()`, `ppt_summary()`,

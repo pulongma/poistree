@@ -1,8 +1,8 @@
 Package: poistree
 Type: Package
 Title: Bayesian Poisson Point Process Tree Models
-Version: 0.2.2
-Date: 2026-10-01
+Version: 0.3.0
+Date: 2026-10-03
 Authors@R: person(
     given = "Pulong",
     family = "Ma",
@@ -11,13 +11,13 @@ Authors@R: person(
     comment = c("Personal email" = "mpulong@gmail.com")
     )
 Maintainer: Pulong Ma <plma@iastate.edu>
-Description: Bayesian Poisson process trees for intensity estimation on high-dimensional covariate space. The extensible unified interface
-    separates the gating mechanism, intensity structure, scale prior, and
-    posterior sampler. Implemented models include hard and soft terminal-leaf
-    Poisson process trees and hard and soft Poisson process trees.
-    Available algorithms include sequential Monte Carlo, reversible-jump
-    Markov chain Monte Carlo, and informed reversible-jump Markov chain Monte
-    Carlo.
+Description: Bayesian Poisson process trees for intensity estimation on
+    high-dimensional covariate space. The extensible unified interface
+    separates the gating mechanism from the posterior sampler. Implemented
+    models are the hard-gated Poisson process tree (PPT) and the soft-gated
+    Poisson process tree (S-PPT), both with terminal-leaf intensities.
+    Available algorithms are sequential Monte Carlo, reversible-jump
+    Markov chain Monte Carlo, and Particle Gibbs with ancestor sampling.
 License: GPL (>= 2)
 Encoding: UTF-8
 Imports:

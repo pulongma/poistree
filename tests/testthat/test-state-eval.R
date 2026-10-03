@@ -50,6 +50,8 @@ test_that("heap state reproduces stored draws: soft leaf, compact", {
   expect_state_matches_prediction(fit, grid)
 })
 
+
+
 test_that("leaf-box state reproduces stored draws: hard leaf RJ and SMC", {
   x <- make_data(105)
   grid <- matrix(runif(24), ncol = 2)
@@ -98,9 +100,9 @@ test_that("ppt_lambda summarizes on a grid and matches raw draws", {
   x1 <- matrix(runif(40), ncol = 1)
   fit1 <- ppt_fit(
     x1, matrix(c(0, 1), nrow = 1),
-    gating = "hard", scales = "leaf", sampler = "rjmcmc",
+    gating = "soft", scales = "leaf", sampler = "rjmcmc",
     max_depth = 3, min_leaf_n = 3, chains = 1, iter = 40, burn = 10,
-    cut_candidates = 4, verbose = FALSE
+    cut_candidates = 4, update_gate = FALSE, verbose = FALSE
   )
   line <- ppt_lambda(fit1, n = 15)
   expect_equal(nrow(line), 15L)

@@ -7,7 +7,7 @@ small_heap_state <- function(rates) {
     axis = c(0, 1, -1, -1, -1),
     cut = c(0.8, 0.2, NA, NA, NA),
     lambda = rates,
-    reserved = rep(NA_real_, 5),
+    xi = rep(NA_real_, 5),
     m = rep(0, 5)
   )
 }
@@ -114,6 +114,7 @@ test_that("hard terminal-leaf PPT keeps exact box marginalization", {
   expect_equal(as.numeric(projected), as.numeric(draws) * 3)
 })
 
+
 test_that("logistic S-PPT uses draw-specific analytic path integrals", {
   rates <- c(0, 0, 7, 2, 5)
   gates <- rbind(c(8, 5), c(3, 11))
@@ -138,6 +139,7 @@ test_that("logistic S-PPT uses draw-specific analytic path integrals", {
   expect_equal(as.numeric(draws[, 1]), numerical, tolerance = 2e-9)
 })
 
+
 test_that("compact S-PPT agrees with numerical domain integration", {
   fit <- make_heap_marginal_fit(
     "soft", "leaf", rates = c(0, 0, 7, 2, 5), gate_mode = 1L,
@@ -151,4 +153,3 @@ test_that("compact S-PPT agrees with numerical domain integration", {
     attr(draws, "method"), "exact posterior-state integration"
   )
 })
-

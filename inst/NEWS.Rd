@@ -1,6 +1,40 @@
 \name{NEWS}
 \title{News for Package \pkg{poistree}}
 
+\section{Changes in poistree version 0.3.0 (2026-10-03)}{
+  \subsection{New sampler}{
+    \itemize{
+      \item Added Particle Gibbs with ancestor sampling for the soft
+        terminal-leaf model through \code{ppt_fit(gating = "soft",
+        scales = "leaf", sampler = "pgas")}. The conditional SMC runs over
+        the tree and the latent allocation variables of the observations jointly on an extended
+        complete-tree space with a fixed per-input cut grid, which makes the
+        full suffix target ratio of the ancestor-sampling weights available.
+        The forward proposal is the exact one-step-ahead posterior of the
+        node decision (a Poisson-binomial expectation over the allocations of the node's observations)
+        for nodes with at most \code{exact_max} points (log-space
+        Poisson-binomial recursion) and a Laplace approximation of its
+        Beta-integral representation otherwise; the gate is updated
+        by Metropolis--Hastings and the labels by Gibbs sweeps. Resampling
+        (with ancestor sampling) takes place after every heap node at which
+        a particle advanced (\code{resampling = "node"}) or after every
+        level (\code{"level"}), subject to an optional ESS threshold
+        (\code{ess_threshold}). Above \code{exact_max} the allocation of a
+        node's points to its children is proposed by sequential imputation
+        (\code{allocation = "sequential"}) or through auxiliary child rates
+        (\code{allocation = "rates"}); both are exact importance proposals. Implemented in \code{SMCtree.cpp}
+        (class \code{SoftSMCtree}) and \code{soft_smc.h}.
+      \item The soft particle system is stored as a shared-path trie of
+        coloured path nodes (\code{SoftPathNode} in \code{soft_smc.h}):
+        the expansion of a frontier node is computed once per distinct node
+        and shared by all particles holding it, gate values are tabulated
+        once per gate vector, and resampling copies handle maps instead of
+        trees. Typically 4--10 times faster than the dense version.
+      \item Regenerated \code{RcppExports}.
+    }
+  }
+}
+
 \section{Changes in poistree version 0.2.1 (2026-08-25)}{
   \subsection{New models}{
     \itemize{

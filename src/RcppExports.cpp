@@ -107,6 +107,45 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// SPPT_fit_PGAS
+Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::mat& Xtest, const arma::mat& region, Rcpp::List cut_grid, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, bool gate_shared, double rho, double eta, int max_depth, int P, int niter, int burn, int thin, int label_sweeps, bool update_gate, bool ancestor_sampling, int exact_max, double defensive, bool resample_node, double ess_threshold, bool allocation_rates, bool verbose);
+RcppExport SEXP _poistree_SPPT_fit_PGAS(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP cut_gridSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP rhoSEXP, SEXP etaSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP niterSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP label_sweepsSEXP, SEXP update_gateSEXP, SEXP ancestor_samplingSEXP, SEXP exact_maxSEXP, SEXP defensiveSEXP, SEXP resample_nodeSEXP, SEXP ess_thresholdSEXP, SEXP allocation_ratesSEXP, SEXP verboseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type grid(gridSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type Xtest(XtestSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type cut_grid(cut_gridSEXP);
+    Rcpp::traits::input_parameter< double >::type a(aSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gate(gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type a_gate(a_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type b_gate(b_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type sd_gate(sd_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gate_min(gate_minSEXP);
+    Rcpp::traits::input_parameter< bool >::type gate_shared(gate_sharedSEXP);
+    Rcpp::traits::input_parameter< double >::type rho(rhoSEXP);
+    Rcpp::traits::input_parameter< double >::type eta(etaSEXP);
+    Rcpp::traits::input_parameter< int >::type max_depth(max_depthSEXP);
+    Rcpp::traits::input_parameter< int >::type P(PSEXP);
+    Rcpp::traits::input_parameter< int >::type niter(niterSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    Rcpp::traits::input_parameter< int >::type thin(thinSEXP);
+    Rcpp::traits::input_parameter< int >::type label_sweeps(label_sweepsSEXP);
+    Rcpp::traits::input_parameter< bool >::type update_gate(update_gateSEXP);
+    Rcpp::traits::input_parameter< bool >::type ancestor_sampling(ancestor_samplingSEXP);
+    Rcpp::traits::input_parameter< int >::type exact_max(exact_maxSEXP);
+    Rcpp::traits::input_parameter< double >::type defensive(defensiveSEXP);
+    Rcpp::traits::input_parameter< bool >::type resample_node(resample_nodeSEXP);
+    Rcpp::traits::input_parameter< double >::type ess_threshold(ess_thresholdSEXP);
+    Rcpp::traits::input_parameter< bool >::type allocation_rates(allocation_ratesSEXP);
+    Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_fit_PGAS(X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose));
+    return rcpp_result_gen;
+END_RCPP
+}
 // ppstree_geometry
 List ppstree_geometry(IntegerVector axis, NumericVector cut, NumericVector parent_width, IntegerVector side, arma::mat points, arma::mat region, arma::vec gate);
 RcppExport SEXP _poistree_ppstree_geometry(SEXP axisSEXP, SEXP cutSEXP, SEXP parent_widthSEXP, SEXP sideSEXP, SEXP pointsSEXP, SEXP regionSEXP, SEXP gateSEXP) {
@@ -280,6 +319,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poistree_PPT_fit_SMC", (DL_FUNC) &_poistree_PPT_fit_SMC, 10},
     {"_poistree_PPT_valid_cuts", (DL_FUNC) &_poistree_PPT_valid_cuts, 6},
     {"_poistree_PPT_transition_probabilities", (DL_FUNC) &_poistree_PPT_transition_probabilities, 5},
+    {"_poistree_SPPT_fit_PGAS", (DL_FUNC) &_poistree_SPPT_fit_PGAS, 29},
     {"_poistree_ppstree_geometry", (DL_FUNC) &_poistree_ppstree_geometry, 7},
     {"_poistree_ppstree_multi", (DL_FUNC) &_poistree_ppstree_multi, 27},
     {"_poistree_ppstree_diag", (DL_FUNC) &_poistree_ppstree_diag, 24},

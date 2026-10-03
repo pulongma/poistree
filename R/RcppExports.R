@@ -21,6 +21,10 @@ PPT_transition_probabilities <- function(pts, region, min_leaf_n, cut_grid_n, ma
     .Call(`_poistree_PPT_transition_probabilities`, pts, region, min_leaf_n, cut_grid_n, max_aspect_ratio)
 }
 
+SPPT_fit_PGAS <- function(X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose) {
+    .Call(`_poistree_SPPT_fit_PGAS`, X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose)
+}
+
 ppstree_geometry <- function(axis, cut, parent_width, side, points, region, gate) {
     .Call(`_poistree_ppstree_geometry`, axis, cut, parent_width, side, points, region, gate)
 }
