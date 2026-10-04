@@ -359,7 +359,6 @@ Rcpp::List SMCtree::PPT_PGAS(
         if(Progress::check_abort()){
           return R_NilValue;
         }
-        prog.increment();
 
         // cSMC sweep conditioned on current reference trajectory
         PPT_cSMC(
@@ -388,6 +387,7 @@ Rcpp::List SMCtree::PPT_PGAS(
         // Store reference tree as Rcpp::List
         ref_traj_list[iter] = ref_tree->to_R_list();
         weight_samp.col(iter) = this->weights;
+        prog.increment();
     }
     
     
@@ -914,7 +914,6 @@ Rcpp::List SoftSMCtree::PGAS(const arma::mat& grid, const arma::mat& xtest,
   int si = 0;
   for (int it = 0; it < niter; ++it) {
     if (Progress::check_abort()) return R_NilValue;
-    prog.increment();
 
     for (int h = 1; h < M.n_nodes; ++h) if (!ref.node[h].active) ref.node[h] = SoftNodeP();
     ref.bits.clear();
@@ -970,6 +969,7 @@ Rcpp::List SoftSMCtree::PGAS(const arma::mat& grid, const arma::mat& xtest,
       ++si;
     }
     if ((it & 63) == 0) Rcpp::checkUserInterrupt();
+    prog.increment();
   }
 
   Rcpp::List sn(ns);

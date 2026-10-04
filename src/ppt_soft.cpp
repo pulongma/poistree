@@ -27,11 +27,12 @@
 // own gate_j, with a (possibly lower-truncated) Gamma(shape,rate) prior and a
 // coordinate-wise log-RW MH update.
 //
-// [[Rcpp::depends(RcppArmadillo)]]
-// [[Rcpp::plugins(cpp11)]]
+// [[Rcpp::depends(RcppArmadillo, RcppProgress)]]
+// [[Rcpp::plugins(cpp17)]]
 // ============================================================================
 #include <RcppArmadillo.h>
 #include "tree_limits.h"
+#include "mcmc_progress.h"
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
@@ -574,7 +575,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
     int row0,double&mean_leaves,
     double&mean_max_depth,arma::vec&mean_gate,arma::vec&accept,
     arma::vec&gate_accept,
-    std::vector<arma::mat>&state_nodes,arma::mat&state_gate,bool informed){
+    std::vector<arma::mat>&state_nodes,arma::mat&state_gate,bool informed,bool verbose){
   int n=pts.n_rows,si=0; double nls=0.0,mds=0.0;
   arma::vec gate=gate0,gs(gate0.n_elem,arma::fill::zeros);
   PPSTree T; PPSTNode root;
@@ -586,6 +587,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
   arma::vec tga(gate.n_elem,arma::fill::zeros);
   PPSTIContext informed_context(pts,region,gate,a,b,alpha,eta,
                                 Dmax,nmin,mode,ncand,gate_family);
+  PPTMCMCProgress progress(iters, verbose);
   for(int it=0;it<iters;it++){
     ppst_label_sweep(T,labels,pts,region,a,b,gate,gate_family);
     if(update_gate){
@@ -672,7 +674,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
       }
       nls+=leaves.size();mds+=md;gs+=gate;si++;
     }
-    if((it&1023)==0) Rcpp::checkUserInterrupt();
+    progress.increment();
   }
   mean_leaves=nls/std::max(1,si);
   mean_max_depth=mds/std::max(1,si);
@@ -737,17 +739,18 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
   arma::mat acc(chains,3),gacc(chains,X.n_cols);
   std::vector<arma::mat> state_nodes(total);
   arma::mat state_gate(total,X.n_cols,arma::fill::zeros);
-  if(verbose) Rcpp::Rcout<<(informed?"S-PPT [informed RJ-MCMC]: ":"S-PPT [RJ-MCMC]: ")<<chains
+  if(verbose) Rcpp::Rcerr<<(informed?"S-PPT [informed RJ-MCMC]: ":"S-PPT [RJ-MCMC]: ")<<chains
                          <<" chains, "<<ns<<" draws/chain\n";
   for(int k=0;k<chains;k++){
+    if(verbose) Rcpp::Rcerr<<"  chain "<<k+1<<"/"<<chains<<"\n";
     arma::vec ak,gak,gm;double nl,md;
     int got=ppst_run_chain(X,grid,Xtest,region,a,b,gate,a_gate,b_gate,sd_gate,
       gate_min,gate_shared,gate_family,alpha,eta,depth,nmin,iters,burn,thin,
       nmove,ncc,cut_mode,ncand,update_gate,D,ll,llt,integrated_intensity,
-      row,nl,md,gm,ak,gak,state_nodes,state_gate,informed);
+      row,nl,md,gm,ak,gak,state_nodes,state_gate,informed,verbose != 0);
     row+=got;leaves[k]=nl;maxdepth[k]=md;gates.row(k)=gm.t();acc.row(k)=ak.t();
     gacc.row(k)=gak.t();
-    if(verbose) Rcpp::Rcout<<"  chain "<<k+1<<"/"<<chains<<" done; leaves="
+    if(verbose) Rcpp::Rcerr<<"  chain "<<k+1<<"/"<<chains<<" done; leaves="
       <<nl<<", max_depth="<<md<<", gate="<<arma::mean(gm)
       <<", gate_accept="<<arma::mean(gak)<<"\n";
   }
@@ -780,7 +783,8 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
     double a,double b,arma::vec gate,arma::vec a_gate,arma::vec b_gate,
     arma::vec sd_gate,arma::vec gate_min,int gate_shared,double alpha,
     double eta,double Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
-    int cut_mode,int ncand,int update_gate,int gate_family,bool informed=false){
+    int cut_mode,int ncand,int update_gate,int gate_family,bool informed=false,
+    bool verbose=false){
   const int depth = ppt_checked_depth(Dmax);
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||mon.n_cols!=X.n_cols)
@@ -817,6 +821,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   PPSTIContext informed_context(X,region,gate,a,b,alpha,eta,
                                 depth,nmin,cut_mode,ncand,gate_family);
 
+  PPTMCMCProgress progress(iters, verbose);
   for(int it=0;it<iters;it++){
     ppst_label_sweep(T,labels,X,region,a,b,gate,gate_family);
     if(update_gate){
@@ -881,7 +886,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
       tr_logdens[si]=ll;
       si++;
     }
-    if((it&1023)==0) Rcpp::checkUserInterrupt();
+    progress.increment();
   }
 
   arma::vec accept(3);

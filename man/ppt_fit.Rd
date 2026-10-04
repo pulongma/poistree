@@ -83,7 +83,11 @@ inputs in every iteration; or `"shared"`, one common parameter), `gate`,
 and gate-prior controls, which are scalars or vectors of length `d`.
 Only soft RJ-MCMC and informed MH accept `gate_family`, with choices
 `"logistic"` (the default) and `"compact"`. Soft PGAS uses logistic gates
-and does not accept a `gate_family` argument.}
+and does not accept a `gate_family` argument.
+All MCMC backends accept `verbose` (default `TRUE`), which displays an
+RcppProgress bar for each chain. The bar counts completed iterations,
+including burn-in and iterations discarded by thinning. Use
+`verbose = FALSE` to suppress progress bars and chain messages.}
 }
 \value{
 An object of S3 class `ppt`.

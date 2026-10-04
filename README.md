@@ -31,6 +31,10 @@ sppt <- ppt_fit(
 )
 ```
 
+MCMC fits show an RcppProgress bar for each chain by default. Each bar counts
+completed iterations, including burn-in and iterations discarded by thinning.
+Pass `verbose = FALSE` to `ppt_fit()` to suppress bars and chain messages.
+
 Explicit `gating = "hard"` selects PPT:
 
 ```r

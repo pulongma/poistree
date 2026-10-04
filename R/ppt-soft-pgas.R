@@ -100,6 +100,9 @@
 
   set.seed(seed)
   raw <- lapply(seq_len(chains), function(chain) {
+    if (isTRUE(verbose)) {
+      message("S-PPT [PGAS] chain ", chain, "/", chains)
+    }
     SPPT_fit_PGAS(
       x, predict_at, test, region, cut_grid,
       a, b, gate, a_gate, b_gate, sd_gate, gate_min,

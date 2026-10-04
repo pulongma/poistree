@@ -524,13 +524,17 @@
   raw_chains <- vector("list", chains)
   fit_native <- if (informed) PPT_fit_IMCMC else PPT_fit_MCMC
   for (chain in seq_len(chains)) {
+    if (isTRUE(verbose)) {
+      message("PPT [", if (informed) "Informed MH" else "RJ-MCMC",
+              "] chain ", chain, "/", chains)
+    }
     raw_chains[[chain]] <- fit_native(
       x, evaluation_locations, region,
       niter = kept, burnin = burn,
       max_depth = max_depth, min_leaf_n = min_leaf_n,
       cut_grid_n = cut_candidates,
       a = a, b = b, alpha = alpha, eta = eta,
-      n_pred = min(prediction_draws, kept)
+      n_pred = min(prediction_draws, kept), verbose = isTRUE(verbose)
     )
     if (isTRUE(verbose)) {
       message(
@@ -730,6 +734,9 @@
   set.seed(seed)
   raw_chains <- vector("list", chains)
   for (chain in seq_len(chains)) {
+    if (isTRUE(verbose)) {
+      message("PPT [Particle Gibbs] chain ", chain, "/", chains)
+    }
     raw_chains[[chain]] <- PPT_fit_PG(
       x, evaluation_locations, region,
       max_depth = max_depth, niter = iter, P = particles,

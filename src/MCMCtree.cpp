@@ -13,9 +13,10 @@
 #define _USE_Armadillo
 #include <RcppArmadillo.h>
 #include "tree_limits.h"
-// [[Rcpp::depends(RcppArmadillo)]]
-// [[Rcpp::plugins(cpp11)]]
+// [[Rcpp::depends(RcppArmadillo, RcppProgress)]]
+// [[Rcpp::plugins(cpp17)]]
 #endif
+#include "mcmc_progress.h"
 #include <vector>
 #include <algorithm>
 #include <cmath>
@@ -396,7 +397,7 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
                         int niter = 4000, int burnin = 1000, int max_depth = 8, int min_leaf_n = 1,
                         int cut_grid_n = 50, double a = 0.5, double b = 0.0,
                         double alpha = 0.95, double eta = 2.0, int n_pred = 300,
-                        bool informed = false) {
+                        bool informed = false, bool verbose = false) {
   ppt_checked_depth(max_depth);
   int N = pts.n_rows, d = pts.n_cols, np = grid.n_rows;
   std::unique_ptr<MNode> root_owner(new MNode(region, arma::regspace<arma::uvec>(0, N - 1), 0));
@@ -416,6 +417,7 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
   long reverse_cache_hits = 0, reverse_cache_misses = 0;
   arma::ivec neighborhood_size(niter, arma::fill::zeros);
   arma::vec log_normalizer(niter, arma::fill::zeros);
+  PPTMCMCProgress progress(static_cast<unsigned long>(niter) + burnin, verbose);
   if (informed) current = mneighborhood(root, ctl);
 
   for (int it = 0; it < niter + burnin; ++it) {
@@ -540,7 +542,7 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
         tree_draws.push_back(mtree_to_R(root));
       }
     }
-    if ((it & 1023) == 0) Rcpp::checkUserInterrupt();
+    progress.increment();
   }
 
   int K = preds.size(); arma::mat draws(np, K);
@@ -579,20 +581,22 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
 Rcpp::List PPT_fit_MCMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region,
                         int niter = 4000, int burnin = 1000, double max_depth = 8, int min_leaf_n = 1,
                         int cut_grid_n = 50, double a = 0.5, double b = 0.0,
-                        double alpha = 0.95, double eta = 2.0, int n_pred = 300) {
+                        double alpha = 0.95, double eta = 2.0, int n_pred = 300,
+                        bool verbose = false) {
   const int depth = ppt_checked_depth(max_depth);
   return mfit_tree(pts, grid, region, niter, burnin, depth, min_leaf_n,
-                   cut_grid_n, a, b, alpha, eta, n_pred, false);
+                   cut_grid_n, a, b, alpha, eta, n_pred, false, verbose);
 }
 
 // [[Rcpp::export]]
 Rcpp::List PPT_fit_IMCMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region,
                          int niter = 4000, int burnin = 1000, double max_depth = 8, int min_leaf_n = 1,
                          int cut_grid_n = 50, double a = 0.5, double b = 0.0,
-                         double alpha = 0.95, double eta = 2.0, int n_pred = 300) {
+                         double alpha = 0.95, double eta = 2.0, int n_pred = 300,
+                         bool verbose = false) {
   const int depth = ppt_checked_depth(max_depth);
   return mfit_tree(pts, grid, region, niter, burnin, depth, min_leaf_n,
-                   cut_grid_n, a, b, alpha, eta, n_pred, true);
+                   cut_grid_n, a, b, alpha, eta, n_pred, true, verbose);
 }
 
 // A deterministic diagnostic entry point for exact finite-state tests. Trees
