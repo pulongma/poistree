@@ -103,6 +103,7 @@
       length(eta) != 1L || !is.finite(eta) || eta < 0) {
     stop("Require `0 < alpha < 1` and `eta >= 0`.", call. = FALSE)
   }
+  max_depth <- .ppt_validate_depth(max_depth)
   controls <- c(
     iter, burn, thin, chains, max_depth, min_leaf_n,
     tree_moves, change_moves, cut_candidates

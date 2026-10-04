@@ -52,7 +52,8 @@ void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
   int d = pts.n_cols;
   // arma::vec lamvec = lam * arma::vec(d, arma::fill::ones);
   lam = 1.0 / d;
-  int max_nodes = std::pow(2, max_depth) - 1; // number of nodes up to the finest level
+  ppt_check_dense_storage(max_depth, P);
+  int max_nodes = ppt_tree_steps(max_depth); // number of nodes up to the finest level
   arma::mat region_root;
   if (!this->particles.empty() && !this->particles[0].nodes.empty() &&
       this->particles[0].nodes[0] != nullptr) {
@@ -69,9 +70,9 @@ void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
 
   arma::vec logw(P, arma::fill::zeros);
   arma::vec ESS_hist(max_nodes, arma::fill::zeros);
-  arma::vec logZ_inc(max_nodes, arma::fill::zeros);   // per-step incremental log evidence Delta_t
-  arma::vec logZ_run(max_nodes, arma::fill::zeros);   // running cumulative log-evidence estimate
-  double logZ = 0.0;   // running log evidence relative to the root model (unbiased for Z/Q0(root))
+  arma::vec logZ_inc(max_nodes, arma::fill::zeros);   // per-step log relative-normalizer increment Delta_t
+  arma::vec logZ_run(max_nodes, arma::fill::zeros);   // running log relative-normalizer estimate
+  double logZ = 0.0;   // log relative normalizer estimate; exp(logZ), not logZ, is unbiased
 
 
   // Initialize particles
@@ -109,10 +110,10 @@ void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
     // Log of the relative SMC normalizer estimate (adaptive resampling):
     //   logZ += lse(logw_after) - lse(logw_before).  After a resample logw is reset
     //   to 0 so lse(logw_before) = log(P) on the next step, which is correct.
-    double dlogZ = log_sum_exp(logw) - lse_before;   // per-step log-evidence increment Delta_t
+    double dlogZ = log_sum_exp(logw) - lse_before;   // per-step log relative-normalizer increment Delta_t
     logZ += dlogZ;
     logZ_inc(id) = dlogZ;                    // per-step increment (sum -> logZ_hat)
-    logZ_run(id) = logZ;                     // running cumulative log evidence (last active entry -> logZ_hat)
+    logZ_run(id) = logZ;                     // running log relative normalizer (last active entry -> logZ_hat)
 
     // // draw lambda at leaf
     // for (int p = 0; p < P; ++p) {
@@ -159,9 +160,9 @@ void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
   }
 
   this->ESS_hist = ESS_hist;
-  this->logZ_hat = logZ;                // SMC log-evidence estimate, relative to root (= last active logZ_run)
+  this->logZ_hat = logZ;                // SMC log-normalizer estimate, relative to root (= last active logZ_run)
   this->logZ_inc = logZ_inc;      // per-step increments, aligned step-for-step with ESS_hist
-  this->logZ_run = logZ_run;      // running cumulative log evidence (cumsum of logZ_inc)
+  this->logZ_run = logZ_run;      // running log relative normalizer (cumsum of logZ_inc)
 
 
   return;
@@ -194,7 +195,8 @@ void SMCtree::PPT_cSMC(
   int n = pts.n_rows;
   int d = pts.n_cols;
   lam = 1.0 / d;
-  int max_nodes = std::pow(2, max_depth) - 1; // number of nodes up to the finest level
+  ppt_check_dense_storage(max_depth, P);
+  int max_nodes = ppt_tree_steps(max_depth); // number of nodes up to the finest level
   if (ref_tree == nullptr || ref_tree->nodes.empty() ||
       ref_tree->nodes[0] == nullptr) {
       Rcpp::stop("conditional SMC requires a nonempty reference tree");
@@ -315,8 +317,12 @@ Rcpp::List SMCtree::PPT_PGAS(
   bool verbose)
 {
     int n = pts.n_rows, d = pts.n_cols;
-    if (max_depth < 0) max_depth = std::floor(std::log2(n / double(min_leaf_n)));
-    max_nodes = std::pow(2, max_depth) - 1;
+    if (max_depth < 0) {
+      if (n < 1 || min_leaf_n < 1) Rcpp::stop("Invalid automatic depth controls.");
+      max_depth = ppt_checked_depth(std::floor(std::log2(n / double(min_leaf_n))));
+    }
+    ppt_check_dense_storage(max_depth, P);
+    max_nodes = ppt_tree_steps(max_depth);
     // if (Rcpp::NumericVector::is_na(lam)) lam = 1.0 / d;
     lam = 1.0 / d;
     // --- Initialization: run ordinary SMC and sample its weighted output ---

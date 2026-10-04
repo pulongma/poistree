@@ -64,6 +64,38 @@
   region
 }
 
+.ppt_validate_depth <- function(max_depth, minimum = 0L) {
+  if (!is.numeric(max_depth) || is.complex(max_depth) || length(max_depth) != 1L ||
+      !is.finite(max_depth) || max_depth != floor(max_depth) ||
+      max_depth < minimum || max_depth > 20L) {
+    stop("`max_depth` must be a finite numeric scalar integer between ",
+         minimum, " and 20.", call. = FALSE)
+  }
+  as.integer(max_depth)
+}
+
+.ppt_validate_tree_storage <- function(max_depth, particles = 1,
+                                       layout = c("dense", "soft")) {
+  layout <- match.arg(layout)
+  max_depth <- .ppt_validate_depth(max_depth, if (layout == "soft") 1L else 0L)
+  slots <- 2^(max_depth + 1) - 1
+  if (identical(layout, "dense")) {
+    if (!is.numeric(particles) || length(particles) != 1L ||
+        !is.finite(particles) || particles < 1 ||
+        particles != floor(particles) || particles > .Machine$integer.max) {
+      stop("`particles` must be a positive representable integer.", call. = FALSE)
+    }
+    if ((2 * particles + 3) * slots > 2^24) {
+      stop("Dense tree storage limit exceeded; reduce max_depth or particles.",
+           call. = FALSE)
+    }
+  } else if (4 * (slots + 1) > 2^22) {
+    stop("Soft PGAS tree storage limit exceeded; reduce max_depth to at most 19.",
+         call. = FALSE)
+  }
+  invisible(max_depth)
+}
+
 .ppt_validate_max_aspect_ratio <- function(max_aspect_ratio) {
   if (!is.numeric(max_aspect_ratio) || length(max_aspect_ratio) != 1L ||
       is.na(max_aspect_ratio) || max_aspect_ratio < 1) {
@@ -210,6 +242,7 @@
     )
   }
 
+  max_depth <- .ppt_validate_depth(max_depth)
   controls <- c(max_depth, min_leaf_n, particles, cut_candidates)
   if (any(!is.finite(controls)) ||
       max_depth < 0 || min_leaf_n < 1 || particles < 2 || cut_candidates < 1 ||
@@ -223,6 +256,9 @@
   if (length(resample_thresh) != 1L || !is.finite(resample_thresh) ||
       resample_thresh <= 0 || resample_thresh > 1) {
     stop("resample_thresh must lie in (0, 1].", call. = FALSE)
+  }
+  if (identical(engine, "dense")) {
+    .ppt_validate_tree_storage(max_depth, particles, "dense")
   }
   max_aspect_ratio <- .ppt_validate_max_aspect_ratio(max_aspect_ratio)
   max_depth <- as.integer(max_depth)
@@ -463,6 +499,7 @@
     stop("Require `0 < alpha < 1` and `eta >= 0`.", call. = FALSE)
   }
 
+  max_depth <- .ppt_validate_depth(max_depth)
   controls <- c(
     max_depth, min_leaf_n, chains, iter, burn,
     cut_candidates, prediction_draws
@@ -669,6 +706,7 @@
       !is.finite(a) || !is.finite(b) || a <= 0 || b < 0) {
     stop("Require scalar `a > 0` and `b >= 0`.", call. = FALSE)
   }
+  max_depth <- .ppt_validate_depth(max_depth)
   controls <- c(
     max_depth, min_leaf_n, particles, chains, iter, burn, cut_candidates
   )
@@ -677,6 +715,7 @@
       chains < 1 || iter <= burn || burn < 0 || cut_candidates < 1) {
     stop("Invalid Particle-Gibbs or tree controls.", call. = FALSE)
   }
+  .ppt_validate_tree_storage(max_depth, particles, "dense")
   max_aspect_ratio <- .ppt_validate_max_aspect_ratio(max_aspect_ratio)
   max_depth <- as.integer(max_depth)
   min_leaf_n <- as.integer(min_leaf_n)

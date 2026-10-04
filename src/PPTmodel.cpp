@@ -19,10 +19,12 @@ using namespace Rcpp;
 
 
 // [[Rcpp::export]]
-Rcpp::List PPT_fit_PG(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int max_depth, 
+Rcpp::List PPT_fit_PG(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, double max_depth,
 	int niter, int P, int min_leaf_n, double resample_thresh,
 	double a, double b, bool verbose, double max_aspect_ratio, int cut_grid_n = 50)
 {
+  const int depth = ppt_checked_depth(max_depth);
+  ppt_check_dense_storage(depth, P);
 	int d = pts.n_cols;
 	int n = pts.n_rows;
 	// int np = grid.n_rows; 
@@ -34,18 +36,18 @@ Rcpp::List PPT_fit_PG(const arma::mat& pts, const arma::mat& grid, const arma::m
 
 	PPT ref_tree;
 	ref_tree.initialize(
-        region, n, max_depth, min_leaf_n, a, b, rho, cut_grid_n,
+        region, n, depth, min_leaf_n, a, b, rho, cut_grid_n,
         2.0, max_aspect_ratio
     );
 	
 
     SMCtree smc(P, n, resample_thresh);
-	smc.init_AS(ref_tree, region, n, max_depth, 
+	smc.init_AS(ref_tree, region, n, depth,
 		min_leaf_n, a, b, rho, cut_grid_n, max_aspect_ratio);	
 	smc.force_mid_cut = force_mid_cut; 
 
 	Rcpp::List PG = smc.PPT_PGAS(pts, grid, niter, 
-                          max_depth, min_leaf_n, 
+                          depth, min_leaf_n,
                           a, b,
                           rho, lam, cut_grid_n, max_aspect_ratio, verbose);
 
@@ -135,10 +137,12 @@ void summarize_particles(SMCtree&   Tsmc,
 
 
 // [[Rcpp::export]]
-Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int max_depth, 
+Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, double max_depth,
 	int P, int min_leaf_n, double resample_thresh,
 	double a, double b, double max_aspect_ratio, int cut_grid_n = 50)
 {
+  const int depth = ppt_checked_depth(max_depth);
+  ppt_check_dense_storage(depth, P);
 	int d = pts.n_cols;
 	int n = pts.n_rows;
 	int np = grid.n_rows; 
@@ -149,11 +153,11 @@ Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::
 	SMCtree pp_SMC1(P, n, resample_thresh);
 	pp_SMC1.force_mid_cut = force_mid_cut; 
 	pp_SMC1.init(
-        region, n, max_depth, min_leaf_n, a, b, rho, cut_grid_n,
+        region, n, depth, min_leaf_n, a, b, rho, cut_grid_n,
         max_aspect_ratio
     );
 	pp_SMC1.PPT_SMC(
-        pts, max_depth, min_leaf_n, a, b, rho, lam, cut_grid_n,
+        pts, depth, min_leaf_n, a, b, rho, lam, cut_grid_n,
         max_aspect_ratio
     );
 	

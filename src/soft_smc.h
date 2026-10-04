@@ -15,6 +15,7 @@
 #define POISTREE_SOFT_SMC_H
 
 #include <RcppArmadillo.h>
+#include "tree_limits.h"
 #include <vector>
 #include <algorithm>
 #include <numeric>

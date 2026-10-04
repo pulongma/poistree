@@ -20,6 +20,8 @@
 #ifndef _USE_PPT
 #define _USE_PPT
 
+#include "tree_limits.h"
+
 
 class PPT {
 public:
@@ -147,7 +149,7 @@ public:
         // Regions are stored as a d x 2 matrix: rows are dimensions and the
         // two columns are lower/upper bounds.
         this->dim = region_root.n_rows;
-        this->max_depth = max_depth_;
+        this->max_depth = ppt_checked_depth(max_depth_);
         this->a = 0.5;
         this->b = 0;
         this->min_leaf_n = 1;
@@ -157,7 +159,7 @@ public:
         this->eta = 2.0;   // depth penalty on the split prior (Chipman et al. 1998)
         this->lam = 1.0/this->dim;
         // Calculate total number of nodes (array-based binary tree)
-        max_nodes = std::pow(2, max_depth + 1) - 1;
+        max_nodes = ppt_tree_slots(max_depth);
         // Resize and initialize with nullptr
         nodes.assign(max_nodes, nullptr);
 
@@ -177,7 +179,7 @@ public:
         // Regions are stored as a d x 2 matrix: rows are dimensions and the
         // two columns are lower/upper bounds.
         this->dim = region_root.n_rows;
-        this->max_depth = max_depth_;
+        this->max_depth = ppt_checked_depth(max_depth_);
         this->a = a_;
         this->b = b_;
         this->min_leaf_n = min_leaf_n_;
@@ -187,7 +189,7 @@ public:
         this->eta = eta_;   // depth penalty on the split prior
         this->lam = 1.0/this->dim;
         // Calculate total number of nodes (array-based binary tree)
-        max_nodes = std::pow(2, max_depth + 1) - 1;
+        max_nodes = ppt_tree_slots(max_depth);
         // Resize and initialize with nullptr
         nodes.assign(max_nodes, nullptr);
 

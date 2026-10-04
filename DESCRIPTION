@@ -2,7 +2,7 @@ Package: poistree
 Type: Package
 Title: Bayesian Poisson Point Process Tree Models
 Version: 0.3.0
-Date: 2026-10-03
+Date: 2026-10-04
 Authors@R: person(
     given = "Pulong",
     family = "Ma",

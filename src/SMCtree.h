@@ -38,9 +38,9 @@ public:
     std::vector< PPT > particles; // List of particles (each a tree)
     arma::vec weights;     // Particle weights over time
     arma::vec ESS_hist;    // Effective sample size history
-    double logZ_hat = 0.0; // SMC log marginal-evidence estimate, relative to the root model (Z/Q0(D))
+    double logZ_hat = 0.0; // SMC log-normalizer estimate, relative to the root model (Z/Q0(D))
     arma::vec logZ_inc;    // per-step increment Delta_t (sum = logZ_hat; aligned with ESS_hist)
-    arma::vec logZ_run;    // running cumulative log-evidence estimate (cumsum of logZ_inc; last active = logZ_hat)
+    arma::vec logZ_run;    // running log relative-normalizer estimate (cumsum of logZ_inc; last active = logZ_hat)
 
 
     // Constructor
@@ -71,6 +71,7 @@ public:
         double rho=0.95, int cut_grid_n=50,
         double max_aspect_ratio=std::numeric_limits<double>::infinity()
     	){
+        ppt_check_dense_storage(max_depth, P);
 	    for (int p = 0; p < P; ++p) {
 	        particles[p].initialize(region_root, n, max_depth, 
 	        	min_leaf_n, a, b, rho, cut_grid_n, 2.0,
@@ -86,6 +87,7 @@ public:
         double rho=0.95, int cut_grid_n=50,
         double max_aspect_ratio=std::numeric_limits<double>::infinity()
     	) {
+        ppt_check_dense_storage(max_depth, P);
         int P = particles.size();
         for (int p = 0; p < P; ++p) {
             if (p == 0) {
@@ -175,7 +177,11 @@ public:
     double ess_threshold = 1.0;            // resample at a candidate event iff ESS <= threshold * P
     bool alloc_rates = false;              // above exact_max: allocation via auxiliary child rates
 
-    SoftSMCtree(const SoftModel& M_, int P_, bool use_as_) : M(M_), P(P_), use_as(use_as_) {}
+    SoftSMCtree(const SoftModel& M_, int P_, bool use_as_) : M(M_), P(P_), use_as(use_as_) {
+        ppt_check_soft_storage(M.Dmax);
+        if (M.n_nodes != ppt_tree_slots(M.Dmax) + 1)
+            Rcpp::stop("Invalid soft tree allocation size.");
+    }
 
     // shared-path machinery
     void build_gate_table(const arma::vec& gate);

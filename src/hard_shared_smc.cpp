@@ -196,7 +196,7 @@ void HardSMCtree::resample() {
 }
 
 void HardSMCtree::sweep() {
-  const int T = (1 << Dmax) - 1;
+  const int T = ppt_tree_steps(Dmax);
   store.clear();
   n_expanded = 0; n_resampled = 0;
   const int root = make_root();
@@ -280,13 +280,14 @@ Rcpp::List HardSMCtree::export_particles(const arma::mat& grid, arma::mat& lam_d
 
 // [[Rcpp::export]]
 Rcpp::List PPT_fit_SMC_shared(const arma::mat& pts, const arma::mat& grid, const arma::mat& region,
-                              int max_depth, int P, int min_leaf_n, double resample_thresh,
+                              double max_depth, int P, int min_leaf_n, double resample_thresh,
                               double a, double b, double max_aspect_ratio, int cut_grid_n) {
+  const int depth = ppt_checked_depth(max_depth);
   const int d = pts.n_cols;
   if (pts.n_rows == 0 || d == 0) Rcpp::stop("pts must be a non-empty matrix");
   if ((int)region.n_rows != d || region.n_cols != 2) Rcpp::stop("region must be a d by 2 matrix");
-  if (max_depth < 0 || P < 1 || min_leaf_n < 1 || cut_grid_n < 1) Rcpp::stop("invalid SMC controls");
-  HardSMCtree smc(pts, region, max_depth, min_leaf_n, cut_grid_n, P, a, b, 0.5, 2.0, max_aspect_ratio, resample_thresh);
+  if (depth < 0 || P < 1 || min_leaf_n < 1 || cut_grid_n < 1) Rcpp::stop("invalid SMC controls");
+  HardSMCtree smc(pts, region, depth, min_leaf_n, cut_grid_n, P, a, b, 0.5, 2.0, max_aspect_ratio, resample_thresh);
   smc.sweep();
 
   arma::mat lam_draws; arma::vec loglik, lppd, integral;
