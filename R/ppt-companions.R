@@ -6,6 +6,9 @@
 #' fields contain increments and cumulative sums of the log normalizer
 #' relative to the root score. They are not absolute model evidence.
 #' With `b = 0`, these use the backend's formal improper-prior leaf scores.
+#' For PCG, `gate_joint_acceptance` reports joint gate acceptance and `ram`
+#' contains final proposal factors/covariances and adaptation counts per chain.
+#' The per-dimension gate acceptance entries repeat the joint acceptance rate.
 #'
 #' @param object A fitted `ppt` object.
 #' @param plot Draw an acceptance-rate bar plot.
@@ -37,6 +40,14 @@ ppt_diagnostics <- function(object, plot = FALSE) {
     ),
     class = "ppt_diagnostics"
   )
+  if (identical(object$model$sampler, "pcg")) {
+    out$gate_joint_acceptance <- object$diagnostics$gate_joint_acceptance
+    out$chain_gate_joint_acceptance <-
+      object$diagnostics$chain_gate_joint_acceptance
+    out$chain_gate_joint_acceptance_probability <-
+      object$diagnostics$chain_gate_joint_acceptance_probability
+    out$ram <- object$diagnostics$ram
+  }
   if (isTRUE(plot)) plot(out)
   out
 }

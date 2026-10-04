@@ -49,11 +49,58 @@
   )
 }
 
+.ppt_fit_soft_leaf_pcg <- function(
+    x, region, predict_at = x, test = NULL,
+    a = 0.5, b = NULL,
+    gate = 12, a_gate = 36, b_gate = 3,
+    sd_gate = 0.07, gate_min = 0,
+    gate_family = c("logistic", "compact"),
+    gate_structure = c("dimension", "shared"),
+    update_gate = TRUE,
+    alpha = 0.95, eta = 2,
+    max_depth = 8L, min_leaf_n = 1L,
+    chains = 4L, iter = 10000L, burn = 2500L, thin = 3L,
+    tree_moves = 3L, change_moves = 8L,
+    cut_proposal = c("quantile", "uniform", "data"),
+    cut_candidates = 50L, seed = 1L, verbose = TRUE,
+    ram_target = 0.234, ram_decay = 0.7, ram_adapt = NULL) {
+  .ppt_fit_soft_leaf_mcmc(
+    x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
+    gate_min, gate_family, gate_structure, update_gate, alpha, eta,
+    max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
+    change_moves, cut_proposal, cut_candidates, seed, verbose,
+    informed = FALSE, pcg = TRUE, ram_target = ram_target,
+    ram_decay = ram_decay, ram_adapt = ram_adapt
+  )
+}
+
+.ppt_validate_ram_controls <- function(target, decay, adapt, burn) {
+  scalar_finite <- function(x) {
+    is.numeric(x) && !is.complex(x) && length(x) == 1L && is.finite(x)
+  }
+  if (!scalar_finite(target) || target <= 0 || target >= 1) {
+    stop("`ram_target` must be a finite numeric scalar between 0 and 1.",
+         call. = FALSE)
+  }
+  if (!scalar_finite(decay) || decay <= 0.5 || decay > 1) {
+    stop("`ram_decay` must be a finite numeric scalar in (0.5, 1].",
+         call. = FALSE)
+  }
+  if (is.null(adapt)) adapt <- floor(0.8 * burn)
+  if (!scalar_finite(adapt) || adapt != floor(adapt) ||
+      adapt < 0 || adapt > burn || adapt > .Machine$integer.max) {
+    stop("`ram_adapt` must be an integer between 0 and `burn`.",
+         call. = FALSE)
+  }
+  list(target = target, decay = decay, adapt = as.integer(adapt))
+}
+
 .ppt_fit_soft_leaf_mcmc <- function(
     x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
-    change_moves, cut_proposal, cut_candidates, seed, verbose, informed) {
+    change_moves, cut_proposal, cut_candidates, seed, verbose, informed,
+    pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L) {
   gate_family <- match.arg(gate_family, c("logistic", "compact"))
   gate_structure <- match.arg(gate_structure, c("dimension", "shared"))
   cut_proposal <- match.arg(cut_proposal, c("quantile", "uniform", "data"))
@@ -119,6 +166,11 @@
     stop("`update_gate` must be a logical scalar.", call. = FALSE)
   }
 
+  if (pcg && informed) {
+    stop("The PCG sampler uses standard collapsed tree proposals.", call. = FALSE)
+  }
+  ram <- .ppt_validate_ram_controls(ram_target, ram_decay, ram_adapt, burn)
+
   set.seed(seed)
   raw <- ppstree_multi(
     x, predict_at, test, region,
@@ -129,7 +181,8 @@
     as.integer(tree_moves), as.integer(change_moves),
     cut_mode, as.integer(cut_candidates), as.integer(update_gate),
     as.integer(match(gate_family, c("logistic", "compact")) - 1L),
-    as.integer(chains), as.integer(verbose), informed = informed
+    as.integer(chains), as.integer(verbose), informed = informed, pcg = pcg,
+    ram_target = ram$target, ram_decay = ram$decay, ram_adapt = ram$adapt
   )
 
   input_names <- colnames(x)
@@ -151,14 +204,15 @@
     max(floor(log2(nodes[, 1L])))
   }, numeric(1))
 
-  structure(
+  fit <- structure(
     list(
       call = NULL,
       model = list(
         gating = "soft", gate_family = gate_family,
         scales = "leaf",
-        sampler = if (informed) "irjmcmc" else "rjmcmc",
-        algorithm = if (informed) "Informed MH" else "RJ-MCMC",
+        sampler = if (pcg) "pcg" else if (informed) "irjmcmc" else "rjmcmc",
+        algorithm = if (pcg) "Partially collapsed Gibbs (RAM)" else
+          if (informed) "Informed MH" else "RJ-MCMC",
         label = "S-PPT"
       ),
       data = list(
@@ -241,4 +295,21 @@
     ),
     class = "ppt"
   )
+  if (pcg) {
+    fit$control$sd_gate <- sd_gate
+    fit$control$ram_target <- ram$target
+    fit$control$ram_decay <- ram$decay
+    fit$control$ram_adapt <- ram$adapt
+    fit$diagnostics$gate_joint_acceptance <- as.numeric(raw$gate_joint_accept)
+    fit$diagnostics$chain_gate_joint_acceptance <-
+      as.numeric(raw$chain_gate_joint_accept)
+    fit$diagnostics$chain_gate_joint_acceptance_probability <-
+      as.numeric(raw$chain_gate_joint_accept_prob)
+    fit$diagnostics$ram <- list(
+      covariance = raw$ram_covariance, factor = raw$ram_factor,
+      updates = as.integer(raw$ram_updates),
+      failures = as.integer(raw$ram_failures)
+    )
+  }
+  fit
 }

@@ -14,7 +14,9 @@ depth_test_backends <- function() {
          iter = 4L, burn = 1L, update_gate = FALSE, verbose = FALSE),
     list(gating = "soft", sampler = "pgas", particles = 3L,
          chains = 1L, iter = 4L, burn = 1L, update_gate = FALSE,
-         verbose = FALSE)
+         verbose = FALSE),
+    list(gating = "soft", sampler = "pcg", chains = 1L,
+         iter = 4L, burn = 1L, update_gate = FALSE, verbose = FALSE)
   )
 }
 

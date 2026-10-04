@@ -12,6 +12,7 @@
   "hard:leaf:pgas" = ".ppt_fit_hard_leaf_pgas",
   "soft:leaf:rjmcmc" = ".ppt_fit_soft_leaf_rjmcmc",
   "soft:leaf:irjmcmc" = ".ppt_fit_soft_leaf_irjmcmc",
+  "soft:leaf:pcg" = ".ppt_fit_soft_leaf_pcg",
   "soft:leaf:pgas" = ".ppt_fit_soft_leaf_pgas"
 )
 

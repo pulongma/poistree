@@ -1,6 +1,22 @@
 \name{NEWS}
 \title{News for Package \pkg{poistree}}
 
+\section{Changes in poistree version 0.4.0 (2026-10-04)}{
+  \itemize{
+    \item Added \code{sampler = "pcg"} for soft terminal-leaf trees. The
+      ordered iteration draws temporary intensities, jointly updates gates
+      with labels integrated out, restores labels by categorical draws,
+      and applies standard collapsed tree updates before drawing output rates.
+    \item Added robust adaptive Metropolis controls \code{ram_target},
+      \code{ram_decay}, and \code{ram_adapt}. Adaptation ends during burn-in;
+      \code{sd_gate} supplies initial log-gate proposal scales. Logistic and
+      compact gates, shared and dimension-specific gates, and fixed gates
+      retain the existing fitted-object prediction interface.
+    \item PCG diagnostics report joint gate acceptance and per-chain final
+      proposal covariance, factor, successful adaptations, and numerical failures.
+  }
+}
+
 \section{Changes in poistree version 0.3.0 (2026-10-04)}{
   \subsection{Informed MH and candidate controls}{
     \itemize{

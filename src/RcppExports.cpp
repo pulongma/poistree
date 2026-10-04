@@ -232,8 +232,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // ppstree_multi
-List ppstree_multi(arma::mat X, arma::mat grid, arma::mat Xtest, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, int chains, int verbose, bool informed);
-RcppExport SEXP _poistree_ppstree_multi(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP chainsSEXP, SEXP verboseSEXP, SEXP informedSEXP) {
+List ppstree_multi(arma::mat X, arma::mat grid, arma::mat Xtest, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, int chains, int verbose, bool informed, bool pcg, double ram_target, double ram_decay, int ram_adapt);
+RcppExport SEXP _poistree_ppstree_multi(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP chainsSEXP, SEXP verboseSEXP, SEXP informedSEXP, SEXP pcgSEXP, SEXP ram_targetSEXP, SEXP ram_decaySEXP, SEXP ram_adaptSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -265,13 +265,17 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type chains(chainsSEXP);
     Rcpp::traits::input_parameter< int >::type verbose(verboseSEXP);
     Rcpp::traits::input_parameter< bool >::type informed(informedSEXP);
-    rcpp_result_gen = Rcpp::wrap(ppstree_multi(X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose, informed));
+    Rcpp::traits::input_parameter< bool >::type pcg(pcgSEXP);
+    Rcpp::traits::input_parameter< double >::type ram_target(ram_targetSEXP);
+    Rcpp::traits::input_parameter< double >::type ram_decay(ram_decaySEXP);
+    Rcpp::traits::input_parameter< int >::type ram_adapt(ram_adaptSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_multi(X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose, informed, pcg, ram_target, ram_decay, ram_adapt));
     return rcpp_result_gen;
 END_RCPP
 }
 // ppstree_diag
-List ppstree_diag(arma::mat X, arma::mat mon, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, bool informed, bool verbose);
-RcppExport SEXP _poistree_ppstree_diag(SEXP XSEXP, SEXP monSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP informedSEXP, SEXP verboseSEXP) {
+List ppstree_diag(arma::mat X, arma::mat mon, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, bool informed, bool verbose, bool pcg, double ram_target, double ram_decay, int ram_adapt);
+RcppExport SEXP _poistree_ppstree_diag(SEXP XSEXP, SEXP monSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP informedSEXP, SEXP verboseSEXP, SEXP pcgSEXP, SEXP ram_targetSEXP, SEXP ram_decaySEXP, SEXP ram_adaptSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -301,7 +305,11 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type gate_family(gate_familySEXP);
     Rcpp::traits::input_parameter< bool >::type informed(informedSEXP);
     Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
-    rcpp_result_gen = Rcpp::wrap(ppstree_diag(X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, informed, verbose));
+    Rcpp::traits::input_parameter< bool >::type pcg(pcgSEXP);
+    Rcpp::traits::input_parameter< double >::type ram_target(ram_targetSEXP);
+    Rcpp::traits::input_parameter< double >::type ram_decay(ram_decaySEXP);
+    Rcpp::traits::input_parameter< int >::type ram_adapt(ram_adaptSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_diag(X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, informed, verbose, pcg, ram_target, ram_decay, ram_adapt));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -327,6 +335,42 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type gate_family(gate_familySEXP);
     Rcpp::traits::input_parameter< int >::type kind(kindSEXP);
     rcpp_result_gen = Rcpp::wrap(ppstree_informed_transition(X, region, splits, labels, gate, a, b, alpha, eta, Dmax, nmin, cut_mode, ncand, gate_family, kind));
+    return rcpp_result_gen;
+END_RCPP
+}
+// ppstree_ram_inspect
+List ppstree_ram_inspect(arma::mat factor, arma::vec direction, double accept_prob, double target, double decay, int iteration);
+RcppExport SEXP _poistree_ppstree_ram_inspect(SEXP factorSEXP, SEXP directionSEXP, SEXP accept_probSEXP, SEXP targetSEXP, SEXP decaySEXP, SEXP iterationSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type factor(factorSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type direction(directionSEXP);
+    Rcpp::traits::input_parameter< double >::type accept_prob(accept_probSEXP);
+    Rcpp::traits::input_parameter< double >::type target(targetSEXP);
+    Rcpp::traits::input_parameter< double >::type decay(decaySEXP);
+    Rcpp::traits::input_parameter< int >::type iteration(iterationSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_ram_inspect(factor, direction, accept_prob, target, decay, iteration));
+    return rcpp_result_gen;
+END_RCPP
+}
+// ppstree_pcg_inspect
+List ppstree_pcg_inspect(arma::mat X, arma::mat region, arma::mat splits, arma::vec gate, arma::vec lambda, arma::vec a_gate, arma::vec b_gate, arma::vec gate_min, int gate_shared, int gate_family);
+RcppExport SEXP _poistree_ppstree_pcg_inspect(SEXP XSEXP, SEXP regionSEXP, SEXP splitsSEXP, SEXP gateSEXP, SEXP lambdaSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP gate_familySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type X(XSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type splits(splitsSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gate(gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type a_gate(a_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type b_gate(b_gateSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gate_min(gate_minSEXP);
+    Rcpp::traits::input_parameter< int >::type gate_shared(gate_sharedSEXP);
+    Rcpp::traits::input_parameter< int >::type gate_family(gate_familySEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_pcg_inspect(X, region, splits, gate, lambda, a_gate, b_gate, gate_min, gate_shared, gate_family));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -420,9 +464,11 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poistree_SPPT_fit_PGAS", (DL_FUNC) &_poistree_SPPT_fit_PGAS, 29},
     {"_poistree_PPT_fit_SMC_shared", (DL_FUNC) &_poistree_PPT_fit_SMC_shared, 11},
     {"_poistree_ppstree_geometry", (DL_FUNC) &_poistree_ppstree_geometry, 7},
-    {"_poistree_ppstree_multi", (DL_FUNC) &_poistree_ppstree_multi, 28},
-    {"_poistree_ppstree_diag", (DL_FUNC) &_poistree_ppstree_diag, 26},
+    {"_poistree_ppstree_multi", (DL_FUNC) &_poistree_ppstree_multi, 32},
+    {"_poistree_ppstree_diag", (DL_FUNC) &_poistree_ppstree_diag, 30},
     {"_poistree_ppstree_informed_transition", (DL_FUNC) &_poistree_ppstree_informed_transition, 15},
+    {"_poistree_ppstree_ram_inspect", (DL_FUNC) &_poistree_ppstree_ram_inspect, 6},
+    {"_poistree_ppstree_pcg_inspect", (DL_FUNC) &_poistree_ppstree_pcg_inspect, 10},
     {"_poistree_ppt_eval_state", (DL_FUNC) &_poistree_ppt_eval_state, 6},
     {"_poistree_ppt_marginal_state", (DL_FUNC) &_poistree_ppt_marginal_state, 8},
     {"_poistree_base_mloglik", (DL_FUNC) &_poistree_base_mloglik, 4},

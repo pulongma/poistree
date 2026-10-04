@@ -421,6 +421,8 @@ static int ppst_gate_update(const PPSTree&T,const std::vector<int>&labels,
   return 0;
 }
 
+#include "ppt_soft_pcg.h"
+
 // ---- reversible tree moves -------------------------------------------------
 static int ppst_draw_side(const PPSTNode&left,const PPSTNode&right,
     const arma::rowvec&x,const arma::mat&region,const arma::vec&gate,
@@ -575,9 +577,11 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
     int row0,double&mean_leaves,
     double&mean_max_depth,arma::vec&mean_gate,arma::vec&accept,
     arma::vec&gate_accept,
-    std::vector<arma::mat>&state_nodes,arma::mat&state_gate,bool informed,bool verbose){
+    std::vector<arma::mat>&state_nodes,arma::mat&state_gate,bool informed,bool verbose,
+    bool pcg,double ram_target,double ram_decay,int ram_adapt,PPSTPCGStats&pcg_stats){
   int n=pts.n_rows,si=0; double nls=0.0,mds=0.0;
   arma::vec gate=gate0,gs(gate0.n_elem,arma::fill::zeros);
+  if(pcg) pcg_stats.initialize(sd_gate,gate_shared);
   PPSTree T; PPSTNode root;
   root.box=region; root.idx=arma::regspace<arma::uvec>(0,n-1);
   root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;
@@ -589,6 +593,10 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
                                 Dmax,nmin,mode,ncand,gate_family);
   PPTMCMCProgress progress(iters, verbose);
   for(int it=0;it<iters;it++){
+    if(pcg){
+      ppst_pcg_block(T,labels,pts,region,a,b,gate,a_gate,b_gate,gate_min,
+        gate_shared,gate_family,update_gate!=0,pcg_stats);
+    }else{
     ppst_label_sweep(T,labels,pts,region,a,b,gate,gate_family);
     if(update_gate){
       // one Metropolis proposal per coordinate (systematic scan), or one
@@ -600,6 +608,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
                                       which);
         aga[which]+=accepted; tga[which]++;
       }
+    }
     }
     if(informed && update_gate) informed_context.clear_gate_cache();
     PPSTINeighborhood informed_gp,informed_change;
@@ -624,6 +633,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
         mode,ncand
       );tc++;
     }
+    if(pcg) ppst_pcg_adapt(pcg_stats,it,ram_target,ram_decay,ram_adapt);
     if(it>=burn&&(it-burn)%thin==0){
       int row=row0+si; std::vector<int>leaves; ppst_leaves(T,leaves);
       std::unordered_map<int,double>lam; double comp=0.0;
@@ -683,7 +693,9 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
   accept[0]=ag/std::max(1.0,tg);accept[1]=ap/std::max(1.0,tp);
   accept[2]=ac/std::max(1.0,tc);
   gate_accept.set_size(gate.n_elem);
-  if(gate_shared){
+  if(pcg){
+    gate_accept.fill(pcg_stats.acceptance());
+  }else if(gate_shared){
     gate_accept.fill(aga[0]/std::max(1.0,tga[0]));
   }else{
     for(arma::uword j=0;j<gate.n_elem;j++)
@@ -711,8 +723,10 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
     arma::vec sd_gate,arma::vec gate_min,int gate_shared,double alpha,
     double eta,double Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
     int cut_mode,int ncand,int update_gate,int gate_family,int chains,
-    int verbose,bool informed=false){
+    int verbose,bool informed=false,bool pcg=false,double ram_target=0.234,
+    double ram_decay=0.7,int ram_adapt=0){
   const int depth = ppt_checked_depth(Dmax);
+  ppst_pcg_controls(pcg,informed,ram_target,ram_decay,ram_adapt,burn);
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||
      grid.n_cols!=X.n_cols||Xtest.n_cols!=X.n_cols)
@@ -729,6 +743,8 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
   sd_gate=ppst_expand_positive(sd_gate,X.n_cols,"sd_gate");
   gate_min=ppst_expand_positive(gate_min,X.n_cols,"gate_min",true);
   if(arma::any(gate<=gate_min)) stop("every gate must exceed gate_min");
+  if(pcg&&gate_shared&&arma::any(gate!=gate[0]))
+    stop("shared pcg gates must have the same initial value");
   int ns=0;for(int it=burn;it<iters;it++)if((it-burn)%thin==0)ns++;
   int total=ns*chains,row=0;
   arma::mat D(total,grid.n_rows,arma::fill::zeros);
@@ -739,17 +755,28 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
   arma::mat acc(chains,3),gacc(chains,X.n_cols);
   std::vector<arma::mat> state_nodes(total);
   arma::mat state_gate(total,X.n_cols,arma::fill::zeros);
-  if(verbose) Rcpp::Rcerr<<(informed?"S-PPT [informed RJ-MCMC]: ":"S-PPT [RJ-MCMC]: ")<<chains
+  List ram_covariance(chains),ram_factor(chains);
+  IntegerVector ram_updates(chains),ram_failures(chains);
+  arma::vec joint_accept(chains,arma::fill::zeros),joint_alpha(chains,arma::fill::zeros);
+  if(verbose) Rcpp::Rcerr<<(pcg?"S-PPT [PCG with RAM]: ":
+    (informed?"S-PPT [informed RJ-MCMC]: ":"S-PPT [RJ-MCMC]: "))<<chains
                          <<" chains, "<<ns<<" draws/chain\n";
   for(int k=0;k<chains;k++){
     if(verbose) Rcpp::Rcerr<<"  chain "<<k+1<<"/"<<chains<<"\n";
-    arma::vec ak,gak,gm;double nl,md;
+    arma::vec ak,gak,gm;double nl,md;PPSTPCGStats pcg_stats;
     int got=ppst_run_chain(X,grid,Xtest,region,a,b,gate,a_gate,b_gate,sd_gate,
       gate_min,gate_shared,gate_family,alpha,eta,depth,nmin,iters,burn,thin,
       nmove,ncc,cut_mode,ncand,update_gate,D,ll,llt,integrated_intensity,
-      row,nl,md,gm,ak,gak,state_nodes,state_gate,informed,verbose != 0);
+      row,nl,md,gm,ak,gak,state_nodes,state_gate,informed,verbose != 0,
+      pcg,ram_target,ram_decay,ram_adapt,pcg_stats);
     row+=got;leaves[k]=nl;maxdepth[k]=md;gates.row(k)=gm.t();acc.row(k)=ak.t();
     gacc.row(k)=gak.t();
+    if(pcg){
+      ram_factor[k]=pcg_stats.factor;
+      ram_covariance[k]=arma::mat(pcg_stats.factor*pcg_stats.factor.t());
+      ram_updates[k]=pcg_stats.updates;ram_failures[k]=pcg_stats.failures;
+      joint_accept[k]=pcg_stats.acceptance();joint_alpha[k]=pcg_stats.mean_alpha();
+    }
     if(verbose) Rcpp::Rcerr<<"  chain "<<k+1<<"/"<<chains<<" done; leaves="
       <<nl<<", max_depth="<<md<<", gate="<<arma::mean(gm)
       <<", gate_accept="<<arma::mean(gak)<<"\n";
@@ -775,6 +802,13 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
     _["gate_accept"]=arma::mean(gacc,0).t(),_["ndraws"]=row);
   out["state_nodes"]=sn;
   out["state_gate"]=state_gate.rows(0,std::max(0,row-1));
+  if(pcg){
+    out["ram_covariance"]=ram_covariance;out["ram_factor"]=ram_factor;
+    out["ram_updates"]=ram_updates;out["ram_failures"]=ram_failures;
+    out["gate_joint_accept"]=arma::mean(joint_accept);
+    out["chain_gate_joint_accept"]=joint_accept;
+    out["chain_gate_joint_accept_prob"]=joint_alpha;
+  }
   return out;
 }
 
@@ -784,8 +818,10 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
     arma::vec sd_gate,arma::vec gate_min,int gate_shared,double alpha,
     double eta,double Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
     int cut_mode,int ncand,int update_gate,int gate_family,bool informed=false,
-    bool verbose=false){
+    bool verbose=false,bool pcg=false,double ram_target=0.234,
+    double ram_decay=0.7,int ram_adapt=0){
   const int depth = ppt_checked_depth(Dmax);
+  ppst_pcg_controls(pcg,informed,ram_target,ram_decay,ram_adapt,burn);
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||mon.n_cols!=X.n_cols)
     stop("X, mon, and region have incompatible dimensions");
@@ -801,6 +837,8 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   sd_gate=ppst_expand_positive(sd_gate,X.n_cols,"sd_gate");
   gate_min=ppst_expand_positive(gate_min,X.n_cols,"gate_min",true);
   if(arma::any(gate<=gate_min)) stop("every gate must exceed gate_min");
+  if(pcg&&gate_shared&&arma::any(gate!=gate[0]))
+    stop("shared pcg gates must have the same initial value");
 
   int n=X.n_rows,ns=0,si=0;
   for(int it=burn;it<iters;it++)
@@ -811,6 +849,8 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;
   std::vector<int>labels(n,1);
 
+  PPSTPCGStats pcg_stats;
+  if(pcg) pcg_stats.initialize(sd_gate,gate_shared);
   arma::vec tr_nleaf(ns,arma::fill::zeros);
   arma::mat tr_gate(ns,gate.n_elem,arma::fill::zeros);
   arma::vec tr_logdens(ns,arma::fill::zeros);
@@ -823,6 +863,10 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
 
   PPTMCMCProgress progress(iters, verbose);
   for(int it=0;it<iters;it++){
+    if(pcg){
+      ppst_pcg_block(T,labels,X,region,a,b,gate,a_gate,b_gate,gate_min,
+        gate_shared,gate_family,update_gate!=0,pcg_stats);
+    }else{
     ppst_label_sweep(T,labels,X,region,a,b,gate,gate_family);
     if(update_gate){
       // Match the fitting backend: one proposal per dimension, or one
@@ -834,6 +878,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
                                       which);
         aga[which]+=accepted; tga[which]++;
       }
+    }
     }
     if(informed && update_gate) informed_context.clear_gate_cache();
     PPSTINeighborhood informed_gp,informed_change;
@@ -861,6 +906,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
       tc++;
     }
 
+    if(pcg) ppst_pcg_adapt(pcg_stats,it,ram_target,ram_decay,ram_adapt);
     if(it>=burn&&(it-burn)%thin==0){
       std::vector<int>leaves;
       ppst_leaves(T,leaves);
@@ -894,15 +940,25 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   accept[1]=ap/std::max(1.0,tp);
   accept[2]=ac/std::max(1.0,tc);
   arma::vec gate_accept(gate.n_elem);
-  if(gate_shared){
+  if(pcg){
+    gate_accept.fill(pcg_stats.acceptance());
+  }else if(gate_shared){
     gate_accept.fill(aga[0]/std::max(1.0,tga[0]));
   }else{
     for(arma::uword j=0;j<gate.n_elem;j++)
       gate_accept[j]=aga[j]/std::max(1.0,tga[j]);
   }
-  return List::create(
+  List out=List::create(
     _["nleaf"]=tr_nleaf,_["gate"]=tr_gate,_["logdens"]=tr_logdens,
     _["mon"]=tr_mon,_["accept"]=accept,_["gate_accept"]=gate_accept,_["ns"]=si);
+  if(pcg){
+    out["ram_covariance"]=arma::mat(pcg_stats.factor*pcg_stats.factor.t());
+    out["ram_factor"]=pcg_stats.factor;
+    out["ram_updates"]=pcg_stats.updates;out["ram_failures"]=pcg_stats.failures;
+    out["gate_joint_accept"]=pcg_stats.acceptance();
+    out["gate_joint_accept_prob"]=pcg_stats.mean_alpha();
+  }
+  return out;
 }
 
 // Internal exact-transition inspector for small labeled states. The fitting
@@ -988,4 +1044,83 @@ List ppstree_informed_transition(arma::mat X,arma::mat region,
   List result(neighbors.size());
   for(size_t k=0;k<neighbors.size();k++) result[k]=neighbors[k];
   return List::create(_["log_normalizer"]=neighborhood.logZ,_["neighbors"]=result);
+}
+
+// Internal deterministic checks for the RAM equation and allocation-collapsed
+// target. These helpers are exported to the package namespace, not its API.
+// [[Rcpp::export]]
+List ppstree_ram_inspect(arma::mat factor,arma::vec direction,
+    double accept_prob,double target=0.234,double decay=0.7,int iteration=1){
+  if(iteration<1||!std::isfinite(decay)||decay<=0.5||decay>1.0)
+    stop("iteration must be positive and decay must be in (0.5, 1]");
+  if(factor.n_rows==0||factor.n_rows!=factor.n_cols||
+     direction.n_elem!=factor.n_rows||!factor.is_finite()||
+     arma::any(factor.diag()<=0.0)||
+     (factor.n_rows>1&&arma::accu(arma::abs(arma::trimatu(factor,1)))!=0.0))
+    stop("factor must be a finite lower triangular matrix with positive diagonal");
+  const double step=std::min(1.0,(double)factor.n_rows*std::pow((double)iteration,-decay));
+  const bool success=ppst_ram_update(factor,direction,accept_prob,target,step);
+  return List::create(_["factor"]=factor,
+    _["covariance"]=arma::mat(factor*factor.t()),_["eta"]=step,_["success"]=success);
+}
+
+// [[Rcpp::export]]
+List ppstree_pcg_inspect(arma::mat X,arma::mat region,arma::mat splits,
+    arma::vec gate,arma::vec lambda,arma::vec a_gate,arma::vec b_gate,
+    arma::vec gate_min,int gate_shared,int gate_family){
+  if(X.n_rows==0||X.n_cols==0||region.n_rows!=X.n_cols||region.n_cols!=2||
+     splits.n_cols!=3||!X.is_finite()||!region.is_finite()||
+     arma::any(region.col(1)<=region.col(0))||(gate_family!=0&&gate_family!=1))
+    stop("invalid pcg inspection geometry");
+  gate=ppst_expand_positive(gate,X.n_cols,"gate");
+  a_gate=ppst_expand_positive(a_gate,X.n_cols,"a_gate");
+  b_gate=ppst_expand_positive(b_gate,X.n_cols,"b_gate");
+  gate_min=ppst_expand_positive(gate_min,X.n_cols,"gate_min",true);
+  if(arma::any(gate<=gate_min)||(gate_shared&&arma::any(gate!=gate[0])))
+    stop("invalid pcg inspection gates");
+  PPSTree tree;PPSTNode root;
+  root.box=region;root.idx=arma::regspace<arma::uvec>(0,X.n_rows-1);
+  root.axis=-1;root.cut=NA_REAL;root.depth=0;root.m=0;tree[1]=root;
+  const arma::uvec order=arma::sort_index(splits.col(0));
+  for(arma::uword k:order){
+    if(!std::isfinite(splits(k,0))||!std::isfinite(splits(k,1))||
+       splits(k,0)<1||splits(k,0)>(std::numeric_limits<int>::max()-1)/2||
+       splits(k,1)<0||splits(k,1)>=(double)X.n_cols)
+      stop("invalid pcg inspection split indices");
+    const int id=(int)splits(k,0),axis=(int)splits(k,1);
+    const double cut=splits(k,2);
+    if(splits(k,0)!=id||splits(k,1)!=axis||tree.find(id)==tree.end()||
+       tree.at(id).axis>=0||!std::isfinite(cut)||
+       cut<=tree.at(id).box(axis,0)||cut>=tree.at(id).box(axis,1))
+      stop("invalid pcg inspection split topology");
+    PPSTNode parent=tree.at(id);arma::uvec left,right;
+    ppst_split_indices(parent,X,axis,cut,left,right);
+    tree[id].axis=axis;tree[id].cut=cut;
+    tree[2*id]=ppst_child(parent,left,axis,cut,-1);
+    tree[2*id+1]=ppst_child(parent,right,axis,cut,1);
+  }
+  std::vector<int> leaves;ppst_leaves(tree,leaves);std::sort(leaves.begin(),leaves.end());
+  if(lambda.n_elem!=leaves.size()||!lambda.is_finite()||arma::any(lambda<=0.0))
+    stop("lambda must be positive, with one value per leaf in ascending node order");
+  const arma::vec log_rate=arma::log(lambda);
+  const PPSTPCGEvaluation value=ppst_pcg_evaluate(tree,leaves,log_rate,X,region,
+    gate,a_gate,b_gate,gate_min,gate_shared,gate_family);
+  if(!std::isfinite(value.target)) stop("non-finite pcg inspection target");
+  arma::mat probability(X.n_rows,leaves.size()),phi(X.n_rows,leaves.size());
+  arma::vec H(leaves.size());std::vector<double> lw(leaves.size());
+  for(size_t k=0;k<leaves.size();k++){
+    H[k]=ppst_exposure(tree.at(leaves[k]),region,gate,gate_family);
+    for(arma::uword i=0;i<X.n_rows;i++)
+      phi(i,k)=std::exp(value.log_weights(i,k)-log_rate[k]);
+  }
+  for(arma::uword i=0;i<X.n_rows;i++){
+    for(size_t k=0;k<leaves.size();k++) lw[k]=value.log_weights(i,k);
+    const double den=ppst_logsumexp(lw);
+    for(size_t k=0;k<leaves.size();k++) probability(i,k)=std::exp(lw[k]-den);
+  }
+  const int p=gate_shared?1:(int)gate.n_elem;
+  return List::create(_["log_target"]=value.target,
+    _["log_scale_target"]=value.target+arma::sum(arma::log(gate.head(p))),
+    _["allocation_prob"]=probability,_["phi"]=phi,_["exposure"]=H,
+    _["leaf_ids"]=leaves);
 }

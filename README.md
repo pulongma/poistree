@@ -8,7 +8,7 @@ fit <- ppt_fit(
   x, region,
   gating = c("soft", "hard"),
   scales = "leaf",
-  sampler = c("rjmcmc", "irjmcmc", "smc", "pgas"),
+  sampler = c("rjmcmc", "irjmcmc", "pcg", "smc", "pgas"),
   ...
 )
 ```
@@ -18,7 +18,7 @@ The two models are:
 | Model | Gating | Intensity | Available samplers |
 |---|---|---|---|
 | PPT | hard | terminal leaf | SMC, RJ-MCMC, informed MH (`irjmcmc`), Particle Gibbs (`pgas` token) |
-| S-PPT | soft | terminal leaf | RJ-MCMC, informed MH (`irjmcmc`), Particle Gibbs with ancestor sampling (`pgas`) |
+| S-PPT | soft | terminal leaf | RJ-MCMC, informed MH (`irjmcmc`), partially collapsed Gibbs (`pcg`), Particle Gibbs with ancestor sampling (`pgas`) |
 
 `scales` is reserved and accepts only `"leaf"`. The default call fits S-PPT
 by RJ-MCMC:
@@ -60,19 +60,19 @@ Hard-leaf SMC and Particle Gibbs impose no aspect-ratio restriction by default
 (`max_aspect_ratio = Inf`). A finite value can be supplied when compact cells
 are scientifically required; the minimum child width and observation-count
 constraints remain active in either case. All hard samplers and soft RJ-MCMC
-and informed MH accept the positive integer `min_leaf_n` (default 1), which
+informed MH, and PCG accept the positive integer `min_leaf_n` (default 1), which
 screens candidate splits by their hard-routed child counts. Soft PGAS does
 not accept this argument.
 
 Hard RJ-MCMC and informed MH accept `prediction_draws` to control retained
 predictions and tree states. The soft versions accept `thin`, `tree_moves`,
-and `change_moves` instead, and reject `prediction_draws`. Soft RJ-MCMC and
-informed MH also accept `gate_family = "logistic"` (the default) or
+and `change_moves` instead, and reject `prediction_draws`. PCG accepts the
+soft RJ-MCMC controls. Soft RJ-MCMC, informed MH, and PCG also accept `gate_family = "logistic"` (the default) or
 `"compact"`. Soft PGAS uses logistic gates and does not accept `gate_family`.
 All soft backends accept `gate_structure`, `gate`, and gate-prior controls.
 
 `max_depth` must be one finite integer. All hard samplers and soft RJ-MCMC
-and informed MH accept 0 through 20; zero gives a root-only tree. Soft PGAS
+informed MH, and PCG accept 0 through 20; zero gives a root-only tree. Soft PGAS
 requires at least 1 and its current reference-tree storage limit permits at
 most 19. Dense hard SMC and hard Particle Gibbs additionally limit the
 combination of depth and particle count. If a tree-storage limit is exceeded,
@@ -86,8 +86,8 @@ duplicate and inadmissible cuts are removed, so the number of valid cuts can
 be smaller. The count must be an integer of at least 1 for hard SMC and hard
 Particle Gibbs, and at least 2 for the other backends. Soft PGAS constructs
 its grid globally; the RJ-MCMC samplers and
-hard particle samplers construct cuts within each node. For soft RJ-MCMC and
-informed MH, `cut_proposal = "uniform"` retains the existing grid-size floor
+hard particle samplers construct cuts within each node. For soft RJ-MCMC,
+informed MH, and PCG, `cut_proposal = "uniform"` retains the existing grid-size floor
 of 30 before filtering, so a smaller explicit `cut_candidates` still uses
 30 grid locations. `cut_proposal = "data"` uses all admissible data midpoints
 and ignores the count. The default quantile and uniform grids request 50
@@ -121,6 +121,36 @@ allocated observations at the node. Its `tree_moves` and `change_moves` still co
 separate grow/prune and change kernels. Allocation Gibbs updates and gate
 Metropolis updates remain in the iteration. Exact informed scoring costs more
 per transition, so a gain in effective samples per second depends on the data.
+
+Use `sampler = "pcg"` for an allocation-collapsed joint gate update with
+robust adaptive Metropolis (RAM) warm-up:
+
+```r
+sppt_pcg <- ppt_fit(
+  x, region, gating = "soft", sampler = "pcg",
+  chains = 4, iter = 10000, burn = 2500,
+  sd_gate = 0.07, ram_target = 0.234, ram_decay = 0.7,
+  ram_adapt = 2000
+)
+```
+
+Each iteration draws temporary leaf intensities, updates all free log gates
+jointly after integrating out the labels, then redraws every label from its
+categorical full conditional, even if the gate proposal was rejected. It next
+discards those intensities and performs standard collapsed grow/prune and
+change updates. Retained output uses fresh intensities from the updated tree.
+Both `logistic` and `compact` gates and `dimension` and `shared` gate structures
+are supported. The tree target and candidate rules match soft RJ-MCMC.
+
+RAM adapts the joint proposal covariance toward `ram_target` using the MH
+acceptance probability. `ram_decay` must lie in `(0.5, 1]`.
+`ram_adapt` is an integer from zero through `burn`, defaulting to
+`floor(0.8 * burn)`; the covariance is fixed afterward. `sd_gate` gives its
+initial log-scale standard deviations. Use `ram_adapt = 0` for a fixed
+proposal or `update_gate = FALSE` for fixed gates. Adaptation does not certify
+convergence or improved sampling efficiency. `ppt_diagnostics(sppt_pcg)` exposes
+joint gate acceptance and per-chain final proposal covariance, factor, and
+adaptation counts in `ram`. PCG uses ordinary posterior weights.
 
 The hard PPT SMC sampler (`sampler = "smc"`) runs by default on a shared-path
 store (`engine = "shared"`): particles that reach the same box share one stored
