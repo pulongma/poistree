@@ -16,8 +16,6 @@ Description: Bayesian Poisson process trees for intensity estimation on
     separates the gating mechanism from the posterior sampler. Implemented
     models are the hard-gated Poisson process tree (PPT) and the soft-gated
     Poisson process tree (S-PPT), both with terminal-leaf intensities.
-    Available algorithms are sequential Monte Carlo, reversible-jump
-    Markov chain Monte Carlo, and Particle Gibbs with ancestor sampling.
 License: GPL (>= 2)
 Encoding: UTF-8
 Imports:
