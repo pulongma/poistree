@@ -146,6 +146,27 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// PPT_fit_SMC_shared
+Rcpp::List PPT_fit_SMC_shared(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int max_depth, int P, int min_leaf_n, double resample_thresh, double a, double b, double max_aspect_ratio, int cut_grid_n);
+RcppExport SEXP _poistree_PPT_fit_SMC_shared(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP min_leaf_nSEXP, SEXP resample_threshSEXP, SEXP aSEXP, SEXP bSEXP, SEXP max_aspect_ratioSEXP, SEXP cut_grid_nSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type pts(ptsSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type grid(gridSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< int >::type max_depth(max_depthSEXP);
+    Rcpp::traits::input_parameter< int >::type P(PSEXP);
+    Rcpp::traits::input_parameter< int >::type min_leaf_n(min_leaf_nSEXP);
+    Rcpp::traits::input_parameter< double >::type resample_thresh(resample_threshSEXP);
+    Rcpp::traits::input_parameter< double >::type a(aSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    Rcpp::traits::input_parameter< double >::type max_aspect_ratio(max_aspect_ratioSEXP);
+    Rcpp::traits::input_parameter< int >::type cut_grid_n(cut_grid_nSEXP);
+    rcpp_result_gen = Rcpp::wrap(PPT_fit_SMC_shared(pts, grid, region, max_depth, P, min_leaf_n, resample_thresh, a, b, max_aspect_ratio, cut_grid_n));
+    return rcpp_result_gen;
+END_RCPP
+}
 // ppstree_geometry
 List ppstree_geometry(IntegerVector axis, NumericVector cut, NumericVector parent_width, IntegerVector side, arma::mat points, arma::mat region, arma::vec gate);
 RcppExport SEXP _poistree_ppstree_geometry(SEXP axisSEXP, SEXP cutSEXP, SEXP parent_widthSEXP, SEXP sideSEXP, SEXP pointsSEXP, SEXP regionSEXP, SEXP gateSEXP) {
@@ -320,6 +341,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poistree_PPT_valid_cuts", (DL_FUNC) &_poistree_PPT_valid_cuts, 6},
     {"_poistree_PPT_transition_probabilities", (DL_FUNC) &_poistree_PPT_transition_probabilities, 5},
     {"_poistree_SPPT_fit_PGAS", (DL_FUNC) &_poistree_SPPT_fit_PGAS, 29},
+    {"_poistree_PPT_fit_SMC_shared", (DL_FUNC) &_poistree_PPT_fit_SMC_shared, 11},
     {"_poistree_ppstree_geometry", (DL_FUNC) &_poistree_ppstree_geometry, 7},
     {"_poistree_ppstree_multi", (DL_FUNC) &_poistree_ppstree_multi, 27},
     {"_poistree_ppstree_diag", (DL_FUNC) &_poistree_ppstree_diag, 24},

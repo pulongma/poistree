@@ -59,6 +59,15 @@ constraints remain active in either case. The default minimum child occupancy
 is `min_leaf_n = 1` for every model and sampler; larger values can be supplied
 as an explicit regularization or computational control.
 
+The hard PPT SMC sampler (`sampler = "smc"`) runs by default on a shared-path
+store (`engine = "shared"`): particles that reach the same box share one stored
+node with its candidate cuts and marginal-likelihood scores, scores are computed
+from sorted coordinates with binary-search counts, and resampling copies maps of
+node references rather than trees. The sampler is identical in law to the
+original per-particle implementation (`engine = "dense"`) and two orders of
+magnitude faster when `d` is large; see `CLAUDE/shared_path_smc_hard_ppt.pdf`
+in the SoftPPT project.
+
 For the hard PPT, `sampler = "pgas"` selects the exact conditional-SMC
 Particle-Gibbs backend without ancestor sampling. For S-PPT it selects
 Particle Gibbs with ancestor sampling (PGAS): the conditional SMC runs over

@@ -23,6 +23,16 @@
         node's points to its children is proposed by sequential imputation
         (\code{allocation = "sequential"}) or through auxiliary child rates
         (\code{allocation = "rates"}); both are exact importance proposals.
+      \item The hard PPT SMC sampler runs on a shared-path store
+        (\code{src/hard_shared_smc.cpp}, \code{engine = "shared"}, the
+        default): nodes are boxes shared by every particle that reaches
+        them, candidate cuts are scored once per distinct node with sorted
+        coordinates and binary-search counts, observation sets are released
+        once a node is decided, and resampling copies record maps instead
+        of trees. Same law as the dense sampler (\code{engine = "dense"});
+        at d = 10, n = 11,000, 60 particles and depth 5 the sweep takes
+        0.2 s instead of 25 s. New diagnostics \code{expanded_nodes} and
+        \code{resampling_events} (NA where not applicable) in every backend.
       \item Soft models default to one gating parameter per input
         (\code{gate_structure = "dimension"}); the Metropolis update of the
         gating parameters now proposes every coordinate once per iteration

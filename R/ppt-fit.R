@@ -29,8 +29,12 @@
 #'   without ancestor sampling.
 #' @param ... Backend arguments. Common arguments include `predict_at`, `test`,
 #'   `max_depth`, and `min_leaf_n`; the minimum leaf occupancy defaults to 1
-#'   for every backend. SMC uses `particles`, `a`, `b`, and
-#'   `resample_thresh`; hard-leaf SMC and Particle Gibbs also accept
+#'   for every backend. SMC uses `particles`, `a`, `b`, `resample_thresh`,
+#'   `cut_candidates` (quantile cuts per input and node, default 30) and
+#'   `engine` (`"shared"`, the default, runs the sweep on a shared-path store
+#'   of boxes so that particles reaching the same box share its candidate
+#'   cuts and scores; `"dense"` is the original per-particle implementation,
+#'   identical in law); hard-leaf SMC and Particle Gibbs also accept
 #'   `max_aspect_ratio`, whose default `Inf` imposes no shape restriction on
 #'   otherwise valid child regions. RJ-MCMC uses `chains`, `iter`, `burn`,
 #'   `cut_candidates`, and `prediction_draws`.
