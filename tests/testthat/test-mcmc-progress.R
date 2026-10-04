@@ -11,7 +11,8 @@ capture_mcmc_progress <- function(args) {
 }
 
 for (gating in c("hard", "soft")) {
-  for (sampler in c("rjmcmc", "irjmcmc", "pgas")) {
+  for (sampler in c("rjmcmc", "irjmcmc", "pgas",
+                    if (gating == "soft") "pcg")) {
     test_that(paste(gating, sampler, "reports progress without changing draws"), {
       args <- list(
         x = matrix(c(0.08, 0.14, 0.31, 0.65, 0.82, 0.93), ncol = 1L),

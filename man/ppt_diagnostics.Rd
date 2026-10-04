@@ -21,4 +21,7 @@ For SMC, the legacy `log_evidence_increment` and `log_evidence_running`
 fields contain increments and cumulative sums of the log normalizer
 relative to the root score. They are not absolute model evidence.
 With `b = 0`, these use the backend's formal improper-prior leaf scores.
+For PCG, `gate_joint_acceptance` reports joint gate acceptance and `ram`
+contains final proposal factors/covariances and adaptation counts per chain.
+The per-dimension gate acceptance entries repeat the joint acceptance rate.
 }

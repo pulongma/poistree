@@ -7,7 +7,8 @@
 #' \itemize{
 #'   \item `gating`: hard partitions or soft logistic/compact gates;
 #'   \item `sampler`: sequential Monte Carlo, reversible-jump MCMC,
-#'     locally informed Metropolis--Hastings, or
+#'     locally informed Metropolis--Hastings, partially collapsed Gibbs
+#'     with robust adaptive Metropolis gate updates, or
 #'     Particle Gibbs with exact conditional SMC (with ancestor sampling for
 #'     the soft model).
 #' }
@@ -27,6 +28,7 @@
 #' PPT \tab `hard` \tab `pgas` \cr
 #' S-PPT \tab `soft` \tab `rjmcmc` \cr
 #' S-PPT \tab `soft` \tab `irjmcmc` (informed MH) \cr
+#' S-PPT \tab `soft` \tab `pcg` (joint adaptive gate update) \cr
 #' S-PPT \tab `soft` \tab `pgas` (ancestor sampling) \cr
 #' }
 #'
