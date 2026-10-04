@@ -412,37 +412,58 @@ logLik.ppt <- function(object, ...) ppt_logLik(object, ...)
 #' The joint posterior log predictive density of a test point pattern over
 #' the fitted observation region,
 #' \deqn{\mathrm{lppd}
-#'   = \log \sum_s w_s \exp\Big\{\sum_i \log\lambda^{(s)}(t_i)
-#'     - \textstyle\int_{\mathcal D}\lambda^{(s)}\Big\},}
+#'   = \log \sum_s w_s \exp\Big\{\sum_i \log\{r\lambda^{(s)}(t_i)\}
+#'     - r\textstyle\int_{\mathcal D}\lambda^{(s)}\Big\},}
 #' with uniform draw weights for MCMC fits and particle weights for SMC.
+#' The factor \eqn{r} (`scale`) rescales the fitted intensity to the
+#' intensity of the test process, e.g. \eqn{r = (1-p)/p} when training and
+#' test patterns are obtained by independent \eqn{p}-thinning of one pattern.
+#' With `type = "plugin"` the score is the log-likelihood of the test pattern
+#' under the posterior mean intensity \eqn{\bar\lambda=\sum_s w_s\lambda^{(s)}},
+#' \deqn{\sum_i \log\{r\bar\lambda(t_i)\} - r\textstyle\int_{\mathcal D}\bar\lambda.}
+#' Both scores are log densities, so larger values are better.
 #' When `test` is supplied here, the intensities \eqn{\lambda^{(s)}(t_i)}
 #' are evaluated post hoc from the retained posterior state draws and the
 #' stored per-draw intensity integrals, so the test pattern does NOT have to
-#' be supplied at fitting time. When `test` is `NULL`, the value stored by
-#' `ppt_fit(..., test = )` is returned.
+#' be supplied at fitting time. When `test` is `NULL`, the stored value from
+#' `ppt_fit(..., test = )` is returned if `scale = 1` and
+#' `type = "posterior"`; otherwise the stored test pattern is rescored.
 #'
 #' @param object A fitted `ppt` object.
 #' @param test Optional numeric matrix of test points (one column per
-#'   input). If `NULL`, the lppd stored at fitting time is returned.
-#' @return A numeric scalar with attributes `n_test` and `joint`.
+#'   input). If `NULL`, the test pattern supplied at fitting time is used.
+#' @param scale Positive factor \eqn{r} multiplying the fitted intensity.
+#' @param type `"posterior"` (joint posterior predictive density) or
+#'   `"plugin"` (log-likelihood under the posterior mean intensity).
+#' @return A numeric scalar with attributes `n_test`, `joint`, `scale`,
+#'   and `type`.
 #' @export
-ppt_lppd <- function(object, test = NULL) {
+ppt_lppd <- function(object, test = NULL, scale = 1,
+                     type = c("posterior", "plugin")) {
   if (!inherits(object, "ppt")) {
     stop("`object` must inherit from class \"ppt\".", call. = FALSE)
   }
+  type <- match.arg(type)
+  if (length(scale) != 1L || !is.finite(scale) || scale <= 0) {
+    stop("`scale` must be a positive number.", call. = FALSE)
+  }
+  out <- function(value, n_test) {
+    structure(value, n_test = n_test, joint = identical(type, "posterior"),
+              scale = scale, type = type)
+  }
   if (is.null(test)) {
-    if (!is.finite(object$posterior$lppd)) {
+    if (scale == 1 && identical(type, "posterior") &&
+        is.finite(object$posterior$lppd)) {
+      return(out(object$posterior$lppd, nrow(object$data$test)))
+    }
+    test <- object$data$test
+    if (is.null(test)) {
       stop(
-        "No lppd is stored. Supply `test` here, or refit with a non-empty ",
-        "`test` matrix.",
+        "No test pattern is stored. Supply `test` here, or refit with a ",
+        "non-empty `test` matrix.",
         call. = FALSE
       )
     }
-    return(structure(
-      object$posterior$lppd,
-      n_test = nrow(object$data$test),
-      joint = TRUE
-    ))
   }
   test <- .ppt_validate_points(
     test, object$data$dimension, object$data$region, "test",
@@ -462,15 +483,16 @@ ppt_lppd <- function(object, test = NULL) {
          call. = FALSE)
   }
   draws <- pmax(draws, .Machine$double.xmin)
-  log_predictive_draw <- colSums(log(draws)) - as.numeric(integral)
-  weights <- .ppt_posterior_weights(object, length(log_predictive_draw))
+  weights <- .ppt_posterior_weights(object, ncol(draws))
+  if (identical(type, "plugin")) {
+    lambda_bar <- as.numeric(draws %*% weights)
+    value <- sum(log(scale * lambda_bar)) - scale * sum(weights * integral)
+    return(out(value, nrow(test)))
+  }
+  log_predictive_draw <- colSums(log(scale * draws)) - scale * as.numeric(integral)
   log_weighted <- log(weights) + log_predictive_draw
   center <- max(log_weighted)
-  structure(
-    center + log(sum(exp(log_weighted - center))),
-    n_test = nrow(test),
-    joint = TRUE
-  )
+  out(center + log(sum(exp(log_weighted - center))), nrow(test))
 }
 
 #' Extract the exact posterior intensity integral

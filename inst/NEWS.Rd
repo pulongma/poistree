@@ -2,6 +2,15 @@
 \title{News for Package \pkg{poistree}}
 
 \section{Changes in poistree version 0.3.0 (2026-10-04)}{
+  \subsection{Held-out scoring}{
+    \itemize{
+      \item \code{ppt_lppd()} gains \code{scale}, a factor \eqn{r} applied to
+        the fitted intensity (e.g. \eqn{r=(1-p)/p} for a \eqn{p}-thinned
+        training/test split), and \code{type = "plugin"}, the test-pattern
+        log likelihood under the posterior mean intensity. With
+        \code{test = NULL} the stored test pattern is rescored when needed.
+    }
+  }
   \subsection{Informed MH and candidate controls}{
     \itemize{
       \item Added \code{sampler = "irjmcmc"} for the hard and soft

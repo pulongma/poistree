@@ -4,27 +4,41 @@
 \alias{ppt_lppd}
 \title{Test-pattern log predictive density}
 \usage{
-ppt_lppd(object, test = NULL)
+ppt_lppd(object, test = NULL, scale = 1, type = c("posterior", "plugin"))
 }
 \arguments{
 \item{object}{A fitted `ppt` object.}
 
 \item{test}{Optional numeric matrix of test points (one column per
-input). If `NULL`, the lppd stored at fitting time is returned.}
+input). If `NULL`, the test pattern supplied at fitting time is used.}
+
+\item{scale}{Positive factor \eqn{r} multiplying the fitted intensity.}
+
+\item{type}{`"posterior"` (joint posterior predictive density) or
+`"plugin"` (log-likelihood under the posterior mean intensity).}
 }
 \value{
-A numeric scalar with attributes `n_test` and `joint`.
+A numeric scalar with attributes `n_test`, `joint`, `scale`,
+  and `type`.
 }
 \description{
 The joint posterior log predictive density of a test point pattern over
 the fitted observation region,
 \deqn{\mathrm{lppd}
-  = \log \sum_s w_s \exp\Big\{\sum_i \log\lambda^{(s)}(t_i)
-    - \textstyle\int_{\mathcal D}\lambda^{(s)}\Big\},}
+  = \log \sum_s w_s \exp\Big\{\sum_i \log\{r\lambda^{(s)}(t_i)\}
+    - r\textstyle\int_{\mathcal D}\lambda^{(s)}\Big\},}
 with uniform draw weights for MCMC fits and particle weights for SMC.
+The factor \eqn{r} (`scale`) rescales the fitted intensity to the
+intensity of the test process, e.g. \eqn{r = (1-p)/p} when training and
+test patterns are obtained by independent \eqn{p}-thinning of one pattern.
+With `type = "plugin"` the score is the log-likelihood of the test pattern
+under the posterior mean intensity \eqn{\bar\lambda=\sum_s w_s\lambda^{(s)}},
+\deqn{\sum_i \log\{r\bar\lambda(t_i)\} - r\textstyle\int_{\mathcal D}\bar\lambda.}
+Both scores are log densities, so larger values are better.
 When `test` is supplied here, the intensities \eqn{\lambda^{(s)}(t_i)}
 are evaluated post hoc from the retained posterior state draws and the
 stored per-draw intensity integrals, so the test pattern does NOT have to
-be supplied at fitting time. When `test` is `NULL`, the value stored by
-`ppt_fit(..., test = )` is returned.
+be supplied at fitting time. When `test` is `NULL`, the stored value from
+`ppt_fit(..., test = )` is returned if `scale = 1` and
+`type = "posterior"`; otherwise the stored test pattern is rescored.
 }
