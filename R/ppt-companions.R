@@ -2,6 +2,10 @@
 #'
 #' Reports the acceptance information and scalar traces exposed by the selected
 #' backend together with the number of retained draws.
+#' For SMC, the legacy `log_evidence_increment` and `log_evidence_running`
+#' fields contain increments and cumulative sums of the log normalizer
+#' relative to the root score. They are not absolute model evidence.
+#' With `b = 0`, these use the backend's formal improper-prior leaf scores.
 #'
 #' @param object A fitted `ppt` object.
 #' @param plot Draw an acceptance-rate bar plot.
@@ -91,7 +95,7 @@ plot.ppt_diagnostics <- function(x, ...) {
     x$acceptance,
     ylim = c(0, 1),
     ylab = "Acceptance rate",
-    main = paste(x$model, "RJ-MCMC acceptance"),
+    main = paste(x$model, x$algorithm, "acceptance"),
     las = 2,
     ...
   )

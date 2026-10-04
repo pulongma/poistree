@@ -18,8 +18,12 @@ ppt_summary(object, ...)
 An object of class `summary.ppt`.
 }
 \description{
-SMC fits report their log marginal-likelihood (evidence) estimate, which is
-stored in the fitted object as `posterior$log_evidence`; the RJ-MCMC and
-Particle-Gibbs backends do not estimate the marginal likelihood, so the field is `NA`
-and the summary omits the line.
+SMC fits report a target normalizer rather than an absolute Bayesian
+evidence estimate: the tree-prior normalizing constant is not computed,
+so `posterior$log_evidence` is `NA`. With a proper intensity prior (`b > 0`),
+`posterior$log_target_normalizer` adds the root Gamma--Poisson log marginal
+to `posterior$log_relative_normalizer`. With the improper `b = 0` prior,
+only the relative normalizer is available, under the backend's formal
+improper-prior leaf-score convention. The summary labels these quantities
+separately. RJ-MCMC and Particle-Gibbs do not estimate these normalizers.
 }

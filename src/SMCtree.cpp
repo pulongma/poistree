@@ -106,7 +106,7 @@ void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
       // Replace nodes
       logw[p] += log_inc;
     }
-    // Unbiased SMC log marginal-likelihood increment (adaptive-resampling form):
+    // Log of the relative SMC normalizer estimate (adaptive resampling):
     //   logZ += lse(logw_after) - lse(logw_before).  After a resample logw is reset
     //   to 0 so lse(logw_before) = log(P) on the next step, which is correct.
     double dlogZ = log_sum_exp(logw) - lse_before;   // per-step log-evidence increment Delta_t
@@ -157,11 +157,6 @@ void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
     // Rcpp::Rcout<<"\n";
 
   }
-
-  for(int p=0; p<P; p++){
-    this->particles[p].get_TreeLoglik();
-  }
-
 
   this->ESS_hist = ESS_hist;
   this->logZ_hat = logZ;                // SMC log-evidence estimate, relative to root (= last active logZ_run)

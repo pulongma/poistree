@@ -26,8 +26,9 @@ test_that("hard leaf SMC uses the unified ppt API", {
   expect_true(all(is.finite(ppt_predict(fit))))
   expect_true(is.finite(as.numeric(ppt_logLik(fit))))
   expect_true(is.finite(as.numeric(ppt_lppd(fit))))
-  expect_true(is.finite(fit$posterior$log_evidence))
-  expect_output(print(ppt_summary(fit)), "Log evidence")
+  expect_true(is.na(fit$posterior$log_evidence))
+  expect_true(is.finite(fit$posterior$log_target_normalizer))
+  expect_output(print(ppt_summary(fit)), "Log target normalizer")
 
   diagnostics <- ppt_diagnostics(fit)
   expect_s3_class(diagnostics, "ppt_diagnostics")

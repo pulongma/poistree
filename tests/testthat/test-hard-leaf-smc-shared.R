@@ -10,7 +10,7 @@ test_that("shared-path SMC reproduces the exact one-step posterior at the root",
 
   P <- 8000
   fit <- ppt_fit(x, region, gating = "hard", sampler = "smc", particles = P,
-                 max_depth = 1, engine = "shared", seed = 1)
+                 max_depth = 1, engine = "shared", cut_candidates = 30L, seed = 1)
   decision <- vapply(fit$posterior$tree_draws, function(nodes) {
     root <- nodes[[1]]
     if (isTRUE(root$is_leaf)) "stop" else key(root$J, root$L)
@@ -39,8 +39,11 @@ test_that("shared and dense SMC engines agree and share the API", {
   expect_true(is.na(fits[[2]]$diagnostics$expanded_nodes))
   expect_true(all(is.finite(ppt_predict(fits[[1]]))))
   expect_length(fits[[1]]$diagnostics$ess_history, 2^4 - 1)
-  # evidence estimates of the two engines target the same quantity
-  expect_lt(abs(fits[[1]]$posterior$log_evidence - fits[[2]]$posterior$log_evidence), 6)
+  # Both engines use the same formal b = 0 leaf-score convention.
+  expect_lt(abs(fits[[1]]$posterior$log_relative_normalizer -
+                  fits[[2]]$posterior$log_relative_normalizer), 6)
+  expect_true(is.na(fits[[1]]$posterior$log_evidence))
+  expect_true(is.na(fits[[2]]$posterior$log_evidence))
   # a node's observation sets are released once decided: the serialized tree
   # still carries the counts
   leaf_m <- unlist(lapply(fits[[1]]$posterior$tree_draws[[1]], function(node) if (isTRUE(node$is_leaf)) node$m))

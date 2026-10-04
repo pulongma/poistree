@@ -2,19 +2,51 @@
 \title{News for Package \pkg{poistree}}
 
 \section{Changes in poistree version 0.3.0 (2026-10-03)}{
-  \subsection{Removed}{
+  \subsection{Informed MH and candidate controls}{
     \itemize{
-      \item Multiscale models MPPT/S-MPPT and the \code{irjmcmc} sampler
-        removed from this version; code archived in
-        \code{archive/multiscale/}. The package now implements exactly two
+      \item Added \code{sampler = "irjmcmc"} for the hard and soft
+        terminal-leaf models. Square-root balanced proposals include the
+        reverse base-proposal probability and the full Metropolis correction.
+        The sampler targets the corresponding RJ-MCMC posterior and returns
+        ordinary, equally weighted posterior draws.
+      \item Hard informed MH caches candidate cuts, local collapsed scores,
+        and the current neighborhood across rejections. Soft informed MH
+        exactly aggregates latent-allocation proposals by Poisson-binomial
+        count recursion, retaining separate grow/prune and change kernels,
+        allocation Gibbs sweeps, and gate updates.
+      \item Every sampler now defaults to \code{cut_candidates = 50}.
+        Hard Particle Gibbs accepts and forwards this control instead of
+        hardcoding 30. Explicit user-specified counts and soft PGAS cut grids
+        retain their existing meaning; duplicate and invalid cuts are removed.
+    }
+  }
+  \subsection{Audit fixes}{
+    \itemize{
+      \item Unified hard SMC and Particle-Gibbs split ties with retained-state
+        evaluation: ties go to the right child on every input. Split routing
+        preserves observations on unrelated outer-region boundaries.
+      \item Shared SMC now honors \code{max_depth = 0}; dense SMC honors
+        \code{cut_candidates}, including a single-candidate grid.
+      \item Single-location hard marginal queries retain every posterior draw.
+      \item Hard SMC and Particle Gibbs report the conditional point-process
+        log likelihood of the sampled rates, consistently with RJ-MCMC.
+      \item SMC reports \code{log_relative_normalizer} and, for \code{b > 0},
+        \code{log_target_normalizer} including the root marginal factor.
+        Absolute \code{log_evidence} is unavailable because the existing
+        tree-prior weights have an uncomputed normalizing constant. The tree
+        weights and backend-specific prior choices are preserved.
+      \item The internal soft-tree diagnostic updates all dimension-specific
+        gate parameters, matching the public fitting backend.
+    }
+  }
+  \subsection{Model interface}{
+    \itemize{
+      \item The package implements two terminal-leaf intensity
         models, PPT (\code{gating = "hard"}) and S-PPT
         (\code{gating = "soft"}, the default), with samplers
-        \code{rjmcmc}, \code{smc} (PPT only), and \code{pgas}. The
-        \code{ppt_fit()} arguments \code{scale_prior} and
-        \code{sampler = "irjmcmc"} are gone, \code{scales} accepts only
-        \code{"leaf"}, and fitted objects no longer carry the fields
-        \code{posterior$kappa}, \code{posterior$tau}, and
-        \code{model$scale_prior}.
+        \code{rjmcmc}, the new terminal-leaf \code{irjmcmc},
+        \code{smc} (PPT only), and \code{pgas}.
+        The \code{scales} argument accepts only \code{"leaf"}.
     }
   }
   \subsection{New sampler}{
@@ -68,23 +100,12 @@
 \section{Changes in poistree version 0.2.1 (2026-08-25)}{
   \subsection{New models}{
     \itemize{
-      \item Added the soft-gated terminal-leaf model S-PPT and the hard and
-        soft multiscale models MPPT and S-MPPT, all fitted by RJ-MCMC through
+      \item Added the soft-gated terminal-leaf model S-PPT, fitted by RJ-MCMC through
         the unified \link{ppt_fit} interface.
-      \item Multiscale models accept \code{scale_prior = "independent"} or
-        \code{"markov"}. Independent-scale S-MPPT is now the default model,
-        and setting only \code{scales = "leaf"} selects S-PPT. Hard-gated PPT
-        and MPPT and Markov-scale variants remain available through explicit
-        component choices.
     }
   }
   \subsection{New functions and interface}{
     \itemize{
-      \item Added exact informed reversible-jump MCMC for independent-scale
-        MPPT and S-MPPT through \code{sampler = "irjmcmc"}. The kernel always
-        combines collapsed-score informed cuts with sequential conditional
-        allocation proposals. All forward and reverse proposal probabilities
-        enter the Metropolis--Hastings ratio.
       \item Added \link{ppt_lambda} to evaluate the posterior intensity
         \eqn{\lambda(s)} of any fit at arbitrary locations or over an
         automatic grid (one and two dimensions), returning
@@ -99,16 +120,13 @@
       \item \link{ppt_lppd} gained a \code{test} argument for held-out
         log pointwise predictive density evaluation after fitting.
       \item Extended \link{ppt_marginal} with no-reference posterior-state
-        integration for hard and soft leaf and multiscale fits. A
+        integration for hard and soft terminal-leaf fits. A
         user-supplied \code{reference} matrix remains available as an explicit
         uniform reference-design approximation.
       \item Removed the hard-coded aspect-ratio limit of 6 from hard-leaf PPT
         SMC and PGAS. The new \code{max_aspect_ratio} control defaults to
         \code{Inf}; finite values apply the same shape check to ordinary,
         midpoint, and median-fallback cut candidates.
-      \item Added the \code{soft-tree-surface} demo: a complete two-dimensional
-        S-MPPT workflow using post-hoc \link{ppt_lambda} evaluation without
-        \code{predict_at} at fitting time.
     }
   }
   \subsection{Corrections}{

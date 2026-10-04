@@ -170,9 +170,9 @@ ppt_marginal <- function(object, variable, grid = NULL, n = 100L,
       numeric(length(grid)), grid = grid, variable = j,
       region = region, average = isTRUE(average)
     )
-    if (is.null(dim(draws))) {
-      draws <- matrix(draws, nrow = length(grid), ncol = 1L)
-    }
+    # A scalar grid makes vapply() return one value per tree as a vector.
+    # Retain every posterior draw when restoring the grid-by-draw layout.
+    draws <- matrix(draws, nrow = length(grid), ncol = length(trees))
   } else if (is.null(reference) && exact_heap_state) {
     draws <- .ppt_state_marginal(
       object, grid = grid, variable = j, average = isTRUE(average)
@@ -273,10 +273,14 @@ predict.ppt <- function(object, newdata = NULL, ...) {
 
 #' Summarize a fitted PPT
 #'
-#' SMC fits report their log marginal-likelihood (evidence) estimate, which is
-#' stored in the fitted object as `posterior$log_evidence`; the RJ-MCMC and
-#' Particle-Gibbs backends do not estimate the marginal likelihood, so the field is `NA`
-#' and the summary omits the line.
+#' SMC fits report a target normalizer rather than an absolute Bayesian
+#' evidence estimate: the tree-prior normalizing constant is not computed,
+#' so `posterior$log_evidence` is `NA`. With a proper intensity prior (`b > 0`),
+#' `posterior$log_target_normalizer` adds the root Gamma--Poisson log marginal
+#' to `posterior$log_relative_normalizer`. With the improper `b = 0` prior,
+#' only the relative normalizer is available, under the backend's formal
+#' improper-prior leaf-score convention. The summary labels these quantities
+#' separately. RJ-MCMC and Particle-Gibbs do not estimate these normalizers.
 #'
 #' @param object A fitted `ppt` object.
 #' @param ... Reserved for future methods.
@@ -300,6 +304,10 @@ ppt_summary <- function(object, ...) {
       mean_gate = object$posterior$mean_gate,
       mean_log_likelihood = object$posterior$mean_log_likelihood,
       log_evidence = object$posterior$log_evidence %||% NA_real_,
+      log_target_normalizer =
+        object$posterior$log_target_normalizer %||% NA_real_,
+      log_relative_normalizer =
+        object$posterior$log_relative_normalizer %||% NA_real_,
       mean_integrated_intensity =
         object$posterior$mean_integrated_intensity %||% NA_real_,
       lppd = object$posterior$lppd,
@@ -351,6 +359,12 @@ print.summary.ppt <- function(x, ...) {
   cat("  Mean logLik    :", format(x$mean_log_likelihood, digits = 7L), "\n")
   if (is.finite(x$log_evidence %||% NA_real_)) {
     cat("  Log evidence   :", format(x$log_evidence, digits = 7L), "\n")
+  } else if (is.finite(x$log_target_normalizer %||% NA_real_)) {
+    cat("  Log target normalizer:",
+        format(x$log_target_normalizer, digits = 7L), "\n")
+  } else if (is.finite(x$log_relative_normalizer %||% NA_real_)) {
+    cat("  Log relative normalizer:",
+        format(x$log_relative_normalizer, digits = 7L), "\n")
   }
   if (is.finite(x$mean_integrated_intensity)) {
     cat("  Mean integral  :",
