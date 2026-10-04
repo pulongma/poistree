@@ -65,6 +65,8 @@
       length(eta) != 1L || !is.finite(eta) || eta < 0) {
     stop("Require `0 < alpha < 1` and `eta >= 0`.", call. = FALSE)
   }
+  max_depth <- .ppt_validate_depth(max_depth, minimum = 1L)
+  .ppt_validate_tree_storage(max_depth, layout = "soft")
   controls <- c(max_depth, cut_candidates, particles, chains, iter, burn, thin,
                 label_sweeps, exact_max)
   if (any(!is.finite(controls)) || any(controls != floor(controls)) ||

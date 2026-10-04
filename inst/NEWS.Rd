@@ -1,7 +1,7 @@
 \name{NEWS}
 \title{News for Package \pkg{poistree}}
 
-\section{Changes in poistree version 0.3.0 (2026-10-03)}{
+\section{Changes in poistree version 0.3.0 (2026-10-04)}{
   \subsection{Informed MH and candidate controls}{
     \itemize{
       \item Added \code{sampler = "irjmcmc"} for the hard and soft
@@ -22,6 +22,14 @@
   }
   \subsection{Audit fixes}{
     \itemize{
+      \item Added scalar integer depth validation and native allocation guards
+        before complete-tree size calculations. Unsafe depths and oversized
+        particle-tree allocations now fail with explicit errors; supported
+        controls retain their existing posterior and proposal rules.
+      \item Removed precompiled object files from the source checkout so direct
+        installations compile the current native interfaces and samplers.
+      \item Clarified the backend-specific availability of \code{min_leaf_n},
+        \code{prediction_draws}, and \code{gate_family}.
       \item Unified hard SMC and Particle-Gibbs split ties with retained-state
         evaluation: ties go to the right child on every input. Split routing
         preserves observations on unrelated outer-region boundaries.

@@ -29,11 +29,16 @@
 #'   `pgas`. With `gating = "soft"` the `pgas` token runs Particle Gibbs
 #'   with ancestor sampling; with `gating = "hard"` it runs conditional SMC
 #'   without ancestor sampling.
-#' @param ... Backend arguments. Common arguments include `predict_at`, `test`,
-#'   `max_depth`, and `min_leaf_n`; the minimum leaf occupancy defaults to 1
-#'   for every backend. `cut_candidates` defaults to 50 for every backend;
+#' @param ... Backend arguments. All backends accept `predict_at`, `test`,
+#'   `max_depth`, and `cut_candidates`. The positive integer `min_leaf_n`
+#'   defaults to 1 in all hard backends and in soft RJ-MCMC and informed MH;
+#'   it screens candidate splits by their hard-routed child counts. Soft
+#'   PGAS does not accept `min_leaf_n`.
+#'   `cut_candidates` defaults to 50 for every backend;
 #'   for a quantile proposal this is the requested number of probabilities
-#'   before duplicate and inadmissible cuts are removed. Soft RJ-MCMC and
+#'   before duplicate and inadmissible cuts are removed. It must be an integer
+#'   of at least 1 for hard SMC and hard Particle Gibbs, and at least 2 for
+#'   the other backends. Soft RJ-MCMC and
 #'   informed MH also accept `cut_proposal = "uniform"`, whose grid retains
 #'   the existing minimum of 30 locations before filtering, and
 #'   `cut_proposal = "data"`, which uses all admissible data midpoints and
@@ -45,8 +50,11 @@
 #'   cuts and scores; `"dense"` is the original per-particle implementation,
 #'   identical in law); hard-leaf SMC and Particle Gibbs also accept
 #'   `max_aspect_ratio`, whose default `Inf` imposes no shape restriction on
-#'   otherwise valid child regions. RJ-MCMC and informed MH use `chains`, `iter`, `burn`,
-#'   `cut_candidates`, and `prediction_draws`.
+#'   otherwise valid child regions. RJ-MCMC and informed MH use `chains`,
+#'   `iter`, `burn`, and `cut_candidates`. Their hard backends also accept
+#'   `prediction_draws`, a positive integer controlling retained predictions
+#'   and tree states. Their soft backends use `thin`, `tree_moves`, and
+#'   `change_moves`, and do not accept `prediction_draws`.
 #'   Particle Gibbs uses `particles`, `chains`,
 #'   `iter`, `burn`, and `cut_candidates`. The soft PGAS backend also accepts `thin`,
 #'   `label_sweeps` (label Gibbs sweeps per iteration), `ancestor_sampling`,
@@ -64,13 +72,26 @@
 #'   imputation; `"rates"` draws auxiliary child rates and allocates the
 #'   points independently given them), and
 #'   `cut_grid` (a list of fixed cut locations per input; by default
-#'   `cut_candidates` global quantiles). Soft models additionally accept
-#'   `gate_family`, `gate_structure` (`"dimension"`, the default, one gating
+#'   `cut_candidates` global quantiles). All soft backends accept
+#'   `gate_structure` (`"dimension"`, the default, one gating
 #'   parameter per input updated by a systematic Metropolis scan over the
 #'   inputs in every iteration; or `"shared"`, one common parameter), `gate`,
 #'   and gate-prior controls, which are scalars or vectors of length `d`.
+#'   Only soft RJ-MCMC and informed MH accept `gate_family`, with choices
+#'   `"logistic"` (the default) and `"compact"`. Soft PGAS uses logistic gates
+#'   and does not accept a `gate_family` argument.
 #'
 #' @details
+#' `max_depth` must be one finite integer. All hard backends and soft RJ-MCMC
+#' and informed MH accept values from 0 through 20; zero keeps only the root.
+#' Soft PGAS requires at least 1 and its current reference-tree storage limit
+#' permits at most 19. Dense hard SMC and hard Particle Gibbs also impose a
+#' tree-storage limit that depends on both depth and particle count. If this
+#' limit is exceeded, reduce `max_depth` or, for those hard backends,
+#' `particles`. These guards cover tree indexing and preallocated tree
+#' storage; they do not bound all cache and output memory. Defaults are
+#' unchanged by these limits.
+#'
 #' With `sampler = "irjmcmc"`, the current RJ-MCMC target and admissible tree
 #' support are retained. Each reversible tree kernel uses square-root
 #' balanced neighbor weights. For target density \eqn{\pi}, base proposal

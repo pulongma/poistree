@@ -31,6 +31,7 @@
 // [[Rcpp::plugins(cpp11)]]
 // ============================================================================
 #include <RcppArmadillo.h>
+#include "tree_limits.h"
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
@@ -706,14 +707,15 @@ static double ppst_lse_vec(const arma::vec&x){
 List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
     double a,double b,arma::vec gate,arma::vec a_gate,arma::vec b_gate,
     arma::vec sd_gate,arma::vec gate_min,int gate_shared,double alpha,
-    double eta,int Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
+    double eta,double Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
     int cut_mode,int ncand,int update_gate,int gate_family,int chains,
     int verbose,bool informed=false){
+  const int depth = ppt_checked_depth(Dmax);
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||
      grid.n_cols!=X.n_cols||Xtest.n_cols!=X.n_cols)
     stop("X, grid, Xtest, and region have incompatible dimensions");
-  if(chains<1||iters<=burn||burn<0||thin<1||Dmax<0||nmin<1||
+  if(chains<1||iters<=burn||burn<0||thin<1||depth<0||nmin<1||
      nmove<0||ncc<0||ncand<2)
     stop("invalid MCMC or tree controls");
   if(gate_family<0||gate_family>1)
@@ -740,7 +742,7 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
   for(int k=0;k<chains;k++){
     arma::vec ak,gak,gm;double nl,md;
     int got=ppst_run_chain(X,grid,Xtest,region,a,b,gate,a_gate,b_gate,sd_gate,
-      gate_min,gate_shared,gate_family,alpha,eta,Dmax,nmin,iters,burn,thin,
+      gate_min,gate_shared,gate_family,alpha,eta,depth,nmin,iters,burn,thin,
       nmove,ncc,cut_mode,ncand,update_gate,D,ll,llt,integrated_intensity,
       row,nl,md,gm,ak,gak,state_nodes,state_gate,informed);
     row+=got;leaves[k]=nl;maxdepth[k]=md;gates.row(k)=gm.t();acc.row(k)=ak.t();
@@ -777,12 +779,13 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
 List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
     double a,double b,arma::vec gate,arma::vec a_gate,arma::vec b_gate,
     arma::vec sd_gate,arma::vec gate_min,int gate_shared,double alpha,
-    double eta,int Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
+    double eta,double Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
     int cut_mode,int ncand,int update_gate,int gate_family,bool informed=false){
+  const int depth = ppt_checked_depth(Dmax);
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||mon.n_cols!=X.n_cols)
     stop("X, mon, and region have incompatible dimensions");
-  if(iters<=burn||burn<0||thin<1||Dmax<0||nmin<1||
+  if(iters<=burn||burn<0||thin<1||depth<0||nmin<1||
      nmove<0||ncc<0||ncand<2)
     stop("invalid MCMC or tree controls");
   if(gate_family<0||gate_family>1)
@@ -812,7 +815,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   arma::vec aga(gate.n_elem,arma::fill::zeros);
   arma::vec tga(gate.n_elem,arma::fill::zeros);
   PPSTIContext informed_context(X,region,gate,a,b,alpha,eta,
-                                Dmax,nmin,cut_mode,ncand,gate_family);
+                                depth,nmin,cut_mode,ncand,gate_family);
 
   for(int it=0;it<iters;it++){
     ppst_label_sweep(T,labels,X,region,a,b,gate,gate_family);
@@ -836,7 +839,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
                                 informed_gp,valid_gp,move);
       else ok=ppst_grow_prune(
         T,labels,X,region,a,b,gate,gate_family,alpha,eta,
-        Dmax,nmin,cut_mode,ncand,move
+        depth,nmin,cut_mode,ncand,move
       );
       if(move==0){ag+=ok;tg++;}
       else if(move==1){ap+=ok;tp++;}
@@ -847,7 +850,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
         ac+=ppsti_step(T,labels,informed_context,1,
                       informed_change,valid_change,move);
       }else ac+=ppst_change_cut(
-        T,labels,X,region,a,b,gate,gate_family,alpha,eta,Dmax,nmin,
+        T,labels,X,region,a,b,gate,gate_family,alpha,eta,depth,nmin,
         cut_mode,ncand
       );
       tc++;
@@ -903,21 +906,22 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
 // [[Rcpp::export]]
 List ppstree_informed_transition(arma::mat X,arma::mat region,
     arma::mat splits,IntegerVector labels,arma::vec gate,double a,double b,
-    double alpha,double eta,int Dmax,int nmin,int cut_mode,int ncand,
+    double alpha,double eta,double Dmax,int nmin,int cut_mode,int ncand,
     int gate_family,int kind){
+  const int depth = ppt_checked_depth(Dmax);
   if(X.n_rows==0||X.n_rows>8||X.n_cols==0)
     stop("informed transition inspection requires 1 to 8 observations");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||splits.n_cols!=3||
      (arma::uword)labels.size()!=X.n_rows)
     stop("incompatible transition-inspection dimensions");
-  if(a<=0||b<=0||Dmax<0||nmin<1||ncand<2||
+  if(a<=0||b<=0||depth<0||nmin<1||ncand<2||
      (gate_family!=0&&gate_family!=1)||(kind!=0&&kind!=1))
     stop("invalid transition-inspection controls");
   gate=ppst_expand_positive(gate,X.n_cols,"gate");
   PPSTree tree; PPSTNode root;
   root.box=region;root.idx=arma::regspace<arma::uvec>(0,X.n_rows-1);
   root.axis=-1;root.cut=NA_REAL;root.depth=0;root.m=0;tree[1]=root;
-  PPSTIContext context(X,region,gate,a,b,alpha,eta,Dmax,nmin,cut_mode,ncand,gate_family);
+  PPSTIContext context(X,region,gate,a,b,alpha,eta,depth,nmin,cut_mode,ncand,gate_family);
   arma::uvec order=arma::sort_index(splits.col(0));
   for(arma::uword k:order){
     if(!std::isfinite(splits(k,0))||!std::isfinite(splits(k,1))||

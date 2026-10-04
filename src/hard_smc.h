@@ -8,6 +8,7 @@
 #define POISTREE_HARD_SMC_H
 
 #include <RcppArmadillo.h>
+#include "tree_limits.h"
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -52,7 +53,7 @@ public:
               int P_, double a_, double b_, double rho_, double eta_, double max_aspect_, double resample_thresh_)
     : X(X_), region(region_), d(X_.n_cols), n(X_.n_rows), Dmax(Dmax_), min_leaf(min_leaf_),
       cut_grid_n(cut_grid_n_), P(P_), a(a_), b(b_), rho(rho_), eta(eta_), max_aspect(max_aspect_),
-      resample_thresh(resample_thresh_) {}
+      resample_thresh(resample_thresh_) { ppt_checked_depth(Dmax); }
 
   // Gamma-Poisson marginal of a leaf with m observations and volume `area`;
   // b = 0 keeps the package's improper-prior limit (PPT::PPT_base_mloglik).

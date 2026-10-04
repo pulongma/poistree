@@ -26,18 +26,20 @@ Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::
                          const arma::mat& region, Rcpp::List cut_grid,
                          double a, double b, arma::vec gate,
                          arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min,
-                         bool gate_shared, double rho, double eta, int max_depth,
+                         bool gate_shared, double rho, double eta, double max_depth,
                          int P, int niter, int burn, int thin, int label_sweeps,
                          bool update_gate, bool ancestor_sampling, int exact_max,
                          double defensive, bool resample_node, double ess_threshold,
                          bool allocation_rates, bool verbose) {
+  const int depth = ppt_checked_depth(max_depth, 1);
+  ppt_check_soft_storage(depth);
   const int d = X.n_cols;
   if (X.n_rows == 0 || d == 0) stop("X must be a non-empty matrix");
   if ((int)region.n_rows != d || region.n_cols != 2) stop("region must be a d by 2 matrix");
   if (cut_grid.size() != d) stop("cut_grid must have one vector per axis");
   if (a <= 0.0 || b <= 0.0) stop("a and b must be positive for the soft PPT");
   if (rho <= 0.0 || rho >= 1.0 || eta < 0.0) stop("require 0 < rho < 1 and eta >= 0");
-  if (max_depth < 1 || P < 2 || niter <= burn || burn < 0 || thin < 1 || label_sweeps < 0)
+  if (depth < 1 || P < 2 || niter <= burn || burn < 0 || thin < 1 || label_sweeps < 0)
     stop("invalid Particle-Gibbs controls");
   if (defensive < 0.0 || defensive >= 1.0) stop("defensive must lie in [0, 1)");
   if (!(ess_threshold > 0.0 && ess_threshold <= 1.0)) stop("ess_threshold must lie in (0, 1]");
@@ -47,7 +49,7 @@ Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::
 
   SoftModel M;
   M.X = X; M.region = region; M.a = a; M.b = b; M.rho = rho; M.eta = eta;
-  M.Dmax = max_depth; M.n_nodes = 1 << (max_depth + 1);
+  M.Dmax = depth; M.n_nodes = ppt_tree_slots(depth) + 1;
   M.exact_max = exact_max; M.defensive = defensive;
   M.init_tables();
   M.grid.resize(d);

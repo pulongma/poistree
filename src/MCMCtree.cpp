@@ -12,6 +12,7 @@
 #ifndef _USE_Armadillo
 #define _USE_Armadillo
 #include <RcppArmadillo.h>
+#include "tree_limits.h"
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(cpp11)]]
 #endif
@@ -396,6 +397,7 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
                         int cut_grid_n = 50, double a = 0.5, double b = 0.0,
                         double alpha = 0.95, double eta = 2.0, int n_pred = 300,
                         bool informed = false) {
+  ppt_checked_depth(max_depth);
   int N = pts.n_rows, d = pts.n_cols, np = grid.n_rows;
   std::unique_ptr<MNode> root_owner(new MNode(region, arma::regspace<arma::uvec>(0, N - 1), 0));
   MNode* root = root_owner.get();
@@ -575,19 +577,21 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
 
 // [[Rcpp::export]]
 Rcpp::List PPT_fit_MCMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region,
-                        int niter = 4000, int burnin = 1000, int max_depth = 8, int min_leaf_n = 1,
+                        int niter = 4000, int burnin = 1000, double max_depth = 8, int min_leaf_n = 1,
                         int cut_grid_n = 50, double a = 0.5, double b = 0.0,
                         double alpha = 0.95, double eta = 2.0, int n_pred = 300) {
-  return mfit_tree(pts, grid, region, niter, burnin, max_depth, min_leaf_n,
+  const int depth = ppt_checked_depth(max_depth);
+  return mfit_tree(pts, grid, region, niter, burnin, depth, min_leaf_n,
                    cut_grid_n, a, b, alpha, eta, n_pred, false);
 }
 
 // [[Rcpp::export]]
 Rcpp::List PPT_fit_IMCMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region,
-                         int niter = 4000, int burnin = 1000, int max_depth = 8, int min_leaf_n = 1,
+                         int niter = 4000, int burnin = 1000, double max_depth = 8, int min_leaf_n = 1,
                          int cut_grid_n = 50, double a = 0.5, double b = 0.0,
                          double alpha = 0.95, double eta = 2.0, int n_pred = 300) {
-  return mfit_tree(pts, grid, region, niter, burnin, max_depth, min_leaf_n,
+  const int depth = ppt_checked_depth(max_depth);
+  return mfit_tree(pts, grid, region, niter, burnin, depth, min_leaf_n,
                    cut_grid_n, a, b, alpha, eta, n_pred, true);
 }
 
@@ -653,13 +657,14 @@ static double mheap_id(MNode* node) {
 
 // [[Rcpp::export]]
 Rcpp::List PPT_IMCMC_transition(const arma::mat& pts, const arma::mat& region,
-                                const arma::mat& splits, int max_depth = 8,
+                                const arma::mat& splits, double max_depth = 8,
                                 int min_leaf_n = 1, int cut_grid_n = 50,
                                 double a = 0.5, double b = 0.0,
                                 double alpha = 0.95, double eta = 2.0) {
+  const int depth = ppt_checked_depth(max_depth);
   if (pts.n_rows == 0 || pts.n_cols == 0 || region.n_rows != pts.n_cols || region.n_cols != 2 ||
       !pts.is_finite() || !region.is_finite() || arma::any(region.col(1) <= region.col(0)) ||
-      max_depth < 0 || min_leaf_n < 1 || cut_grid_n < 1 || !std::isfinite(a) || a <= 0 ||
+      depth < 0 || min_leaf_n < 1 || cut_grid_n < 1 || !std::isfinite(a) || a <= 0 ||
       !std::isfinite(b) || b < 0 || !std::isfinite(alpha) || alpha <= 0 || alpha >= 1 ||
       !std::isfinite(eta) || eta < 0)
     Rcpp::stop("Invalid data, region, or informed-MH controls.");
@@ -674,7 +679,7 @@ Rcpp::List PPT_IMCMC_transition(const arma::mat& pts, const arma::mat& region,
     for (arma::uword j = 0; j < k; ++j)
       if (splits(k, 0) == splits(j, 0)) Rcpp::stop("Duplicate heap id in splits.");
   }
-  MInformedControl ctl{pts, max_depth, min_leaf_n, cut_grid_n, a, b, alpha, eta};
+  MInformedControl ctl{pts, depth, min_leaf_n, cut_grid_n, a, b, alpha, eta};
   std::unique_ptr<MNode> root(new MNode(region, arma::regspace<arma::uvec>(0, pts.n_rows - 1), 0));
   std::vector<bool> used(splits.n_rows, false);
   mdecode_splits(root.get(), 1.0, splits, used, ctl);

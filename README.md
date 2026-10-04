@@ -55,14 +55,33 @@ and evaluates a posterior surface and transect afterward with `ppt_lambda()`.
 Hard-leaf SMC and Particle Gibbs impose no aspect-ratio restriction by default
 (`max_aspect_ratio = Inf`). A finite value can be supplied when compact cells
 are scientifically required; the minimum child width and observation-count
-constraints remain active in either case. The default minimum child occupancy
-is `min_leaf_n = 1` for every model and sampler; larger values can be supplied
-as an explicit regularization or computational control.
+constraints remain active in either case. All hard samplers and soft RJ-MCMC
+and informed MH accept the positive integer `min_leaf_n` (default 1), which
+screens candidate splits by their hard-routed child counts. Soft PGAS does
+not accept this argument.
+
+Hard RJ-MCMC and informed MH accept `prediction_draws` to control retained
+predictions and tree states. The soft versions accept `thin`, `tree_moves`,
+and `change_moves` instead, and reject `prediction_draws`. Soft RJ-MCMC and
+informed MH also accept `gate_family = "logistic"` (the default) or
+`"compact"`. Soft PGAS uses logistic gates and does not accept `gate_family`.
+All soft backends accept `gate_structure`, `gate`, and gate-prior controls.
+
+`max_depth` must be one finite integer. All hard samplers and soft RJ-MCMC
+and informed MH accept 0 through 20; zero gives a root-only tree. Soft PGAS
+requires at least 1 and its current reference-tree storage limit permits at
+most 19. Dense hard SMC and hard Particle Gibbs additionally limit the
+combination of depth and particle count. If a tree-storage limit is exceeded,
+reduce `max_depth` or, for those hard backends, `particles`. These guards
+protect tree indexing and preallocated tree storage; cache and output memory
+remain additional costs. Existing default depths are unchanged.
 
 Every sampler defaults to `cut_candidates = 50`, including hard Particle
 Gibbs. For quantile proposals, this counts requested quantile probabilities;
 duplicate and inadmissible cuts are removed, so the number of valid cuts can
-be smaller. Soft PGAS constructs its grid globally; the RJ-MCMC samplers and
+be smaller. The count must be an integer of at least 1 for hard SMC and hard
+Particle Gibbs, and at least 2 for the other backends. Soft PGAS constructs
+its grid globally; the RJ-MCMC samplers and
 hard particle samplers construct cuts within each node. For soft RJ-MCMC and
 informed MH, `cut_proposal = "uniform"` retains the existing grid-size floor
 of 30 before filtering, so a smaller explicit `cut_candidates` still uses
