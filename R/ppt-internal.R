@@ -190,8 +190,9 @@
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0, resample_thresh = 0.5,
     max_depth = 8L, min_leaf_n = 1L,
-    max_aspect_ratio = Inf,
-    particles = 1000L, seed = 1L) {
+    max_aspect_ratio = Inf, cut_candidates = 30L,
+    particles = 1000L, engine = c("shared", "dense"), seed = 1L) {
+  engine <- match.arg(engine)
   x <- .ppt_validate_points(x, name = "x")
   d <- ncol(x)
   region <- .ppt_validate_region(region, d)
@@ -207,9 +208,9 @@
     )
   }
 
-  controls <- c(max_depth, min_leaf_n, particles)
+  controls <- c(max_depth, min_leaf_n, particles, cut_candidates)
   if (any(!is.finite(controls)) ||
-      max_depth < 0 || min_leaf_n < 1 || particles < 2 ||
+      max_depth < 0 || min_leaf_n < 1 || particles < 2 || cut_candidates < 1 ||
       any(controls != floor(controls))) {
     stop("Invalid SMC or tree controls.", call. = FALSE)
   }
@@ -228,12 +229,22 @@
 
   evaluation_locations <- rbind(predict_at, test)
   set.seed(seed)
-  raw <- PPT_fit_SMC(
-    pts = x, grid = evaluation_locations, region = region,
-    max_depth = max_depth, P = particles,
-    min_leaf_n = min_leaf_n, resample_thresh = resample_thresh,
-    a = a, b = b, max_aspect_ratio = max_aspect_ratio
-  )
+  raw <- if (identical(engine, "shared")) {
+    PPT_fit_SMC_shared(
+      pts = x, grid = evaluation_locations, region = region,
+      max_depth = max(max_depth, 1L), P = particles,
+      min_leaf_n = min_leaf_n, resample_thresh = resample_thresh,
+      a = a, b = b, max_aspect_ratio = max_aspect_ratio,
+      cut_grid_n = as.integer(cut_candidates)
+    )
+  } else {
+    PPT_fit_SMC(
+      pts = x, grid = evaluation_locations, region = region,
+      max_depth = max_depth, P = particles,
+      min_leaf_n = min_leaf_n, resample_thresh = resample_thresh,
+      a = a, b = b, max_aspect_ratio = max_aspect_ratio
+    )
+  }
 
   weights <- as.numeric(raw$weights)
   if (length(weights) != length(raw$particle) ||
@@ -353,7 +364,9 @@
         leaf_count_trace = as.numeric(leaf_counts),
         max_depth_trace = as.numeric(max_depths),
         log_evidence_increment = as.numeric(raw$logZ_inc),
-        log_evidence_running = as.numeric(raw$logZ_run)
+        log_evidence_running = as.numeric(raw$logZ_run),
+        expanded_nodes = if (is.null(raw$expanded)) NA_real_ else as.numeric(raw$expanded),
+        resampling_events = if (is.null(raw$resampled)) NA_real_ else as.numeric(raw$resampled)
       ),
       prior = list(
         intensity = list(shape = a, rate = b),
@@ -365,9 +378,11 @@
         particles = particles,
         resample_thresh = resample_thresh,
         max_aspect_ratio = max_aspect_ratio,
+        cut_candidates = as.integer(cut_candidates),
+        engine = engine,
         seed = seed
       ),
-      backend = "PPT_fit_SMC"
+      backend = if (identical(engine, "shared")) "PPT_fit_SMC_shared" else "PPT_fit_SMC"
     ),
     class = "ppt"
   )
@@ -555,7 +570,9 @@
         leaf_count_trace = as.numeric(leaf_trace),
         max_depth_trace = as.numeric(depth_trace),
         log_evidence_increment = numeric(),
-        log_evidence_running = numeric()
+        log_evidence_running = numeric(),
+        expanded_nodes = NA_real_,
+        resampling_events = NA_real_
       ),
       prior = list(
         intensity = list(shape = a, rate = b),
@@ -755,7 +772,9 @@
         leaf_count_trace = as.numeric(leaf_counts),
         max_depth_trace = as.numeric(max_depths),
         log_evidence_increment = numeric(),
-        log_evidence_running = numeric()
+        log_evidence_running = numeric(),
+        expanded_nodes = NA_real_,
+        resampling_events = NA_real_
       ),
       prior = list(
         intensity = list(shape = a, rate = b),

@@ -185,13 +185,13 @@
         particle_ess = mean(pull("ess")),
         ess_history = pull("ess"),
         ancestor_move_rate = mean(pull("as_rate"), na.rm = TRUE),
-        expanded_nodes = mean(pull("expanded")),
-        resampling_events = mean(pull("resampled")),
         unique_trees = NA_integer_,
         leaf_count_trace = pull("nleaf"),
         max_depth_trace = pull("max_depth"),
         log_evidence_increment = numeric(),
-        log_evidence_running = numeric()
+        log_evidence_running = numeric(),
+        expanded_nodes = mean(pull("expanded")),
+        resampling_events = mean(pull("resampled"))
       ),
       prior = list(
         intensity = list(shape = a, rate = b),

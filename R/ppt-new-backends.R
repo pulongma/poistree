@@ -164,7 +164,9 @@
         particle_ess = NA_real_, ess_history = numeric(),
         unique_trees = NA_integer_, leaf_count_trace = numeric(),
         max_depth_trace = numeric(), log_evidence_increment = numeric(),
-        log_evidence_running = numeric()
+        log_evidence_running = numeric(),
+        expanded_nodes = NA_real_,
+        resampling_events = NA_real_
       ),
       prior = list(
         intensity = list(shape = a, rate = b),
