@@ -1,7 +1,8 @@
 // Shared-path SMC for the hard terminal-leaf PPT; see hard_smc.h and
 // CLAUDE/shared_path_smc_hard_ppt.tex.  The sampler follows Ma (2026),
 // Sect. 3: breadth-first growth, one-step lookahead proposal, adaptive
-// multinomial resampling, unbiased evidence increments.
+// multinomial resampling, and a log estimate of the normalizer relative
+// to the root model (the normalizer estimate, not its logarithm, is unbiased).
 #ifndef _USE_Armadillo
 #define _USE_Armadillo
 #include <RcppArmadillo.h>
@@ -99,10 +100,8 @@ void HardSMCtree::expand_node(int v) {
         arma::mat boxL = A.box, boxR = A.box;
         boxL(j, 1) = cut; boxR(j, 0) = cut;
         if (!hard_good_shape(boxL, max_aspect) || !hard_good_shape(boxR, max_aspect)) return;
-        // left child is [lo, cut) except on the last axis, where it is [lo, cut]
-        // (the box convention of in_region_nd in the dense implementation)
-        const int nL = (int)((j == d - 1 ? std::upper_bound(xs.begin(), xs.end(), cut)
-                                         : std::lower_bound(xs.begin(), xs.end(), cut)) - xs.begin()), nR = A.m - nL;
+        // Interior ties go right on every axis, matching the dense engine.
+        const int nL = (int)(std::lower_bound(xs.begin(), xs.end(), cut) - xs.begin()), nR = A.m - nL;
         const double areaL = arma::prod(boxL.col(1) - boxL.col(0)), areaR = arma::prod(boxR.col(1) - boxR.col(0));
         if (nL < min_leaf || nR < min_leaf || areaL <= 0.0 || areaR <= 0.0) return;
         A.cand_axis.push_back(j); A.cand_cut.push_back(cut); A.cand_nL.push_back(nL);
@@ -159,7 +158,7 @@ bool HardSMCtree::sample_position(int t) {
       left.reserve(A.cand_nL[c]); right.reserve(A.m - A.cand_nL[c]);
       const int j = A.cand_axis[c];
       const double cut = A.cand_cut[c];
-      for (int i : A.pts) ((j == d - 1 ? X(i, j) <= cut : X(i, j) < cut) ? left : right).push_back(i);
+      for (int i : A.pts) (X(i, j) < cut ? left : right).push_back(i);
       lid = make_child(v, c, -1, std::move(left));
       rid = make_child(v, c, +1, std::move(right));
       store[v].children.emplace(c, std::make_pair(lid, rid));
@@ -248,7 +247,8 @@ Rcpp::List HardSMCtree::export_particles(const arma::mat& grid, arma::mat& lam_d
       if (leaf) {
         lam = R::rgamma(a + v.m, 1.0 / (b + v.area));
         lambda[kv.first] = lam;
-        ll += logQ0(v.m, v.area);
+        if (v.m > 0) ll += v.m * std::log(lam);
+        ll -= lam * v.area;
         tot += lam * v.area;
       } else { J = v.cand_axis[kv.second.act]; L = v.cand_cut[kv.second.act]; }
       nodes[k++] = Rcpp::List::create(
@@ -267,7 +267,7 @@ Rcpp::List HardSMCtree::export_particles(const arma::mat& grid, arma::mat& lam_d
         if (R.S != 1) break;
         const HardNode& v = store[R.node];
         const int j = v.cand_axis[R.act];
-        const bool go_left = j == d - 1 ? grid(g, j) <= v.cand_cut[R.act] : grid(g, j) < v.cand_cut[R.act];
+        const bool go_left = grid(g, j) < v.cand_cut[R.act];
         h = go_left ? 2 * h : 2 * h + 1;
       }
       lam_draws(g, p) = lambda[h];
@@ -285,7 +285,7 @@ Rcpp::List PPT_fit_SMC_shared(const arma::mat& pts, const arma::mat& grid, const
   const int d = pts.n_cols;
   if (pts.n_rows == 0 || d == 0) Rcpp::stop("pts must be a non-empty matrix");
   if ((int)region.n_rows != d || region.n_cols != 2) Rcpp::stop("region must be a d by 2 matrix");
-  if (max_depth < 1 || P < 1 || min_leaf_n < 1 || cut_grid_n < 1) Rcpp::stop("invalid SMC controls");
+  if (max_depth < 0 || P < 1 || min_leaf_n < 1 || cut_grid_n < 1) Rcpp::stop("invalid SMC controls");
   HardSMCtree smc(pts, region, max_depth, min_leaf_n, cut_grid_n, P, a, b, 0.5, 2.0, max_aspect_ratio, resample_thresh);
   smc.sweep();
 

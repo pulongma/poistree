@@ -21,13 +21,12 @@ using namespace Rcpp;
 // [[Rcpp::export]]
 Rcpp::List PPT_fit_PG(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int max_depth, 
 	int niter, int P, int min_leaf_n, double resample_thresh,
-	double a, double b, bool verbose, double max_aspect_ratio)
+	double a, double b, bool verbose, double max_aspect_ratio, int cut_grid_n = 50)
 {
 	int d = pts.n_cols;
 	int n = pts.n_rows;
 	// int np = grid.n_rows; 
 	double rho = 0.5, lam=1.0/d; 
-	int cut_grid_n = 30;
 
 	bool force_mid_cut = false;
 	// PPT 
@@ -138,13 +137,12 @@ void summarize_particles(SMCtree&   Tsmc,
 // [[Rcpp::export]]
 Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int max_depth, 
 	int P, int min_leaf_n, double resample_thresh,
-	double a, double b, double max_aspect_ratio)
+	double a, double b, double max_aspect_ratio, int cut_grid_n = 50)
 {
 	int d = pts.n_cols;
 	int n = pts.n_rows;
 	int np = grid.n_rows; 
 	double rho = 0.5, lam=1.0/d; 
-	int cut_grid_n = 30;
 
 	bool force_mid_cut = false;
 	// PPT 
@@ -206,7 +204,7 @@ Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::
   	_["weights"] = pp_SMC1.weights,
 	_["resample_thresh"] = pp_SMC1.resample_thresh,
   	_["ESS"] = pp_SMC1.ESS_hist,
-  	_["logZ"] = pp_SMC1.logZ_hat,      // scalar: SMC log marginal-evidence estimate, relative to root (final)
+        _["logZ"] = pp_SMC1.logZ_hat,      // scalar: log of the SMC normalizer estimate relative to the root model
   	_["logZ_inc"] = pp_SMC1.logZ_inc,  // vector: per-step increment Delta_t (sum = logZ)
   	_["logZ_run"] = pp_SMC1.logZ_run   // vector: running cumulative estimate (last active entry = logZ)
 		);
@@ -316,7 +314,6 @@ Rcpp::List PPT_transition_probabilities(
         Rcpp::_["replay_split_probability"] = replay_split_probability
     );
 }
-
 
 
 

@@ -33,7 +33,9 @@ void PPT::split_node(int i, const arma::mat& pts, int axis, double cut, int min_
     arma::mat right_region = region;
     right_region(axis, 0) = cut;
 
-    arma::uvec inside_left = in_region_nd(x, left_region);
+    // The parent already owns these observations. Route only on the split
+    // coordinate so points on other global upper boundaries are preserved.
+    arma::uvec inside_left = x.col(axis) < cut;
     arma::uvec left_idx = nodes[i]->idx.elem(arma::find(inside_left));
     arma::uvec right_idx = nodes[i]->idx.elem(arma::find(inside_left == 0));
     int depth_child = nodes[i]->depth + 1;
@@ -72,7 +74,10 @@ std::vector<std::vector<double> > PPT::find_valid_cuts(
   int n = x.n_rows, d = x.n_cols;
   std::vector<std::vector<double>> valid_cuts(d);
 
-  arma::vec quantiles = arma::linspace(0.05, 0.95, cut_grid_n);
+  // A one-point grid contains its starting probability, as in seq() in R.
+  arma::vec quantiles(cut_grid_n);
+  for (int q = 0; q < cut_grid_n; ++q)
+    quantiles(q) = cut_grid_n == 1 ? 0.05 : 0.05 + 0.9 * q / (cut_grid_n - 1.0);
 
   for (int j = 0; j < d; ++j) {
     arma::vec xj = x.col(j);
@@ -269,7 +274,7 @@ void PPT::PPT_one_step_ahead(double& log_inc, int i,
             double cut = valid_cuts[axis][j];
             arma::mat regionL = region; regionL(axis, 1) = cut;
             arma::mat regionR = region; regionR(axis, 0) = cut;
-            arma::uvec inside_L = in_region_nd(x, regionL);
+            arma::uvec inside_L = x.col(axis) < cut;
             int nL = arma::accu(inside_L);
             int nR = n - nL;
             if (nL < min_leaf_n || nR < min_leaf_n) continue;
@@ -450,9 +455,7 @@ void PPT::PPT_force_reference_step(double& log_inc, int i,
     int cut_index = -1;
     int n_valid_J = 0;
     for (size_t k = 0; k < valid_cuts[J].size(); ++k) {
-        arma::mat candidate_left = region;
-        candidate_left(J, 1) = valid_cuts[J][k];
-        const int candidate_nL = arma::accu(in_region_nd(x, candidate_left));
+        const int candidate_nL = arma::accu(x.col(J) < valid_cuts[J][k]);
         const int candidate_nR = n - candidate_nL;
         if (candidate_nL < min_leaf_n || candidate_nR < min_leaf_n) continue;
         if (std::abs(valid_cuts[J][k] - L) < 1e-10)
@@ -467,7 +470,7 @@ void PPT::PPT_force_reference_step(double& log_inc, int i,
     arma::mat regionR = region;
     regionL(J, 1) = L;
     regionR(J, 0) = L;
-    const arma::uvec inside_L = in_region_nd(x, regionL);
+    const arma::uvec inside_L = x.col(J) < L;
     const int nL = arma::accu(inside_L);
     const int nR = n - nL;
     if (nL < min_leaf_n || nR < min_leaf_n) {
@@ -540,7 +543,7 @@ double PPT::PPT_log_transition_prob(const TreeNode* parent_node,
             double cut = valid_cuts[axis][j];
             arma::mat regionL = region; regionL(axis, 1) = cut;
             arma::mat regionR = region; regionR(axis, 0) = cut;
-            arma::uvec inside_L = in_region_nd(x, regionL);
+            arma::uvec inside_L = x.col(axis) < cut;
             int nL = arma::accu(inside_L);
             int nR = n - nL;
             if (nL < min_leaf_n || nR < min_leaf_n) continue;
@@ -650,7 +653,6 @@ void PPT::PPT_draw_lambda()
 
 arma::vec PPT::predict_lambda(const arma::mat& XX) {
     int M = XX.n_rows;
-    int d = XX.n_cols;
     arma::vec lambda_out(M, arma::fill::zeros);
 
     for (int i = 0; i < M; ++i) {
@@ -659,9 +661,8 @@ arma::vec PPT::predict_lambda(const arma::mat& XX) {
         while (idx < (int)nodes.size() && nodes[idx] && !nodes[idx]->is_leaf) {
             int axis = nodes[idx]->J;
             double cut = nodes[idx]->L;
-            // Match the training assignment in in_region_nd(): the left child is
-            // [.,cut) on every axis except the last, which is closed [.,cut].
-            bool go_left = (axis < d - 1) ? (pt(axis) < cut) : (pt(axis) <= cut);
+            // Match candidate counts, training assignment, and saved-state evaluation.
+            bool go_left = pt(axis) < cut;
             idx = go_left ? (2*idx + 1) : (2*idx + 2);
         }
         if (idx < (int)nodes.size() && nodes[idx])

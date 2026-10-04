@@ -548,6 +548,8 @@ static int ppst_change_cut(PPSTree&T,std::vector<int>&labels,
   return 0;
 }
 
+#include "ppt_soft_informed.h"
+
 // ---- posterior draws and chain ---------------------------------------------
 static double ppst_eval_intensity(const PPSTree&T,
     const std::unordered_map<int,double>&lam,const arma::rowvec&x,
@@ -571,7 +573,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
     int row0,double&mean_leaves,
     double&mean_max_depth,arma::vec&mean_gate,arma::vec&accept,
     arma::vec&gate_accept,
-    std::vector<arma::mat>&state_nodes,arma::mat&state_gate){
+    std::vector<arma::mat>&state_nodes,arma::mat&state_gate,bool informed){
   int n=pts.n_rows,si=0; double nls=0.0,mds=0.0;
   arma::vec gate=gate0,gs(gate0.n_elem,arma::fill::zeros);
   PPSTree T; PPSTNode root;
@@ -581,6 +583,8 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
   double ag=0,tg=0,ap=0,tp=0,ac=0,tc=0;
   arma::vec aga(gate.n_elem,arma::fill::zeros);
   arma::vec tga(gate.n_elem,arma::fill::zeros);
+  PPSTIContext informed_context(pts,region,gate,a,b,alpha,eta,
+                                Dmax,nmin,mode,ncand,gate_family);
   for(int it=0;it<iters;it++){
     ppst_label_sweep(T,labels,pts,region,a,b,gate,gate_family);
     if(update_gate){
@@ -594,15 +598,25 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
         aga[which]+=accepted; tga[which]++;
       }
     }
+    if(informed && update_gate) informed_context.clear_gate_cache();
+    PPSTINeighborhood informed_gp,informed_change;
+    bool valid_gp=false,valid_change=false;
     for(int r=0;r<nmove;r++){
-      int move=-1,ok=ppst_grow_prune(
+      int move=-1,ok;
+      if(informed) ok=ppsti_step(T,labels,informed_context,0,
+                                informed_gp,valid_gp,move);
+      else ok=ppst_grow_prune(
         T,labels,pts,region,a,b,gate,gate_family,alpha,eta,
         Dmax,nmin,mode,ncand,move
       );
       if(move==0){ag+=ok;tg++;}else if(move==1){ap+=ok;tp++;}
     }
     for(int r=0;r<ncc;r++){
-      ac+=ppst_change_cut(
+      if(informed){
+        int move=-1;
+        ac+=ppsti_step(T,labels,informed_context,1,
+                      informed_change,valid_change,move);
+      }else ac+=ppst_change_cut(
         T,labels,pts,region,a,b,gate,gate_family,alpha,eta,Dmax,nmin,
         mode,ncand
       );tc++;
@@ -694,7 +708,7 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
     arma::vec sd_gate,arma::vec gate_min,int gate_shared,double alpha,
     double eta,int Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
     int cut_mode,int ncand,int update_gate,int gate_family,int chains,
-    int verbose){
+    int verbose,bool informed=false){
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||
      grid.n_cols!=X.n_cols||Xtest.n_cols!=X.n_cols)
@@ -721,14 +735,14 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
   arma::mat acc(chains,3),gacc(chains,X.n_cols);
   std::vector<arma::mat> state_nodes(total);
   arma::mat state_gate(total,X.n_cols,arma::fill::zeros);
-  if(verbose) Rcpp::Rcout<<"S-PPT [RJ-MCMC]: "<<chains
+  if(verbose) Rcpp::Rcout<<(informed?"S-PPT [informed RJ-MCMC]: ":"S-PPT [RJ-MCMC]: ")<<chains
                          <<" chains, "<<ns<<" draws/chain\n";
   for(int k=0;k<chains;k++){
     arma::vec ak,gak,gm;double nl,md;
     int got=ppst_run_chain(X,grid,Xtest,region,a,b,gate,a_gate,b_gate,sd_gate,
       gate_min,gate_shared,gate_family,alpha,eta,Dmax,nmin,iters,burn,thin,
       nmove,ncc,cut_mode,ncand,update_gate,D,ll,llt,integrated_intensity,
-      row,nl,md,gm,ak,gak,state_nodes,state_gate);
+      row,nl,md,gm,ak,gak,state_nodes,state_gate,informed);
     row+=got;leaves[k]=nl;maxdepth[k]=md;gates.row(k)=gm.t();acc.row(k)=ak.t();
     gacc.row(k)=gak.t();
     if(verbose) Rcpp::Rcout<<"  chain "<<k+1<<"/"<<chains<<" done; leaves="
@@ -764,7 +778,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
     double a,double b,arma::vec gate,arma::vec a_gate,arma::vec b_gate,
     arma::vec sd_gate,arma::vec gate_min,int gate_shared,double alpha,
     double eta,int Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
-    int cut_mode,int ncand,int update_gate,int gate_family){
+    int cut_mode,int ncand,int update_gate,int gate_family,bool informed=false){
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||mon.n_cols!=X.n_cols)
     stop("X, mon, and region have incompatible dimensions");
@@ -797,19 +811,30 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   double ag=0,tg=0,ap=0,tp=0,ac=0,tc=0;
   arma::vec aga(gate.n_elem,arma::fill::zeros);
   arma::vec tga(gate.n_elem,arma::fill::zeros);
+  PPSTIContext informed_context(X,region,gate,a,b,alpha,eta,
+                                Dmax,nmin,cut_mode,ncand,gate_family);
 
   for(int it=0;it<iters;it++){
     ppst_label_sweep(T,labels,X,region,a,b,gate,gate_family);
     if(update_gate){
-      int which=0;
-      int accepted=ppst_gate_update(T,labels,X,region,a,b,gate,a_gate,b_gate,
-                                    sd_gate,gate_min,gate_shared,gate_family,
-                                    which);
-      aga[which]+=accepted; tga[which]++;
+      // Match the fitting backend: one proposal per dimension, or one
+      // proposal for a shared gate.
+      int nup=gate_shared?1:(int)gate.n_elem;
+      for(int which=0;which<nup;which++){
+        int accepted=ppst_gate_update(T,labels,X,region,a,b,gate,a_gate,b_gate,
+                                      sd_gate,gate_min,gate_shared,gate_family,
+                                      which);
+        aga[which]+=accepted; tga[which]++;
+      }
     }
+    if(informed && update_gate) informed_context.clear_gate_cache();
+    PPSTINeighborhood informed_gp,informed_change;
+    bool valid_gp=false,valid_change=false;
     for(int r=0;r<nmove;r++){
-      int move=-1;
-      int ok=ppst_grow_prune(
+      int move=-1,ok;
+      if(informed) ok=ppsti_step(T,labels,informed_context,0,
+                                informed_gp,valid_gp,move);
+      else ok=ppst_grow_prune(
         T,labels,X,region,a,b,gate,gate_family,alpha,eta,
         Dmax,nmin,cut_mode,ncand,move
       );
@@ -817,7 +842,11 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
       else if(move==1){ap+=ok;tp++;}
     }
     for(int r=0;r<ncc;r++){
-      ac+=ppst_change_cut(
+      if(informed){
+        int move=-1;
+        ac+=ppsti_step(T,labels,informed_context,1,
+                      informed_change,valid_change,move);
+      }else ac+=ppst_change_cut(
         T,labels,X,region,a,b,gate,gate_family,alpha,eta,Dmax,nmin,
         cut_mode,ncand
       );
@@ -866,4 +895,88 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   return List::create(
     _["nleaf"]=tr_nleaf,_["gate"]=tr_gate,_["logdens"]=tr_logdens,
     _["mon"]=tr_mon,_["accept"]=accept,_["gate_accept"]=gate_accept,_["ns"]=si);
+}
+
+// Internal exact-transition inspector for small labeled states. The fitting
+// backend never enumerates labels; this diagnostic deliberately does so to
+// check its Poisson-binomial action masses against independent finite targets.
+// [[Rcpp::export]]
+List ppstree_informed_transition(arma::mat X,arma::mat region,
+    arma::mat splits,IntegerVector labels,arma::vec gate,double a,double b,
+    double alpha,double eta,int Dmax,int nmin,int cut_mode,int ncand,
+    int gate_family,int kind){
+  if(X.n_rows==0||X.n_rows>8||X.n_cols==0)
+    stop("informed transition inspection requires 1 to 8 observations");
+  if(region.n_rows!=X.n_cols||region.n_cols!=2||splits.n_cols!=3||
+     (arma::uword)labels.size()!=X.n_rows)
+    stop("incompatible transition-inspection dimensions");
+  if(a<=0||b<=0||Dmax<0||nmin<1||ncand<2||
+     (gate_family!=0&&gate_family!=1)||(kind!=0&&kind!=1))
+    stop("invalid transition-inspection controls");
+  gate=ppst_expand_positive(gate,X.n_cols,"gate");
+  PPSTree tree; PPSTNode root;
+  root.box=region;root.idx=arma::regspace<arma::uvec>(0,X.n_rows-1);
+  root.axis=-1;root.cut=NA_REAL;root.depth=0;root.m=0;tree[1]=root;
+  PPSTIContext context(X,region,gate,a,b,alpha,eta,Dmax,nmin,cut_mode,ncand,gate_family);
+  arma::uvec order=arma::sort_index(splits.col(0));
+  for(arma::uword k:order){
+    if(!std::isfinite(splits(k,0))||!std::isfinite(splits(k,1))||
+       splits(k,0)>std::numeric_limits<int>::max()||splits(k,0)<1||
+       splits(k,1)<0||splits(k,1)>=(double)X.n_cols)
+      stop("invalid split index in informed transition inspection");
+    int id=(int)splits(k,0),axis=(int)splits(k,1); double cut=splits(k,2);
+    if(splits(k,0)!=id||splits(k,1)!=axis||
+       !std::isfinite(cut)||tree.find(id)==tree.end()||tree.at(id).axis>=0)
+      stop("invalid split topology in informed transition inspection");
+    PPSTNode parent=tree.at(id);
+    auto support=context.cuts(parent);
+    if(std::find(support->axis[axis].begin(),support->axis[axis].end(),cut)==
+       support->axis[axis].end()) stop("split outside candidate support");
+    arma::uvec li,ri;ppst_split_indices(parent,X,axis,cut,li,ri);
+    tree[id].axis=axis;tree[id].cut=cut;
+    tree[2*id]=ppst_child(parent,li,axis,cut,-1);
+    tree[2*id+1]=ppst_child(parent,ri,axis,cut,1);
+  }
+  std::vector<int> current_labels(labels.begin(),labels.end());
+  for(size_t i=0;i<current_labels.size();i++){
+    auto it=tree.find(current_labels[i]);
+    if(it==tree.end()||it->second.axis>=0||
+       !std::isfinite(ppst_log_phi(it->second,X.row(i),region,gate,gate_family)))
+      stop("labels must select terminal leaves with positive basis values");
+    it->second.m++;
+  }
+  PPSTINeighborhood neighborhood=ppsti_neighborhood(tree,current_labels,context,kind);
+  std::vector<List> neighbors;
+  for(const PPSTIAction&act:neighborhood.actions){
+    int m=(int)act.affected.size(),count=act.move==1?1:(1<<m);
+    for(int mask=0;mask<count;mask++){
+      PPSTree next=tree;std::vector<int> next_labels=current_labels;
+      double logalloc=0.0;int nleft=0;
+      if(act.move!=1) for(int k=0;k<m;k++){
+        bool left=(mask&(1<<k))!=0;int i=act.affected[k];
+        next_labels[i]=2*act.id+(left?0:1);
+        logalloc+=left?act.logleft[k]:act.logright[k];
+        if(left) nleft++;
+      }
+      if(!std::isfinite(logalloc)) continue;
+      ppsti_apply(act,next,next_labels,nleft);
+      std::vector<int> ids;
+      for(const auto&kv:next) if(kv.second.axis>=0) ids.push_back(kv.first);
+      std::sort(ids.begin(),ids.end());arma::mat next_splits(ids.size(),3);
+      for(size_t k=0;k<ids.size();k++){
+        next_splits(k,0)=ids[k];next_splits(k,1)=next.at(ids[k]).axis;
+        next_splits(k,2)=next.at(ids[k]).cut;
+      }
+      double logq=act.logq+logalloc;
+      double ratio=act.logratio[act.move==1?0:nleft];
+      double logeta=logq+0.5*ratio;
+      neighbors.push_back(List::create(_["splits"]=next_splits,
+        _["labels"]=next_labels,_["move"]=act.move,_["log_q0"]=logq,
+        _["log_ratio"]=ratio,_["log_eta"]=logeta,
+        _["probability"]=std::exp(logeta-neighborhood.logZ)));
+    }
+  }
+  List result(neighbors.size());
+  for(size_t k=0;k<neighbors.size();k++) result[k]=neighbors[k];
+  return List::create(_["log_normalizer"]=neighborhood.logZ,_["neighbors"]=result);
 }

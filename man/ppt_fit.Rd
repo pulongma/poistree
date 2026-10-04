@@ -9,7 +9,7 @@ ppt_fit(
   region,
   gating = c("soft", "hard"),
   scales = "leaf",
-  sampler = c("rjmcmc", "smc", "pgas"),
+  sampler = c("rjmcmc", "irjmcmc", "smc", "pgas"),
   ...
 )
 }
@@ -27,24 +27,32 @@ treated as input dimensions.}
 implemented; the argument is reserved so that existing calls with
 `scales = "leaf"` keep working.}
 
-\item{sampler}{Posterior sampler: `rjmcmc`, `smc` (hard gating only), or
+\item{sampler}{Posterior sampler: `rjmcmc`, `irjmcmc` (cached locally
+informed Metropolis--Hastings), `smc` (hard gating only), or
 `pgas`. With `gating = "soft"` the `pgas` token runs Particle Gibbs
 with ancestor sampling; with `gating = "hard"` it runs conditional SMC
 without ancestor sampling.}
 
 \item{...}{Backend arguments. Common arguments include `predict_at`, `test`,
 `max_depth`, and `min_leaf_n`; the minimum leaf occupancy defaults to 1
-for every backend. SMC uses `particles`, `a`, `b`, `resample_thresh`,
-`cut_candidates` (quantile cuts per input and node, default 30) and
+for every backend. `cut_candidates` defaults to 50 for every backend;
+for a quantile proposal this is the requested number of probabilities
+before duplicate and inadmissible cuts are removed. Soft RJ-MCMC and
+informed MH also accept `cut_proposal = "uniform"`, whose grid retains
+the existing minimum of 30 locations before filtering, and
+`cut_proposal = "data"`, which uses all admissible data midpoints and
+ignores `cut_candidates`. The default quantile and uniform grids thus
+request 50 locations. SMC uses `particles`,
+`a`, `b`, `resample_thresh`, `cut_candidates` (per input and node), and
 `engine` (`"shared"`, the default, runs the sweep on a shared-path store
 of boxes so that particles reaching the same box share its candidate
 cuts and scores; `"dense"` is the original per-particle implementation,
 identical in law); hard-leaf SMC and Particle Gibbs also accept
 `max_aspect_ratio`, whose default `Inf` imposes no shape restriction on
-otherwise valid child regions. RJ-MCMC uses `chains`, `iter`, `burn`,
+otherwise valid child regions. RJ-MCMC and informed MH use `chains`, `iter`, `burn`,
 `cut_candidates`, and `prediction_draws`.
 Particle Gibbs uses `particles`, `chains`,
-`iter`, and `burn`. The soft PGAS backend also accepts `thin`,
+`iter`, `burn`, and `cut_candidates`. The soft PGAS backend also accepts `thin`,
 `label_sweeps` (label Gibbs sweeps per iteration), `ancestor_sampling`,
 `exact_max` (largest node occupancy for which the exact Poisson-binomial
 one-step-ahead proposal is used, default 150; above it the same
@@ -74,8 +82,9 @@ An object of S3 class `ppt`.
 Model components are selected independently: `gating` controls the split
 mechanism and `sampler` controls posterior computation. The current
 release implements two terminal-leaf intensity models: the hard-gated
-PPT, available with SMC, RJ-MCMC, or Particle Gibbs based on an exact
-conditional-SMC update, and the soft-gated S-PPT, available with RJ-MCMC
+PPT, available with SMC, RJ-MCMC, informed MH, or Particle Gibbs based on an exact
+conditional-SMC update, and the soft-gated S-PPT, available with RJ-MCMC,
+informed MH,
 or Particle Gibbs with ancestor sampling (PGAS), whose conditional SMC
 runs over the tree and the latent allocation variables of the observations jointly on an
 extended complete-tree space. For the hard PPT the `pgas` token runs
@@ -84,6 +93,40 @@ conditional SMC without ancestor sampling.
 \details{
 All samplers return the same S3 class and output schema. The default call
 fits S-PPT with RJ-MCMC; `gating = "hard"` selects PPT.
+
+
+With `sampler = "irjmcmc"`, the current RJ-MCMC target and admissible tree
+support are retained. Each reversible tree kernel uses square-root
+balanced neighbor weights. For target density \eqn{\pi}, base proposal
+\eqn{q_0}, and neighboring states \eqn{s,t}, define
+\deqn{r(s,t)=\frac{\pi(t)q_0(t,s)}{\pi(s)q_0(s,t)},\qquad
+  w(s,t)=q_0(s,t)\sqrt{r(s,t)},\qquad Z(s)=\sum_t w(s,t).}
+A candidate is proposed with probability \eqn{w(s,t)/Z(s)} and accepted
+with probability \eqn{\min\{1,Z(s)/Z(t)\}}. A rejection retains the current
+state. Draws therefore have ordinary posterior weights; this sampler does
+not use importance-tempering weights.
+
+The hard sampler scores its grow, prune, and terminal-split change
+neighborhood using exact Gamma--Poisson collapsed likelihoods. Candidate
+cuts and local scores are cached, and the current neighborhood is reused
+after rejection. The soft sampler updates the joint tree-and-allocation
+state at fixed gates. It sums allocation contributions exactly using
+Poisson-binomial count recursion, followed by an exact conditional draw
+of the allocation. For \eqn{m} allocated observations at a candidate node,
+this count recursion costs \eqn{O(m^2)} per candidate.
+`tree_moves` and `change_moves` retain their meanings
+as counts of separate grow/prune and change kernels per iteration.
+Allocation Gibbs sweeps and gate Metropolis updates remain part of the
+soft sampler. Exact scoring can be costly for large nodes; informed MH
+is not guaranteed to improve effective samples per second.
+
+The default candidate count is shared by all samplers, but their existing
+cut-generation rules and tree priors remain different. In particular,
+soft PGAS uses a global cut grid and RJ-MCMC uses node-specific candidates.
+The same candidate count does not make different sampler families target
+the same tree model. Explicit `cut_candidates` values follow the
+proposal-specific rules above; a supplied soft PGAS `cut_grid` overrides
+its automatically generated quantile grid.
 }
 \examples{
 \dontrun{

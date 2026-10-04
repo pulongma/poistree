@@ -6,7 +6,8 @@
 #'
 #' \itemize{
 #'   \item `gating`: hard partitions or soft logistic/compact gates;
-#'   \item `sampler`: sequential Monte Carlo, reversible-jump MCMC, or
+#'   \item `sampler`: sequential Monte Carlo, reversible-jump MCMC,
+#'     locally informed Metropolis--Hastings, or
 #'     Particle Gibbs with exact conditional SMC (with ancestor sampling for
 #'     the soft model).
 #' }
@@ -22,14 +23,19 @@
 #' Model \tab `gating` \tab `sampler` \cr
 #' PPT \tab `hard` \tab `smc` \cr
 #' PPT \tab `hard` \tab `rjmcmc` \cr
+#' PPT \tab `hard` \tab `irjmcmc` (informed MH) \cr
 #' PPT \tab `hard` \tab `pgas` \cr
 #' S-PPT \tab `soft` \tab `rjmcmc` \cr
+#' S-PPT \tab `soft` \tab `irjmcmc` (informed MH) \cr
 #' S-PPT \tab `soft` \tab `pgas` (ancestor sampling) \cr
 #' }
 #'
 #' Both models use terminal-leaf intensities (`scales = "leaf"`, the only
 #' value). The default is S-PPT: soft gating and RJ-MCMC. Explicit
 #' `gating = "hard"` calls select PPT.
+#' All samplers default to `cut_candidates = 50`. Informed MH preserves the
+#' corresponding RJ-MCMC target and returns ordinary posterior draws;
+#' rejection-free importance tempering is not used.
 #'
 #' @section Basic workflow:
 #' Supply the observed event locations or covariate vectors as an `n` by `d`

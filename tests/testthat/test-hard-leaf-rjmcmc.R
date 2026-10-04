@@ -261,7 +261,7 @@ test_that("depth-one Particle Gibbs has the enumerated posterior law", {
     max_depth = 1L, niter = 12000L, P = 4L,
     min_leaf_n = 1L, resample_thresh = 0.5,
     a = 0.5, b = 0, verbose = FALSE,
-    max_aspect_ratio = Inf
+    max_aspect_ratio = Inf, cut_grid_n = 30L
   )
   roots <- lapply(raw$particles, `[[`, 1L)
 

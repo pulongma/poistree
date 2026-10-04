@@ -8,7 +8,7 @@ fit <- ppt_fit(
   x, region,
   gating = c("soft", "hard"),
   scales = "leaf",
-  sampler = c("rjmcmc", "smc", "pgas"),
+  sampler = c("rjmcmc", "irjmcmc", "smc", "pgas"),
   ...
 )
 ```
@@ -17,8 +17,8 @@ The two models are:
 
 | Model | Gating | Intensity | Available samplers |
 |---|---|---|---|
-| PPT | hard | terminal leaf | SMC, RJ-MCMC, Particle Gibbs (`pgas` token) |
-| S-PPT | soft | terminal leaf | RJ-MCMC, Particle Gibbs with ancestor sampling (`pgas`) |
+| PPT | hard | terminal leaf | SMC, RJ-MCMC, informed MH (`irjmcmc`), Particle Gibbs (`pgas` token) |
+| S-PPT | soft | terminal leaf | RJ-MCMC, informed MH (`irjmcmc`), Particle Gibbs with ancestor sampling (`pgas`) |
 
 `scales` is reserved and accepts only `"leaf"`. The default call fits S-PPT
 by RJ-MCMC:
@@ -58,6 +58,46 @@ are scientifically required; the minimum child width and observation-count
 constraints remain active in either case. The default minimum child occupancy
 is `min_leaf_n = 1` for every model and sampler; larger values can be supplied
 as an explicit regularization or computational control.
+
+Every sampler defaults to `cut_candidates = 50`, including hard Particle
+Gibbs. For quantile proposals, this counts requested quantile probabilities;
+duplicate and inadmissible cuts are removed, so the number of valid cuts can
+be smaller. Soft PGAS constructs its grid globally; the RJ-MCMC samplers and
+hard particle samplers construct cuts within each node. For soft RJ-MCMC and
+informed MH, `cut_proposal = "uniform"` retains the existing grid-size floor
+of 30 before filtering, so a smaller explicit `cut_candidates` still uses
+30 grid locations. `cut_proposal = "data"` uses all admissible data midpoints
+and ignores the count. The default quantile and uniform grids request 50
+locations. A supplied soft PGAS `cut_grid` overrides its generated quantile grid.
+
+Use `sampler = "irjmcmc"` for cached locally informed Metropolis--Hastings
+with either hard or soft gating:
+
+```r
+informed <- ppt_fit(
+  x, region, gating = "hard", sampler = "irjmcmc",
+  chains = 4, iter = 10000, burn = 2500, cut_candidates = 50
+)
+```
+
+This sampler preserves the corresponding RJ-MCMC target and returns ordinary
+posterior draws. For each reversible kernel with base proposal `q0`, neighbor
+scores are `q0(s,t) * sqrt(pi(t) * q0(t,s) / (pi(s) * q0(s,t)))`. Their sum
+is `Z(s)`. A neighbor is drawn proportionally to these scores and accepted
+with probability `min(1, Z(s) / Z(t))`; rejected transitions retain the current
+state. This is an MH sampler, and downstream means, intervals, and predictive
+densities use ordinary posterior weights.
+
+The hard sampler uses exact collapsed Gamma-Poisson likelihoods over grow,
+prune, and terminal-split change neighbors. It caches candidate cuts and local
+scores and keeps the current neighborhood after rejection. The soft sampler
+uses the augmented tree and allocation state at fixed gates, with exact
+Poisson-binomial count recursion to aggregate allocation scores and sample
+the selected allocation. This recursion costs O(m²) per candidate for m
+allocated observations at the node. Its `tree_moves` and `change_moves` still control
+separate grow/prune and change kernels. Allocation Gibbs updates and gate
+Metropolis updates remain in the iteration. Exact informed scoring costs more
+per transition, so a gain in effective samples per second depends on the data.
 
 The hard PPT SMC sampler (`sampler = "smc"`) runs by default on a shared-path
 store (`engine = "shared"`): particles that reach the same box share one stored
@@ -104,12 +144,37 @@ sppt_pg <- ppt_fit(
 )
 ```
 
+Hard splits consistently route `x < cut` to the left child and ties to the
+right child on every dimension. Points on the fitted region's outer boundary
+remain included. This convention applies to fitting, saved predictions, and
+evaluation of retained states.
+
 Every backend returns class `ppt` with the same major fields. Use
 `ppt_lambda()`, `ppt_predict()`, `ppt_marginal()`, `plot()`, `ppt_summary()`,
 `ppt_logLik()`, `ppt_lppd()`, `ppt_integral()`, `ppt_diagnostics()`, and
-`ppt_sim()` for downstream work. SMC fits additionally store their log
-marginal-likelihood (evidence) estimate in `fit$posterior$log_evidence`,
-reported by `ppt_summary()`; the MCMC backends do not estimate it.
+`ppt_sim()` for downstream work. For SMC, `posterior$log_relative_normalizer`
+stores the log estimate of the target normalizer divided by the unsplit root
+score. With a proper intensity prior (`b > 0`),
+`posterior$log_target_normalizer` adds the normalized Gamma-Poisson root
+factor; `ppt_summary()` reports it explicitly as a target normalizer.
+With `b = 0`, only the relative quantity is available, under the package's
+formal improper-prior leaf-score convention.
+
+`posterior$log_evidence` is `NA`: the current tree-prior weights assign each
+valid split on dimension `j` weight `rho / (d * K_j)` and do not renormalize
+over dimensions without valid cuts. The sum of these tree weights is not
+computed, so even with `b > 0` the target normalizer is not absolute Bayesian
+evidence. The MCMC backends do not estimate either normalizer. For backward
+compatibility, diagnostics named `log_evidence_increment` and
+`log_evidence_running` still contain increments and cumulative sums of the
+**relative** log normalizer.
+
+The hard backends retain their existing model specifications: RJ-MCMC
+defaults to split parameter `alpha = 0.95`, whereas SMC and Particle Gibbs
+use `0.5`. Their candidate-cut and cell-geometry rules also differ. Selecting
+the same gating mechanism does not by itself make these samplers target the
+same posterior. The shared and dense **SMC** engines do share the same target
+for identical controls, including `cut_candidates` and `max_depth = 0`.
 
 The posterior intensity of any fit can be evaluated after fitting at
 arbitrary locations: `ppt_lambda()` returns pointwise summaries over an

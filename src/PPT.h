@@ -37,7 +37,7 @@ public:
 
     // tree tuning parameters
     int min_leaf_n = 1;
-    int cut_grid_n = 30;
+    int cut_grid_n = 50;
     double max_aspect_ratio = std::numeric_limits<double>::infinity();
     double rho = 0.5;   // base split prob (alpha) at depth 0
     double lam = 1.0;   // axis selection prob (normalised per node)
@@ -151,7 +151,7 @@ public:
         this->a = 0.5;
         this->b = 0;
         this->min_leaf_n = 1;
-        this->cut_grid_n = 30;
+        this->cut_grid_n = 50;
         this->max_aspect_ratio = std::numeric_limits<double>::infinity();
         this->rho = 0.5;
         this->eta = 2.0;   // depth penalty on the split prior (Chipman et al. 1998)
@@ -171,7 +171,7 @@ public:
     }
     void initialize(const arma::mat& region_root, int n, int max_depth_, int min_leaf_n_,
         double a_=0.5, double b_=0.0,
-        double rho_=0.5, int cut_grid_n_=30, double eta_=2.0,
+        double rho_=0.5, int cut_grid_n_=50, double eta_=2.0,
         double max_aspect_ratio_=std::numeric_limits<double>::infinity()) {
 
         // Regions are stored as a d x 2 matrix: rows are dimensions and the
@@ -246,14 +246,16 @@ public:
                                    const TreeNode* ref_node,
                                    const arma::mat& pts);
 
-    // Summing the log marginal likelihoods for all leaf nodes
+    // Conditional Poisson-process log likelihood for the sampled leaf rates.
+    // Collapsed Gamma-Poisson scores are used only in tree-update calculations.
     void get_TreeLoglik(){
         double total = 0.0;
         for (const auto* node : nodes) {
             if (node && node->is_leaf && !node->is_empty) {
                 int n = node->idx.n_elem;        // number of points in this leaf
                 double area = arma::prod(node->region.col(1) - node->region.col(0));
-                total += PPT_base_mloglik(n, area, a, b);
+                if (n > 0) total += n * std::log(node->lambda);
+                total -= node->lambda * area;
             }
         }
         this->loglik = total;
@@ -266,7 +268,6 @@ public:
 
 
 #endif
-
 
 
 

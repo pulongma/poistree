@@ -2,6 +2,53 @@
 \title{News for Package \pkg{poistree}}
 
 \section{Changes in poistree version 0.3.0 (2026-10-03)}{
+  \subsection{Informed MH and candidate controls}{
+    \itemize{
+      \item Added \code{sampler = "irjmcmc"} for the hard and soft
+        terminal-leaf models. Square-root balanced proposals include the
+        reverse base-proposal probability and the full Metropolis correction.
+        The sampler targets the corresponding RJ-MCMC posterior and returns
+        ordinary, equally weighted posterior draws.
+      \item Hard informed MH caches candidate cuts, local collapsed scores,
+        and the current neighborhood across rejections. Soft informed MH
+        exactly aggregates latent-allocation proposals by Poisson-binomial
+        count recursion, retaining separate grow/prune and change kernels,
+        allocation Gibbs sweeps, and gate updates.
+      \item Every sampler now defaults to \code{cut_candidates = 50}.
+        Hard Particle Gibbs accepts and forwards this control instead of
+        hardcoding 30. Explicit user-specified counts and soft PGAS cut grids
+        retain their existing meaning; duplicate and invalid cuts are removed.
+    }
+  }
+  \subsection{Audit fixes}{
+    \itemize{
+      \item Unified hard SMC and Particle-Gibbs split ties with retained-state
+        evaluation: ties go to the right child on every input. Split routing
+        preserves observations on unrelated outer-region boundaries.
+      \item Shared SMC now honors \code{max_depth = 0}; dense SMC honors
+        \code{cut_candidates}, including a single-candidate grid.
+      \item Single-location hard marginal queries retain every posterior draw.
+      \item Hard SMC and Particle Gibbs report the conditional point-process
+        log likelihood of the sampled rates, consistently with RJ-MCMC.
+      \item SMC reports \code{log_relative_normalizer} and, for \code{b > 0},
+        \code{log_target_normalizer} including the root marginal factor.
+        Absolute \code{log_evidence} is unavailable because the existing
+        tree-prior weights have an uncomputed normalizing constant. The tree
+        weights and backend-specific prior choices are preserved.
+      \item The internal soft-tree diagnostic updates all dimension-specific
+        gate parameters, matching the public fitting backend.
+    }
+  }
+  \subsection{Model interface}{
+    \itemize{
+      \item The package implements two terminal-leaf intensity
+        models, PPT (\code{gating = "hard"}) and S-PPT
+        (\code{gating = "soft"}, the default), with samplers
+        \code{rjmcmc}, the new terminal-leaf \code{irjmcmc},
+        \code{smc} (PPT only), and \code{pgas}.
+        The \code{scales} argument accepts only \code{"leaf"}.
+    }
+  }
   \subsection{New sampler}{
     \itemize{
       \item Added Particle Gibbs with ancestor sampling for the soft

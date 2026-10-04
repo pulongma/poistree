@@ -16,10 +16,47 @@
     chains = 4L, iter = 10000L, burn = 2500L, thin = 3L,
     tree_moves = 3L, change_moves = 8L,
     cut_proposal = c("quantile", "uniform", "data"),
-    cut_candidates = 30L, seed = 1L, verbose = TRUE) {
-  gate_family <- match.arg(gate_family)
-  gate_structure <- match.arg(gate_structure)
-  cut_proposal <- match.arg(cut_proposal)
+    cut_candidates = 50L, seed = 1L, verbose = TRUE) {
+  .ppt_fit_soft_leaf_mcmc(
+    x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
+    gate_min, gate_family, gate_structure, update_gate, alpha, eta,
+    max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
+    change_moves, cut_proposal, cut_candidates, seed, verbose,
+    informed = FALSE
+  )
+}
+
+.ppt_fit_soft_leaf_irjmcmc <- function(
+    x, region, predict_at = x, test = NULL,
+    a = 0.5, b = NULL,
+    gate = 12, a_gate = 36, b_gate = 3,
+    sd_gate = 0.07, gate_min = 0,
+    gate_family = c("logistic", "compact"),
+    gate_structure = c("dimension", "shared"),
+    update_gate = TRUE,
+    alpha = 0.95, eta = 2,
+    max_depth = 8L, min_leaf_n = 1L,
+    chains = 4L, iter = 10000L, burn = 2500L, thin = 3L,
+    tree_moves = 3L, change_moves = 8L,
+    cut_proposal = c("quantile", "uniform", "data"),
+    cut_candidates = 50L, seed = 1L, verbose = TRUE) {
+  .ppt_fit_soft_leaf_mcmc(
+    x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
+    gate_min, gate_family, gate_structure, update_gate, alpha, eta,
+    max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
+    change_moves, cut_proposal, cut_candidates, seed, verbose,
+    informed = TRUE
+  )
+}
+
+.ppt_fit_soft_leaf_mcmc <- function(
+    x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
+    gate_min, gate_family, gate_structure, update_gate, alpha, eta,
+    max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
+    change_moves, cut_proposal, cut_candidates, seed, verbose, informed) {
+  gate_family <- match.arg(gate_family, c("logistic", "compact"))
+  gate_structure <- match.arg(gate_structure, c("dimension", "shared"))
+  cut_proposal <- match.arg(cut_proposal, c("quantile", "uniform", "data"))
   cut_mode <- switch(cut_proposal,
                      data = 0L, quantile = 1L, uniform = 2L)
 
@@ -91,7 +128,7 @@
     as.integer(tree_moves), as.integer(change_moves),
     cut_mode, as.integer(cut_candidates), as.integer(update_gate),
     as.integer(match(gate_family, c("logistic", "compact")) - 1L),
-    as.integer(chains), as.integer(verbose)
+    as.integer(chains), as.integer(verbose), informed = informed
   )
 
   input_names <- colnames(x)
@@ -106,6 +143,12 @@
   integrated_intensity <- as.numeric(raw$integrated_intensity)
   prediction_draws <- as.matrix(raw$draws)
   retained_per_chain <- .ppt_retained_per_chain(iter, burn, thin)
+  leaf_count_trace <- vapply(raw$state_nodes, function(nodes) {
+    sum(nodes[, 2L] < 0)
+  }, numeric(1))
+  max_depth_trace <- vapply(raw$state_nodes, function(nodes) {
+    max(floor(log2(nodes[, 1L])))
+  }, numeric(1))
 
   structure(
     list(
@@ -113,7 +156,9 @@
       model = list(
         gating = "soft", gate_family = gate_family,
         scales = "leaf",
-        sampler = "rjmcmc", label = "S-PPT"
+        sampler = if (informed) "irjmcmc" else "rjmcmc",
+        algorithm = if (informed) "Informed MH" else "RJ-MCMC",
+        label = "S-PPT"
       ),
       data = list(
         x = x, n = nrow(x), dimension = d, region = region,
@@ -142,6 +187,8 @@
         integrated_intensity_draws = integrated_intensity,
         lppd = if (nrow(test)) as.numeric(raw$logpred) else NA_real_,
         log_evidence = NA_real_,
+        log_target_normalizer = NA_real_,
+        log_relative_normalizer = NA_real_,
         draws = ncol(prediction_draws),
         particle_weights = numeric(),
         tree_draws = list(),
@@ -162,8 +209,8 @@
         tree_acceptance = tree_accept,
         gate_acceptance = gate_accept,
         particle_ess = NA_real_, ess_history = numeric(),
-        unique_trees = NA_integer_, leaf_count_trace = numeric(),
-        max_depth_trace = numeric(), log_evidence_increment = numeric(),
+        unique_trees = NA_integer_, leaf_count_trace = leaf_count_trace,
+        max_depth_trace = max_depth_trace, log_evidence_increment = numeric(),
         log_evidence_running = numeric(),
         expanded_nodes = NA_real_,
         resampling_events = NA_real_

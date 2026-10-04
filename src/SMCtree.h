@@ -68,7 +68,7 @@ public:
    // member function declarations
    void init(const arma::mat& region_root, int n, int max_depth, int min_leaf_n, 
         double a=.5, double b=0.0,
-        double rho=0.95, int cut_grid_n=30,
+        double rho=0.95, int cut_grid_n=50,
         double max_aspect_ratio=std::numeric_limits<double>::infinity()
     	){
 	    for (int p = 0; p < P; ++p) {
@@ -83,7 +83,7 @@ public:
     void init_AS(const PPT& ref_tree, const arma::mat& region_root, int n, 
     	int max_depth, int min_leaf_n, 
         double a=.5, double b=0.0,
-        double rho=0.95, int cut_grid_n=30,
+        double rho=0.95, int cut_grid_n=50,
         double max_aspect_ratio=std::numeric_limits<double>::infinity()
     	) {
         int P = particles.size();

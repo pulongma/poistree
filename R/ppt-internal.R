@@ -8,8 +8,10 @@
 .ppt_backend_registry <- c(
   "hard:leaf:smc" = ".ppt_fit_hard_leaf_smc",
   "hard:leaf:rjmcmc" = ".ppt_fit_hard_leaf_rjmcmc",
+  "hard:leaf:irjmcmc" = ".ppt_fit_hard_leaf_irjmcmc",
   "hard:leaf:pgas" = ".ppt_fit_hard_leaf_pgas",
   "soft:leaf:rjmcmc" = ".ppt_fit_soft_leaf_rjmcmc",
+  "soft:leaf:irjmcmc" = ".ppt_fit_soft_leaf_irjmcmc",
   "soft:leaf:pgas" = ".ppt_fit_soft_leaf_pgas"
 )
 
@@ -190,7 +192,7 @@
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0, resample_thresh = 0.5,
     max_depth = 8L, min_leaf_n = 1L,
-    max_aspect_ratio = Inf, cut_candidates = 30L,
+    max_aspect_ratio = Inf, cut_candidates = 50L,
     particles = 1000L, engine = c("shared", "dense"), seed = 1L) {
   engine <- match.arg(engine)
   x <- .ppt_validate_points(x, name = "x")
@@ -232,7 +234,7 @@
   raw <- if (identical(engine, "shared")) {
     PPT_fit_SMC_shared(
       pts = x, grid = evaluation_locations, region = region,
-      max_depth = max(max_depth, 1L), P = particles,
+      max_depth = max_depth, P = particles,
       min_leaf_n = min_leaf_n, resample_thresh = resample_thresh,
       a = a, b = b, max_aspect_ratio = max_aspect_ratio,
       cut_grid_n = as.integer(cut_candidates)
@@ -242,7 +244,8 @@
       pts = x, grid = evaluation_locations, region = region,
       max_depth = max_depth, P = particles,
       min_leaf_n = min_leaf_n, resample_thresh = resample_thresh,
-      a = a, b = b, max_aspect_ratio = max_aspect_ratio
+      a = a, b = b, max_aspect_ratio = max_aspect_ratio,
+      cut_grid_n = as.integer(cut_candidates)
     )
   }
 
@@ -306,9 +309,22 @@
 
   input_names <- colnames(x)
   if (is.null(input_names)) input_names <- paste0("x", seq_len(d))
-  log_evidence <- as.numeric(raw$logZ)
-  if (length(log_evidence) != 1L || !is.finite(log_evidence)) {
-    log_evidence <- NA_real_
+  # Native SMC accumulates a normalizer relative to the unsplit root score.
+  # Restore the normalized Gamma root factor only for a proper rate prior.
+  # Tree-prior weights are not normalized over admissible trees when some
+  # axes have no valid cuts; their normalizer is not computed here.  These
+  # quantities must therefore not be reported as absolute model evidence.
+  log_relative_normalizer <- as.numeric(raw$logZ)
+  if (length(log_relative_normalizer) != 1L ||
+      !is.finite(log_relative_normalizer)) {
+    log_relative_normalizer <- NA_real_
+  }
+  log_target_normalizer <- NA_real_
+  if (b > 0 && is.finite(log_relative_normalizer)) {
+    root_volume <- prod(region[, 2L] - region[, 1L])
+    log_root <- lgamma(nrow(x) + a) - lgamma(a) + a * log(b) -
+      (nrow(x) + a) * log(b + root_volume)
+    log_target_normalizer <- log_relative_normalizer + log_root
   }
 
   structure(
@@ -348,7 +364,9 @@
         mean_integrated_intensity = sum(weights * integrated_intensity),
         integrated_intensity_draws = as.numeric(integrated_intensity),
         lppd = as.numeric(lppd),
-        log_evidence = log_evidence,
+        log_evidence = NA_real_,
+        log_target_normalizer = log_target_normalizer,
+        log_relative_normalizer = log_relative_normalizer,
         draws = length(weights),
         particle_weights = weights,
         tree_draws = raw$particle,
@@ -393,8 +411,33 @@
     a = 0.5, b = 0, alpha = 0.95, eta = 2,
     max_depth = 8L, min_leaf_n = 1L,
     chains = 4L, iter = 4000L, burn = 1000L,
-    cut_candidates = 30L, prediction_draws = 300L,
+    cut_candidates = 50L, prediction_draws = 300L,
     seed = 1L, verbose = TRUE) {
+  .ppt_fit_hard_leaf_mcmc(
+    x, region, predict_at, test, a, b, alpha, eta, max_depth, min_leaf_n,
+    chains, iter, burn, cut_candidates, prediction_draws, seed, verbose,
+    informed = FALSE
+  )
+}
+
+.ppt_fit_hard_leaf_irjmcmc <- function(
+    x, region, predict_at = x, test = NULL,
+    a = 0.5, b = 0, alpha = 0.95, eta = 2,
+    max_depth = 8L, min_leaf_n = 1L,
+    chains = 4L, iter = 4000L, burn = 1000L,
+    cut_candidates = 50L, prediction_draws = 300L,
+    seed = 1L, verbose = TRUE) {
+  .ppt_fit_hard_leaf_mcmc(
+    x, region, predict_at, test, a, b, alpha, eta, max_depth, min_leaf_n,
+    chains, iter, burn, cut_candidates, prediction_draws, seed, verbose,
+    informed = TRUE
+  )
+}
+
+.ppt_fit_hard_leaf_mcmc <- function(
+    x, region, predict_at, test, a, b, alpha, eta, max_depth, min_leaf_n,
+    chains, iter, burn, cut_candidates, prediction_draws, seed, verbose,
+    informed) {
   x <- .ppt_validate_points(x, name = "x")
   d <- ncol(x)
   region <- .ppt_validate_region(region, d)
@@ -442,8 +485,9 @@
   evaluation_locations <- rbind(predict_at, test)
   set.seed(seed)
   raw_chains <- vector("list", chains)
+  fit_native <- if (informed) PPT_fit_IMCMC else PPT_fit_MCMC
   for (chain in seq_len(chains)) {
-    raw_chains[[chain]] <- PPT_fit_MCMC(
+    raw_chains[[chain]] <- fit_native(
       x, evaluation_locations, region,
       niter = kept, burnin = burn,
       max_depth = max_depth, min_leaf_n = min_leaf_n,
@@ -453,7 +497,8 @@
     )
     if (isTRUE(verbose)) {
       message(
-        "PPT [RJ-MCMC] chain ", chain, "/", chains,
+        "PPT [", if (informed) "Informed MH" else "RJ-MCMC",
+        "] chain ", chain, "/", chains,
         " completed; mean leaves = ",
         format(mean(raw_chains[[chain]]$nleaves), digits = 5L)
       )
@@ -518,7 +563,8 @@
         gating = "hard",
         gate_family = NA_character_,
         scales = "leaf",
-        sampler = "rjmcmc",
+        sampler = if (informed) "irjmcmc" else "rjmcmc",
+        algorithm = if (informed) "Informed MH" else "RJ-MCMC",
         label = "PPT"
       ),
       data = list(
@@ -549,6 +595,8 @@
         integrated_intensity_draws = integrated_intensity,
         lppd = as.numeric(lppd),
         log_evidence = NA_real_,
+        log_target_normalizer = NA_real_,
+        log_relative_normalizer = NA_real_,
         draws = ncol(lambda_draws),
         particle_weights = numeric(),
         tree_draws = tree_draws,
@@ -588,7 +636,7 @@
         prediction_draws = prediction_draws,
         seed = seed
       ),
-      backend = "PPT_fit_MCMC"
+      backend = if (informed) "PPT_fit_IMCMC" else "PPT_fit_MCMC"
     ),
     class = "ppt"
   )
@@ -598,7 +646,7 @@
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0,
     max_depth = 8L, min_leaf_n = 1L,
-    max_aspect_ratio = Inf,
+    max_aspect_ratio = Inf, cut_candidates = 50L,
     particles = 500L, chains = 1L,
     iter = 500L, burn = 100L,
     seed = 1L, verbose = TRUE) {
@@ -622,11 +670,11 @@
     stop("Require scalar `a > 0` and `b >= 0`.", call. = FALSE)
   }
   controls <- c(
-    max_depth, min_leaf_n, particles, chains, iter, burn
+    max_depth, min_leaf_n, particles, chains, iter, burn, cut_candidates
   )
   if (any(!is.finite(controls)) || any(controls != floor(controls)) ||
       max_depth < 0 || min_leaf_n < 1 || particles < 2 ||
-      chains < 1 || iter <= burn || burn < 0) {
+      chains < 1 || iter <= burn || burn < 0 || cut_candidates < 1) {
     stop("Invalid Particle-Gibbs or tree controls.", call. = FALSE)
   }
   max_aspect_ratio <- .ppt_validate_max_aspect_ratio(max_aspect_ratio)
@@ -636,6 +684,7 @@
   chains <- as.integer(chains)
   iter <- as.integer(iter)
   burn <- as.integer(burn)
+  cut_candidates <- as.integer(cut_candidates)
   retained <- seq.int(burn + 1L, iter)
 
   evaluation_locations <- rbind(predict_at, test)
@@ -647,7 +696,7 @@
       max_depth = max_depth, niter = iter, P = particles,
       min_leaf_n = min_leaf_n, resample_thresh = 0.5,
       a = a, b = b, verbose = verbose,
-      max_aspect_ratio = max_aspect_ratio
+      max_aspect_ratio = max_aspect_ratio, cut_grid_n = cut_candidates
     )
   }
 
@@ -754,6 +803,8 @@
         integrated_intensity_draws = integrated_intensity,
         lppd = as.numeric(lppd),
         log_evidence = NA_real_,
+        log_target_normalizer = NA_real_,
+        log_relative_normalizer = NA_real_,
         draws = ncol(lambda_draws),
         particle_weights = numeric(),
         tree_draws = tree_draws,
@@ -791,6 +842,7 @@
         ancestor_sampling = FALSE,
         resampling_schedule = "tree_level",
         max_aspect_ratio = max_aspect_ratio,
+        cut_candidates = cut_candidates,
         seed = seed
       ),
       backend = "PPT_fit_PG"
