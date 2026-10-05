@@ -434,22 +434,69 @@ Rcpp::List SMCtree::PPT_PGAS(
 // node (Phase 1), draws are made per particle in heap order (Phase 2), and
 // resampling moves or copies record maps (Phase 3).
 
+// Cache one-dimensional geometry, preserving the exact ordered path and the
+// original integral routine. No quadrature approximation or RNG change is made.
+double SoftSMCtree::cached_axis_log_integral(const arma::vec& gate,
+    const std::vector<SoftGateStep>& path, int j,
+    double extra_cut, int extra_side) {
+  if ((int)axis_integrals.size() != M.d()) {
+    axis_integrals.resize(M.d());
+    integral_gate.set_size(M.d());
+    integral_gate.fill(std::numeric_limits<double>::quiet_NaN());
+  }
+  auto& cache = axis_integrals[j];
+  if (integral_gate[j] != gate[j]) {
+    cache.clear();
+    integral_gate[j] = gate[j];
+  }
+  AxisPathKey key;
+  for (const SoftGateStep& g : path)
+    if (g.axis == j) key.emplace_back(g.cut, g.side);
+  if (extra_side != 0) key.emplace_back(extra_cut, extra_side);
+  const auto found = cache.find(key);
+  if (found != cache.end()) return found->second;
+  const double value = soft_axis_log_integral(M, gate, path, j, extra_cut, extra_side);
+  // Bound memory even for a fixed gate and a long chain. Eviction only affects speed.
+  if (cache.size() >= 8192) cache.clear();
+  cache.emplace(std::move(key), value);
+  return value;
+}
+
+double SoftSMCtree::cached_log_exposure(const arma::vec& gate,
+    const std::vector<SoftGateStep>& path) {
+  double logH = 0.0;
+  for (int j = 0; j < M.d(); ++j)
+    logH += cached_axis_log_integral(gate, path, j);
+  return logH;
+}
+
 void SoftSMCtree::build_gate_table(const arma::vec& gate) {
   const int d = M.d(), n = M.n();
-  G.offset.assign(d + 1, 0);
-  for (int j = 0; j < d; ++j) G.offset[j + 1] = G.offset[j] + (int)M.grid[j].size();
-  G.n_cand = G.offset[d];
-  G.cand_axis.resize(G.n_cand); G.cand_cut.resize(G.n_cand);
-  for (int j = 0; j < d; ++j)
-    for (size_t k = 0; k < M.grid[j].size(); ++k) { G.cand_axis[G.offset[j] + k] = j; G.cand_cut[G.offset[j] + k] = M.grid[j][k]; }
-  G.loglft.resize((size_t)n * G.n_cand);
-  G.lft.resize((size_t)n * G.n_cand);
-  for (int i = 0; i < n; ++i)
-    for (int c = 0; c < G.n_cand; ++c) {
-      const double l = soft_log_left(M, gate, G.cand_axis[c], G.cand_cut[c], M.X(i, G.cand_axis[c]));
-      G.loglft[(size_t)i * G.n_cand + c] = l;
-      G.lft[(size_t)i * G.n_cand + c] = std::exp(l);
-    }
+  if (table_gate.n_elem != (arma::uword)d) {
+    G.offset.assign(d + 1, 0);
+    for (int j = 0; j < d; ++j) G.offset[j + 1] = G.offset[j] + (int)M.grid[j].size();
+    G.n_cand = G.offset[d];
+    G.cand_axis.resize(G.n_cand); G.cand_cut.resize(G.n_cand);
+    for (int j = 0; j < d; ++j)
+      for (size_t k = 0; k < M.grid[j].size(); ++k) {
+        G.cand_axis[G.offset[j] + k] = j;
+        G.cand_cut[G.offset[j] + k] = M.grid[j][k];
+      }
+    G.loglft.resize((size_t)n * G.n_cand);
+    G.lft.resize((size_t)n * G.n_cand);
+    table_gate.set_size(d);
+    table_gate.fill(std::numeric_limits<double>::quiet_NaN());
+  }
+  for (int j = 0; j < d; ++j) {
+    if (table_gate[j] == gate[j]) continue;
+    for (int i = 0; i < n; ++i)
+      for (int c = G.offset[j]; c < G.offset[j + 1]; ++c) {
+        const double l = soft_log_left(M, gate, j, G.cand_cut[c], M.X(i, j));
+        G.loglft[(size_t)i * G.n_cand + c] = l;
+        G.lft[(size_t)i * G.n_cand + c] = std::exp(l);
+      }
+    table_gate[j] = gate[j];
+  }
 }
 
 std::vector<SoftGateStep> SoftSMCtree::path_of(int v) const {
@@ -506,8 +553,8 @@ void SoftSMCtree::expand_node(int v) {
   for (int c = 0; c < C; ++c) {
     const int j = G.cand_axis[c];
     const double cut = G.cand_cut[c];
-    A.axisL[c] = soft_axis_log_integral(M, cur_gate, path, j, cut, -1);
-    A.axisR[c] = soft_axis_log_integral(M, cur_gate, path, j, cut, +1);
+    A.axisL[c] = cached_axis_log_integral(cur_gate, path, j, cut, -1);
+    A.axisR[c] = cached_axis_log_integral(cur_gate, path, j, cut, +1);
     const double otherH = A.logH - A.axisH[j];
     A.logHL[c] = otherH + A.axisL[c];
     A.logHR[c] = otherH + A.axisR[c];
@@ -688,7 +735,6 @@ void SoftSMCtree::resample(SoftRef* ref) {
   if (ref != nullptr) {
     int first = 0;
     if (use_as) {
-      ++as_stamp;
       std::vector<double> alw(P);
       for (int p = 0; p < P; ++p) alw[p] = as_log_weight(particles[p], *ref);
       first = soft_sample_log(alw);
@@ -766,7 +812,7 @@ int SoftSMCtree::ref_bit(SoftRef& ref, int i, int h) {
 double SoftSMCtree::glued_logQ(SoftRef& ref, int h, const std::vector<int>& pts,
                                const std::vector<SoftGateStep>& path) {
   const SoftNodeP& R = ref_decision(ref, h);
-  if (R.S == 0) return M.logQ(pts.size(), std::exp(soft_log_exposure(M, cur_gate, path)));
+  if (R.S == 0) return M.logQ(pts.size(), std::exp(cached_log_exposure(cur_gate, path)));
   std::vector<int> left, right;
   for (int i : pts) (ref_bit(ref, i, h) ? left : right).push_back(i);
   std::vector<SoftGateStep> pL = path, pR = path;
@@ -775,7 +821,10 @@ double SoftSMCtree::glued_logQ(SoftRef& ref, int h, const std::vector<int>& pts,
 }
 
 // Ancestor-sampling log weight; the glued quantity of a frontier node depends
-// on the node and the reference only and is cached per resampling event.
+// on the immutable coloured path node, gate, and reference only.  Cache it for
+// the whole fixed-reference sweep.  Inactive reference decisions/bits are
+// materialized lazily once and never changed during that sweep; evaluating a
+// glued subtree materializes every reference value needed by that result.
 double SoftSMCtree::as_log_weight(const SoftParticleS& p, SoftRef& ref) {
   double lw = p.logw;
   for (const auto& kv : p.rec) {
@@ -797,6 +846,9 @@ void SoftSMCtree::sweep(SoftRef* ref_in, const arma::vec& gate, SoftRef& ref_out
   cur_gate = gate;
   build_gate_table(gate);
   store.clear();
+  // New path store and fixed reference: invalidate once per sweep, not at
+  // every resampling event.  Avoid integer overflow in very long runs.
+  as_stamp = (as_stamp == std::numeric_limits<int>::max()) ? 0 : as_stamp + 1;
   n_expanded = 0;
   as_moved = 0;
   n_resampled = 0;
@@ -810,11 +862,24 @@ void SoftSMCtree::sweep(SoftRef* ref_in, const arma::vec& gate, SoftRef& ref_out
   for (int level = 0; level < M.Dmax; ++level) {
     expand_level(level);
     const int lo = 1 << level, hi = 2 * lo;
-    for (int t = lo; t < hi; ++t) {
+    // A split creates only next-level children; resampling only copies current
+    // particles.  Thus no new current-level position can appear after this
+    // union is collected.  Retain heap order to preserve the random stream.
+    std::vector<int> active_positions;
+    for (const SoftParticleS& p : particles)
+      for (auto it = p.rec.lower_bound(lo); it != p.rec.end() && it->first < hi; ++it)
+        if (it->second.S == -1) active_positions.push_back(it->first);
+    std::sort(active_positions.begin(), active_positions.end());
+    active_positions.erase(std::unique(active_positions.begin(), active_positions.end()),
+                           active_positions.end());
+    for (int t : active_positions) {
+      // A prior resampling may have removed this position from all particles.
       const bool advanced = sample_position(t, ref_in);
-      if (level == M.Dmax - 1 && t == hi - 1) break;
-      if (resample_node ? advanced : t == hi - 1) resample(ref_in);
+      const bool final_position = level == M.Dmax - 1 && t == hi - 1;
+      if (resample_node && advanced && !final_position) resample(ref_in);
     }
+    // Preserve the original level-boundary events even for an empty level.
+    if (!resample_node && level < M.Dmax - 1) resample(ref_in);
   }
 
   std::vector<double> lw(P);
@@ -845,7 +910,7 @@ void SoftSMCtree::label_sweep(SoftRef& ref, const arma::vec& gate) {
 
 void SoftSMCtree::refresh_exposures(SoftRef& ref, const arma::vec& gate) {
   for (int h = 1; h < M.n_nodes; ++h)
-    if (ref.node[h].active) ref.node[h].logH = soft_log_exposure(M, gate, ref.node[h].path);
+    if (ref.node[h].active) ref.node[h].logH = cached_log_exposure(gate, ref.node[h].path);
 }
 
 double SoftSMCtree::log_target_gate(const SoftRef& ref, const arma::vec& gate,
@@ -859,7 +924,7 @@ double SoftSMCtree::log_target_gate(const SoftRef& ref, const arma::vec& gate,
   for (int h = 1; h < M.n_nodes; ++h) {
     const SoftNodeP& U = ref.node[h];
     if (!U.active || U.S != 0) continue;
-    out += M.logQ(U.m, std::exp(soft_log_exposure(M, gate, U.path)));
+    out += M.logQ(U.m, std::exp(cached_log_exposure(gate, U.path)));
   }
   for (int i = 0; i < M.n(); ++i) out += soft_log_phi(M, gate, ref.node[ref.z[i]].path, i);
   return out;

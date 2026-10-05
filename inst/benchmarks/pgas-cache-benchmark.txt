@@ -1,0 +1,19 @@
+PGAS cache and active-traversal benchmark
+
+Run each version in a separate R process with the same script and seeded data:
+  Rscript pgas-cache-benchmark.R /path/to/baseline/library baseline_results
+  Rscript pgas-cache-benchmark.R /path/to/optimized/library optimized_results
+  Rscript compare-pgas-cache-benchmarks.R baseline_results optimized_results comparison.csv
+
+The library argument may be default for the normal R library. To compare
+versions after upgrading, preserve the old library before installation. The
+comparison requires bitwise identity of posterior state, prediction, sampling
+diagnostics, and the final RNG state. Timings cover fitting only, not loading,
+compilation or saving. Cases cover fixed and updated gates, shared gates,
+exact/approximate proposals, node/level/adaptive resampling, AS on/off, auxiliary
+rate allocation, sparse depth-10 trees, and depth-1 terminal resampling.
+
+These are short performance and correctness runs, not convergence studies.
+The 2026-10-04 test on R4.4/macOS arm64 reduced the 240-point, 3-dimensional,
+120-iteration fixed-gate case from 5.239s to 1.130s. All seven cases produced
+identical outputs and RNG states. Hardware/load can change timings.

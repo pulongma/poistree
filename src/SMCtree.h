@@ -164,6 +164,16 @@ public:
     int P;
     bool use_as;
     SoftGateTable G;                       // gate values for the current gate vector
+    // Each axis cache belongs to this engine (region/grid/data are immutable).
+    // A changed gate invalidates only its axis, including temporary MH proposals.
+    using AxisPathKey = std::vector<std::pair<double, int>>;
+    std::vector<std::map<AxisPathKey, double>> axis_integrals;
+    arma::vec integral_gate, table_gate;
+    double cached_axis_log_integral(const arma::vec& gate,
+        const std::vector<SoftGateStep>& path, int j,
+        double extra_cut = 0.0, int extra_side = 0);
+    double cached_log_exposure(const arma::vec& gate,
+        const std::vector<SoftGateStep>& path);
     arma::vec cur_gate;                    // gate vector of the current sweep
     std::vector<SoftPathNode> store;       // shared coloured path nodes of one sweep
     std::vector<SoftParticleS> particles;
