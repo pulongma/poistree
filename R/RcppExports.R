@@ -33,8 +33,32 @@ SPPT_fit_PGAS <- function(X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, 
     .Call(`_poistree_SPPT_fit_PGAS`, X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose)
 }
 
+SPPT_exact_cut_scores <- function(x, cuts, gate, width, H_left, H_right, a, b) {
+    .Call(`_poistree_SPPT_exact_cut_scores`, x, cuts, gate, width, H_left, H_right, a, b)
+}
+
+SPPT_exact_reuse_draws <- function(logits, shifts, H_left, H_right, a, b, draws, fixed_count = -1L) {
+    .Call(`_poistree_SPPT_exact_reuse_draws`, logits, shifts, H_left, H_right, a, b, draws, fixed_count)
+}
+
+SPPT_exact_allocation_logprob <- function(logits, bits) {
+    .Call(`_poistree_SPPT_exact_allocation_logprob`, logits, bits)
+}
+
 PPT_fit_SMC_shared <- function(pts, grid, region, max_depth, P, min_leaf_n, resample_thresh, a, b, max_aspect_ratio, cut_grid_n) {
     .Call(`_poistree_PPT_fit_SMC_shared`, pts, grid, region, max_depth, P, min_leaf_n, resample_thresh, a, b, max_aspect_ratio, cut_grid_n)
+}
+
+SPPT_root_reuse_probe <- function(gates, exact_max, cached) {
+    .Call(`_poistree_SPPT_root_reuse_probe`, gates, exact_max, cached)
+}
+
+SPPT_root_reuse_chain <- function(cached, update_gate, shared, exact_max) {
+    .Call(`_poistree_SPPT_root_reuse_chain`, cached, update_gate, shared, exact_max)
+}
+
+SPPT_forced_exact_probe <- function(bits, defensive) {
+    .Call(`_poistree_SPPT_forced_exact_probe`, bits, defensive)
 }
 
 ppstree_geometry <- function(axis, cut, parent_width, side, points, region, gate) {

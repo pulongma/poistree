@@ -193,6 +193,54 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// SPPT_exact_cut_scores
+Rcpp::List SPPT_exact_cut_scores(Rcpp::NumericVector x, Rcpp::NumericVector cuts, double gate, double width, Rcpp::NumericVector H_left, Rcpp::NumericVector H_right, double a, double b);
+RcppExport SEXP _poistree_SPPT_exact_cut_scores(SEXP xSEXP, SEXP cutsSEXP, SEXP gateSEXP, SEXP widthSEXP, SEXP H_leftSEXP, SEXP H_rightSEXP, SEXP aSEXP, SEXP bSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type cuts(cutsSEXP);
+    Rcpp::traits::input_parameter< double >::type gate(gateSEXP);
+    Rcpp::traits::input_parameter< double >::type width(widthSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type H_left(H_leftSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type H_right(H_rightSEXP);
+    Rcpp::traits::input_parameter< double >::type a(aSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_exact_cut_scores(x, cuts, gate, width, H_left, H_right, a, b));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_exact_reuse_draws
+Rcpp::List SPPT_exact_reuse_draws(Rcpp::NumericVector logits, Rcpp::NumericVector shifts, Rcpp::NumericVector H_left, Rcpp::NumericVector H_right, double a, double b, int draws, int fixed_count);
+RcppExport SEXP _poistree_SPPT_exact_reuse_draws(SEXP logitsSEXP, SEXP shiftsSEXP, SEXP H_leftSEXP, SEXP H_rightSEXP, SEXP aSEXP, SEXP bSEXP, SEXP drawsSEXP, SEXP fixed_countSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type logits(logitsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type shifts(shiftsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type H_left(H_leftSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type H_right(H_rightSEXP);
+    Rcpp::traits::input_parameter< double >::type a(aSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    Rcpp::traits::input_parameter< int >::type draws(drawsSEXP);
+    Rcpp::traits::input_parameter< int >::type fixed_count(fixed_countSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_exact_reuse_draws(logits, shifts, H_left, H_right, a, b, draws, fixed_count));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_exact_allocation_logprob
+Rcpp::List SPPT_exact_allocation_logprob(Rcpp::NumericVector logits, Rcpp::IntegerVector bits);
+RcppExport SEXP _poistree_SPPT_exact_allocation_logprob(SEXP logitsSEXP, SEXP bitsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type logits(logitsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type bits(bitsSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_exact_allocation_logprob(logits, bits));
+    return rcpp_result_gen;
+END_RCPP
+}
 // PPT_fit_SMC_shared
 Rcpp::List PPT_fit_SMC_shared(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, double max_depth, int P, int min_leaf_n, double resample_thresh, double a, double b, double max_aspect_ratio, int cut_grid_n);
 RcppExport SEXP _poistree_PPT_fit_SMC_shared(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP min_leaf_nSEXP, SEXP resample_threshSEXP, SEXP aSEXP, SEXP bSEXP, SEXP max_aspect_ratioSEXP, SEXP cut_grid_nSEXP) {
@@ -211,6 +259,45 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type max_aspect_ratio(max_aspect_ratioSEXP);
     Rcpp::traits::input_parameter< int >::type cut_grid_n(cut_grid_nSEXP);
     rcpp_result_gen = Rcpp::wrap(PPT_fit_SMC_shared(pts, grid, region, max_depth, P, min_leaf_n, resample_thresh, a, b, max_aspect_ratio, cut_grid_n));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_root_reuse_probe
+Rcpp::List SPPT_root_reuse_probe(const arma::mat& gates, int exact_max, bool cached);
+RcppExport SEXP _poistree_SPPT_root_reuse_probe(SEXP gatesSEXP, SEXP exact_maxSEXP, SEXP cachedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type gates(gatesSEXP);
+    Rcpp::traits::input_parameter< int >::type exact_max(exact_maxSEXP);
+    Rcpp::traits::input_parameter< bool >::type cached(cachedSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_root_reuse_probe(gates, exact_max, cached));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_root_reuse_chain
+Rcpp::List SPPT_root_reuse_chain(bool cached, bool update_gate, bool shared, int exact_max);
+RcppExport SEXP _poistree_SPPT_root_reuse_chain(SEXP cachedSEXP, SEXP update_gateSEXP, SEXP sharedSEXP, SEXP exact_maxSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type cached(cachedSEXP);
+    Rcpp::traits::input_parameter< bool >::type update_gate(update_gateSEXP);
+    Rcpp::traits::input_parameter< bool >::type shared(sharedSEXP);
+    Rcpp::traits::input_parameter< int >::type exact_max(exact_maxSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_root_reuse_chain(cached, update_gate, shared, exact_max));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_forced_exact_probe
+Rcpp::List SPPT_forced_exact_probe(Rcpp::IntegerVector bits, double defensive);
+RcppExport SEXP _poistree_SPPT_forced_exact_probe(SEXP bitsSEXP, SEXP defensiveSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type bits(bitsSEXP);
+    Rcpp::traits::input_parameter< double >::type defensive(defensiveSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_forced_exact_probe(bits, defensive));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -462,7 +549,13 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poistree_PPT_valid_cuts", (DL_FUNC) &_poistree_PPT_valid_cuts, 6},
     {"_poistree_PPT_transition_probabilities", (DL_FUNC) &_poistree_PPT_transition_probabilities, 5},
     {"_poistree_SPPT_fit_PGAS", (DL_FUNC) &_poistree_SPPT_fit_PGAS, 29},
+    {"_poistree_SPPT_exact_cut_scores", (DL_FUNC) &_poistree_SPPT_exact_cut_scores, 8},
+    {"_poistree_SPPT_exact_reuse_draws", (DL_FUNC) &_poistree_SPPT_exact_reuse_draws, 8},
+    {"_poistree_SPPT_exact_allocation_logprob", (DL_FUNC) &_poistree_SPPT_exact_allocation_logprob, 2},
     {"_poistree_PPT_fit_SMC_shared", (DL_FUNC) &_poistree_PPT_fit_SMC_shared, 11},
+    {"_poistree_SPPT_root_reuse_probe", (DL_FUNC) &_poistree_SPPT_root_reuse_probe, 3},
+    {"_poistree_SPPT_root_reuse_chain", (DL_FUNC) &_poistree_SPPT_root_reuse_chain, 4},
+    {"_poistree_SPPT_forced_exact_probe", (DL_FUNC) &_poistree_SPPT_forced_exact_probe, 2},
     {"_poistree_ppstree_geometry", (DL_FUNC) &_poistree_ppstree_geometry, 7},
     {"_poistree_ppstree_multi", (DL_FUNC) &_poistree_ppstree_multi, 32},
     {"_poistree_ppstree_diag", (DL_FUNC) &_poistree_ppstree_diag, 30},

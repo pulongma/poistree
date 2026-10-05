@@ -472,6 +472,10 @@ double SoftSMCtree::cached_log_exposure(const arma::vec& gate,
 
 void SoftSMCtree::build_gate_table(const arma::vec& gate) {
   const int d = M.d(), n = M.n();
+  G.points = &M.X;
+  G.gate = gate;
+  G.width.set_size(d);
+  for (int j = 0; j < d; ++j) G.width[j] = M.width(j);
   if (table_gate.n_elem != (arma::uword)d) {
     G.offset.assign(d + 1, 0);
     for (int j = 0; j < d; ++j) G.offset[j + 1] = G.offset[j] + (int)M.grid[j].size();
@@ -534,9 +538,24 @@ int SoftSMCtree::make_child(int parent, int cand, int side, std::vector<int>&& p
   return (int)store.size() - 1;
 }
 
-// Phase 1 for one node: candidate exposures, Poisson-binomial Psi (exact for
-// m_A <= exact_max, normal approximation of the count otherwise), action
-// scores, proposal and the exact-mode increment.
+// Return the shared reference for a cut, or a direct candidate reference when
+// extreme scaled logits make the common shift unusable. The fallback is local.
+std::shared_ptr<SoftExactAxis> SoftSMCtree::exact_cut_axis(SoftPathNode& A,
+    int c, double& delta) {
+  const int j = G.cand_axis[c], m = A.pts.size();
+  auto axis = A.exact_axis.at(j);
+  delta = cur_gate[j] * (G.cand_cut[c] - axis->refcut) / M.width(j);
+  if (axis->finite && std::isfinite(delta) &&
+      std::abs(delta) < std::numeric_limits<double>::max() / (m + 1.0)) return axis;
+  std::vector<double> logits(m);
+  for (int s = 0; s < m; ++s)
+    logits[s] = cur_gate[j] * (G.cand_cut[c] - M.X(A.pts[s], j)) / M.width(j);
+  delta = 0.0;
+  return soft_exact_axis(logits, G.cand_cut[c], cur_gate[j], M.width(j), M);
+}
+
+// Phase 1: compute each coordinate once, retaining count coefficients for
+// allocation draws. Root payloads survive sweeps; all other nodes are local.
 void SoftSMCtree::expand_node(int v) {
   SoftPathNode& A = store[v];
   if (A.expanded) return;
@@ -544,34 +563,75 @@ void SoftSMCtree::expand_node(int v) {
   const int mA = A.pts.size(), d = M.d(), C = G.n_cand;
   const double HA = std::exp(A.logH), rho_d = M.rho_depth(A.depth);
   const bool exact = mA <= M.exact_max;
+  const bool root = A.parent < 0;
+  if (root && (int)root_axis_cache.size() != d) root_axis_cache.resize(d);
   A.logQA = M.logQ(mA, HA);
   A.axisL.resize(C); A.axisR.resize(C); A.logHL.resize(C); A.logHR.resize(C);
+  A.count_norm.assign(C, std::numeric_limits<double>::quiet_NaN());
   A.score.assign(C + 1, 0.0); A.logprior.assign(C + 1, 0.0); A.logq.assign(C + 1, 0.0);
   A.score[0] = std::log(1.0 - rho_d) + A.logQA;
   A.logprior[0] = std::log(1.0 - rho_d);
-  std::vector<double> r(mA), terms(mA + 1);
-  for (int c = 0; c < C; ++c) {
-    const int j = G.cand_axis[c];
-    const double cut = G.cand_cut[c];
-    A.axisL[c] = cached_axis_log_integral(cur_gate, path, j, cut, -1);
-    A.axisR[c] = cached_axis_log_integral(cur_gate, path, j, cut, +1);
-    const double otherH = A.logH - A.axisH[j];
-    A.logHL[c] = otherH + A.axisL[c];
-    A.logHR[c] = otherH + A.axisR[c];
-    const double lbL = std::log(M.b + std::exp(A.logHL[c])), lbR = std::log(M.b + std::exp(A.logHR[c]));
-    double logPsi;
-    if (exact) {
-      for (int s = 0; s < mA; ++s) r[s] = G.left(A.pts[s], c);
-      const std::vector<double> logpmf = soft_pb_logpmf(r);
-      for (int k = 0; k <= mA; ++k)
-        terms[k] = M.logQ_lb(k, lbL) + M.logQ_lb(mA - k, lbR) + logpmf[k];
-      logPsi = soft_lse(terms);
-    } else {
-      logPsi = soft_log_psi_laplace(M, G, A.pts, c, lbL, lbR);
+  for (int j = 0; j < d; ++j) {
+    const int begin = G.offset[j], end = G.offset[j + 1], Mj = end - begin;
+    const double logprior = std::log(rho_d) - std::log((double)d) - std::log((double)Mj);
+    const bool reuse = root && cache_root && root_axis_cache[j].ready &&
+      root_axis_cache[j].gate == cur_gate[j] && root_axis_cache[j].exact == exact;
+    if (reuse) {
+      const RootAxisCache& cache = root_axis_cache[j];
+      ++root_axis_hits;
+      if (exact) A.exact_axis[j] = cache.exact_axis;
+      for (int c = begin; c < end; ++c) {
+        const int q = c - begin;
+        A.axisL[c] = cache.axisL[q]; A.axisR[c] = cache.axisR[q];
+        A.logHL[c] = cache.logHL[q]; A.logHR[c] = cache.logHR[q];
+        A.count_norm[c] = cache.count_norm[q];
+        A.logprior[c + 1] = logprior;
+        A.score[c + 1] = logprior + cache.logPsi[q];
+      }
+      continue;
     }
-    const int Mj = G.offset[j + 1] - G.offset[j];
-    A.logprior[c + 1] = std::log(rho_d) - std::log((double)d) - std::log((double)Mj);
-    A.score[c + 1] = A.logprior[c + 1] + logPsi;
+    if (root) ++root_axis_builds;
+    if (exact) {
+      const auto bounds = std::minmax_element(M.grid[j].begin(), M.grid[j].end());
+      const double refcut = *bounds.first + 0.5 * (*bounds.second - *bounds.first);
+      std::vector<double> logits(mA);
+      for (int s = 0; s < mA; ++s)
+        logits[s] = cur_gate[j] * (refcut - M.X(A.pts[s], j)) / M.width(j);
+      A.exact_axis[j] = soft_exact_axis(logits, refcut, cur_gate[j], M.width(j), M);
+    }
+    RootAxisCache cache;
+    if (root && cache_root) cache.logPsi.reserve(Mj);
+    for (int c = begin; c < end; ++c) {
+      const double cut = G.cand_cut[c];
+      A.axisL[c] = cached_axis_log_integral(cur_gate, path, j, cut, -1);
+      A.axisR[c] = cached_axis_log_integral(cur_gate, path, j, cut, +1);
+      const double otherH = A.logH - A.axisH[j];
+      A.logHL[c] = otherH + A.axisL[c];
+      A.logHR[c] = otherH + A.axisR[c];
+      const double lbL = std::log(M.b + std::exp(A.logHL[c]));
+      const double lbR = std::log(M.b + std::exp(A.logHR[c]));
+      double logPsi;
+      if (exact) {
+        double delta;
+        const auto axis = exact_cut_axis(A, c, delta);
+        logPsi = soft_exact_log_psi(*axis, delta, M, lbL, lbR, &A.count_norm[c]);
+      } else {
+        logPsi = soft_log_psi_laplace(M, G, A.pts, c, lbL, lbR);
+      }
+      A.logprior[c + 1] = logprior;
+      A.score[c + 1] = logprior + logPsi;
+      if (root && cache_root) cache.logPsi.push_back(logPsi);
+    }
+    if (root && cache_root) {
+      cache.ready = true; cache.exact = exact; cache.gate = cur_gate[j];
+      cache.axisL.assign(A.axisL.begin() + begin, A.axisL.begin() + end);
+      cache.axisR.assign(A.axisR.begin() + begin, A.axisR.begin() + end);
+      cache.logHL.assign(A.logHL.begin() + begin, A.logHL.begin() + end);
+      cache.logHR.assign(A.logHR.begin() + begin, A.logHR.begin() + end);
+      cache.count_norm.assign(A.count_norm.begin() + begin, A.count_norm.begin() + end);
+      if (exact) cache.exact_axis = A.exact_axis.at(j);
+      root_axis_cache[j] = std::move(cache);
+    }
   }
   A.logPhi = soft_lse(A.score);
   for (int k = 0; k <= C; ++k) {
@@ -630,7 +690,7 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
     }
     if (act == 0) {
       R.S = 0;
-      par.logw += A.logprior[0] - A.logq[0];
+      par.logw += exact && M.defensive == 0.0 ? A.log_inc : A.logprior[0] - A.logq[0];
       continue;
     }
     const int c = act - 1;
@@ -639,20 +699,18 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
     if (forced) for (int s = 0; s < mA; ++s) B[s] = ref_bit(*ref, A.pts[s], t);
     double logq_bits = 0.0;
     if (exact) {
-      std::vector<double> logr(mA), terms(mA + 1);
-      for (int s = 0; s < mA; ++s) logr[s] = G.left(A.pts[s], c);
-      auto tab = A.pb.find(c);
-      if (tab == A.pb.end())
-        tab = A.pb.emplace(c, std::make_shared<std::vector<std::vector<double> > >(soft_pb_table(logr))).first;
-      const std::vector<std::vector<double> >& table = *tab->second;
-      const double lbL = std::log(M.b + HL), lbR = std::log(M.b + HR);
-      for (int k = 0; k <= mA; ++k)
-        terms[k] = M.logQ_lb(k, lbL) + M.logQ_lb(mA - k, lbR) + table[mA][k];
-      const double tnorm = soft_lse(terms);
-      int k;
-      if (!forced) k = soft_sample_log(terms);
-      else { k = 0; for (int s = 0; s < mA; ++s) k += B[s]; }
-      logq_bits = terms[k] - tnorm + soft_cond_bernoulli(table, logr, k, B, forced);
+      if (forced) {
+        // q(B | cut) cancels from the exact importance ratio. Reference bits
+        // only need routing; no count proposal, prefix table, or replay.
+        ++exact_forced_routes;
+      } else {
+        double delta;
+        const auto axis = exact_cut_axis(A, c, delta);
+        const double lbL = std::log(M.b + HL), lbR = std::log(M.b + HR);
+        const int k = soft_exact_sample_count(*axis, delta, lbL, lbR, A.count_norm[c]);
+        if (k == 0 || k == mA) ++exact_boundary_draws;
+        if (soft_exact_draw_bits(*axis, k, B)) ++exact_prefix_builds;
+      }
     } else if (alloc_rates) {
       // auxiliary child rates (rate_explicit_smc_soft_ppt.tex, eq. for w_t):
       // lambda ~ q_lambda (Gamma posteriors at the expected allocation), then
@@ -690,11 +748,18 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
     double lgate = 0.0;
     for (int s = 0; s < mA; ++s) {
       const int i = A.pts[s];
-      if (B[s]) { left.push_back(i); lgate += G.left(i, c); } else { right.push_back(i); lgate += G.right(i, c); }
+      if (B[s]) left.push_back(i); else right.push_back(i);
+      if (!exact) lgate += B[s] ? G.left(i, c) : G.right(i, c);
     }
-    const int mL = left.size(), mR = right.size();
-    const double log_target = A.logprior[act] + M.logQ(mL, HL) + M.logQ(mR, HR) + lgate - A.logQA;
-    par.logw += log_target - A.logq[act] - logq_bits;
+    if (exact) {
+      // p0(c) Phi(c) / {Q(parent) q(c)}; with no defensive mixture all
+      // actions have the same increment, avoiding cancellation roundoff.
+      par.logw += M.defensive == 0.0 ? A.log_inc : A.score[act] - A.logQA - A.logq[act];
+    } else {
+      const int mL = left.size(), mR = right.size();
+      const double log_target = A.logprior[act] + M.logQ(mL, HL) + M.logQ(mR, HR) + lgate - A.logQA;
+      par.logw += log_target - A.logq[act] - logq_bits;
+    }
 
     // children: reuse an identical coloured pair if some particle created it
     const unsigned long long key = soft_hash_bits(c, B);

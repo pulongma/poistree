@@ -169,6 +169,18 @@ with the exact one-step-ahead proposal (a Poisson-binomial expectation over
 the allocations of the node's observations to its children) for nodes with at most `exact_max`
 points and, above that, a Laplace approximation of the same expectation written
 as a one-dimensional Beta integral (O(m) per candidate, correct tails).
+For exact-scored nodes, logistic cut locations share one Poisson-binomial
+recursion per node and coordinate. Each candidate count distribution is
+obtained by an exact exponential tilt of that reference distribution,
+reducing allocation-scoring work from O(d M m^2) to O(d m^2 + d M m)
+for m allocated observations and M cuts per coordinate. Exposures remain
+cut-specific. Conditional allocation tables are built lazily once per selected
+coordinate and shared across its cuts. The exact importance ratio cancels the
+allocation proposal, so a forced reference allocation needs no table or replay.
+Reference count coefficients and count normalizers are reused for sampling;
+zero/all-left counts bypass allocation tables. Root scores and lazy coordinate
+tables persist across sweeps, invalidating only coordinates whose gate changes.
+The large-node Laplace proposal and `exact_max` threshold are unchanged.
 Above `exact_max` the allocation of the node's points is proposed either by
 sequential imputation or through auxiliary child rates (`allocation`), with
 exact importance weights in both cases.

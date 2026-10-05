@@ -187,6 +187,19 @@ public:
     double ess_threshold = 1.0;            // resample at a candidate event iff ESS <= threshold * P
     bool alloc_rates = false;              // above exact_max: allocation via auxiliary child rates
 
+    // Immutable root inputs (data/grid/model) belong to one engine. Keep only
+    // the latest gate value per coordinate; never retain sweep-local handles.
+    struct RootAxisCache {
+        bool ready = false, exact = false;
+        double gate = std::numeric_limits<double>::quiet_NaN();
+        std::vector<double> axisL, axisR, logHL, logHR, logPsi, count_norm;
+        std::shared_ptr<SoftExactAxis> exact_axis;
+    };
+    std::vector<RootAxisCache> root_axis_cache;
+    bool cache_root = true;                // internal comparison switch, not a sampler option
+    size_t root_axis_builds = 0, root_axis_hits = 0;
+    size_t exact_prefix_builds = 0, exact_forced_routes = 0, exact_boundary_draws = 0;
+
     SoftSMCtree(const SoftModel& M_, int P_, bool use_as_) : M(M_), P(P_), use_as(use_as_) {
         ppt_check_soft_storage(M.Dmax);
         if (M.n_nodes != ppt_tree_slots(M.Dmax) + 1)
@@ -198,6 +211,8 @@ public:
     std::vector<SoftGateStep> path_of(int v) const;
     int make_root();
     int make_child(int parent, int cand, int side, std::vector<int>&& pts);
+    std::shared_ptr<SoftExactAxis> exact_cut_axis(SoftPathNode& node, int cand,
+                                                double& delta);
     void expand_node(int v);
     void expand_level(int level);
     bool sample_position(int t, SoftRef* ref);   // true if some particle advanced at t

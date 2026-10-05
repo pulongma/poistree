@@ -1,6 +1,24 @@
 \name{NEWS}
 \title{News for Package \pkg{poistree}}
 
+\section{Development changes}{
+  \itemize{
+    \item Soft PGAS reuses exact logistic allocation-count distributions across
+      candidate cuts by exponential tilting. Exact-scoring work is reduced to
+      one Poisson-binomial recursion per node and coordinate plus linear work
+      per cut; the model, cut support, and large-node Laplace branch are unchanged.
+    \item Gate and conditional-allocation calculations use both branches in
+      log space, preserving rare routing probabilities and subnormal gate tails.
+    \item Exact PGAS updates now use the cancelled importance ratio; forced
+      reference allocations route directly without allocation-proposal replay.
+      Conditional prefix tables are shared across cuts on each coordinate,
+      stored triangularly, and skipped for deterministic counts.
+    \item Root scores and lazy allocation tables persist across sweeps with
+      coordinate-specific gate invalidation. Count coefficients and their
+      candidate normalizers are reused for scoring and sampling.
+  }
+}
+
 \section{Changes in poistree version 0.4.0 (2026-10-04)}{
   \itemize{
     \item Added \code{sampler = "pcg"} for soft terminal-leaf trees. The
