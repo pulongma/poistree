@@ -67,8 +67,12 @@ struct SoftPathNode {
   std::vector<double> axisH;      // per-axis log integrals of the path
   double logH = 0.0;
   bool expanded = false;
+  bool hard_scored = false;
   std::vector<double> axisL, axisR;      // per candidate: one-axis integral with the extra gate
   std::vector<double> logHL, logHR;      // per candidate: child log exposures
+  std::vector<char> true_exposure_ready;
+  std::vector<int> proxy_count;
+  std::vector<double> proxy_logHL, proxy_logHR; // hard surrogate only; never used by target
   std::vector<double> score, logprior, logq;   // index 0 = stop, then 1 + candidate
   double logQA = 0.0, logPhi = 0.0, log_inc = 0.0;
   std::unordered_map<int, std::shared_ptr<SoftExactAxis> > exact_axis;
@@ -98,8 +102,45 @@ struct SoftGateTable {
   // and O(d) parameters, rather than a third O(n * candidates) probability array.
   const arma::mat* points = nullptr;
   arma::vec gate, width;
-  double left(int i, int c) const { return loglft[(size_t)i * n_cand + c]; }
-  double r(int i, int c) const { return lft[(size_t)i * n_cand + c]; }
+  struct Value { double logleft, left; };
+  bool lazy = false;               // dense fallback supports existing internal callers
+  size_t max_axis_entries = 65536;
+  mutable std::vector<std::unordered_map<size_t, Value> > sparse;
+  mutable int last_i = -1, last_c = -1;
+  mutable Value last_value{0.0, 0.0};
+  mutable size_t evaluations = 0, cache_hits = 0;
+  void invalidate_axis(int j) {
+    if ((int)sparse.size() > j) sparse[j].clear();
+    if (last_c >= 0 && cand_axis[last_c] == j) last_i = last_c = -1;
+  }
+  Value value(int i, int c) const {
+    if (i == last_i && c == last_c) { ++cache_hits; return last_value; }
+    const int j = cand_axis[c];
+    auto& entries = sparse[j];
+    const size_t key = (size_t)i * (offset[j + 1] - offset[j]) + c - offset[j];
+    const auto found = entries.find(key);
+    Value out;
+    if (found != entries.end()) {
+      out = found->second; ++cache_hits;
+    } else {
+      const double z = gate[j] * ((*points)(i, j) - cand_cut[c]) / width[j];
+      out.logleft = pst_logistic_log_right(-z); out.left = std::exp(out.logleft);
+      ++evaluations;
+      if (max_axis_entries > 0) {
+        // Eviction affects work only. Never retain references into this map.
+        if (entries.size() >= max_axis_entries) entries.clear();
+        entries.emplace(key, out);
+      }
+    }
+    last_i = i; last_c = c; last_value = out;
+    return out;
+  }
+  double left(int i, int c) const {
+    return lazy ? value(i, c).logleft : loglft[(size_t)i * n_cand + c];
+  }
+  double r(int i, int c) const {
+    return lazy ? value(i, c).left : lft[(size_t)i * n_cand + c];
+  }
   double right(int i, int c) const {
     double x = left(i, c);
     if (x >= -std::numeric_limits<double>::min() && points != nullptr) {
@@ -134,6 +175,8 @@ struct SoftModel {
   std::vector<std::vector<double> > grid;   // fixed cut grid per axis
   int exact_max;                  // exact Poisson-binomial proposal when m_A <= exact_max
   double defensive;               // mixture weight on the prior action proposal
+  bool hard_proposal = false;     // hard surrogate only above exact_max
+  double proposal_temperature = 0.5, proposal_defensive = 0.1;
   std::vector<double> lgam;       // lgamma(a + k), k = 0..n
   double a_log_b;                 // a log b
 

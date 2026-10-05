@@ -486,18 +486,32 @@ void SoftSMCtree::build_gate_table(const arma::vec& gate) {
         G.cand_axis[G.offset[j] + k] = j;
         G.cand_cut[G.offset[j] + k] = M.grid[j][k];
       }
-    G.loglft.resize((size_t)n * G.n_cand);
-    G.lft.resize((size_t)n * G.n_cand);
+    G.sparse.resize(d);
     table_gate.set_size(d);
     table_gate.fill(std::numeric_limits<double>::quiet_NaN());
   }
+  if (G.lazy != lazy_gates) {
+    G.lazy = lazy_gates;
+    table_gate.fill(std::numeric_limits<double>::quiet_NaN());
+    for (int j = 0; j < d; ++j) G.invalidate_axis(j);
+  }
+  if (!G.lazy) {
+    G.loglft.resize((size_t)n * G.n_cand);
+    G.lft.resize((size_t)n * G.n_cand);
+  }
   for (int j = 0; j < d; ++j) {
     if (table_gate[j] == gate[j]) continue;
+    if (G.lazy) {
+      G.invalidate_axis(j);
+      table_gate[j] = gate[j];
+      continue;
+    }
     for (int i = 0; i < n; ++i)
       for (int c = G.offset[j]; c < G.offset[j + 1]; ++c) {
         const double l = soft_log_left(M, gate, j, G.cand_cut[c], M.X(i, j));
         G.loglft[(size_t)i * G.n_cand + c] = l;
         G.lft[(size_t)i * G.n_cand + c] = std::exp(l);
+        ++G.evaluations;
       }
     table_gate[j] = gate[j];
   }
@@ -554,11 +568,203 @@ std::shared_ptr<SoftExactAxis> SoftSMCtree::exact_cut_axis(SoftPathNode& A,
   return soft_exact_axis(logits, G.cand_cut[c], cur_gate[j], M.width(j), M);
 }
 
+void SoftSMCtree::initialize_hard_bins() {
+  if (!hard_cuts.empty()) return;
+  const int d = M.d();
+  hard_cuts.resize(d); hard_order.resize(d);
+  hard_bins.resize((size_t)M.n() * d);
+  for (int j = 0; j < d; ++j) {
+    hard_order[j].resize(M.grid[j].size());
+    std::iota(hard_order[j].begin(), hard_order[j].end(), 0);
+    std::stable_sort(hard_order[j].begin(), hard_order[j].end(),
+      [&](int x, int y) { return M.grid[j][x] < M.grid[j][y]; });
+    for (int q : hard_order[j]) hard_cuts[j].push_back(M.grid[j][q]);
+    for (int i = 0; i < M.n(); ++i)
+      // x == cut belongs to the right side: cumulative bins use x < cut.
+      hard_bins[(size_t)i * d + j] = std::upper_bound(
+        hard_cuts[j].begin(), hard_cuts[j].end(), M.X(i, j)) - hard_cuts[j].begin();
+  }
+  ++hard_bin_builds;
+}
+
+// Integrate a parent path over a cut interval without changing its physical
+// logistic slope. The existing primitive scales by its integration width,
+// hence the adjusted gate. Its numerical fallback is an exposure calculation,
+// not an approximation to the allocation-count score.
+static double soft_hard_interval(const std::vector<double>& cuts,
+    const std::vector<int>& sides, double domlo, double domhi, double gate,
+    double left, double right) {
+  if (!(right > left)) return 0.0;
+  if (cuts.empty()) return right - left;
+  const double adjusted = gate * ((right - left) / (domhi - domlo));
+  if (adjusted > 0.0 && std::isfinite(adjusted)) {
+    const double mass = pst_logistic_path_axis_integral(cuts, sides, left, right, adjusted);
+    if (std::isfinite(mass) && mass >= 0.0) return mass;
+  }
+  // Extremely narrow intervals can underflow the adjusted gate. Evaluate
+  // the same existing Simpson integrator with the original domain scale.
+  std::vector<double> breaks{left, right};
+  for (double cut : cuts) if (cut > left && cut < right) breaks.push_back(cut);
+  std::sort(breaks.begin(), breaks.end());
+  breaks.erase(std::unique(breaks.begin(), breaks.end()), breaks.end());
+  double out = 0.0;
+  for (size_t q = 1; q < breaks.size(); ++q) {
+    const double lo = breaks[q - 1], hi = breaks[q], mid = 0.5 * (lo + hi);
+    const double fl = pst_logistic_path_product_stable(lo, cuts, sides, domlo, domhi, gate);
+    const double fm = pst_logistic_path_product_stable(mid, cuts, sides, domlo, domhi, gate);
+    const double fr = pst_logistic_path_product_stable(hi, cuts, sides, domlo, domhi, gate);
+    out += pst_logistic_adaptive_simpson(cuts, sides, domlo, domhi, gate, lo, hi,
+      fl, fm, fr, (hi - lo) * (fl + 4.0 * fm + fr) / 6.0,
+      8.0 * std::numeric_limits<double>::epsilon() * (hi - lo), 24);
+  }
+  return std::max(0.0, out);
+}
+
+std::shared_ptr<SoftSMCtree::HardAxisExposure> SoftSMCtree::hard_axis_exposures(
+    const std::vector<SoftGateStep>& path, int j) {
+  initialize_hard_bins();
+  if ((int)hard_exposures.size() != M.d()) {
+    hard_exposures.resize(M.d()); hard_exposure_gate.set_size(M.d());
+    hard_exposure_gate.fill(std::numeric_limits<double>::quiet_NaN());
+  }
+  auto& cache = hard_exposures[j];
+  if (hard_exposure_gate[j] != cur_gate[j]) {
+    cache.clear(); hard_exposure_gate[j] = cur_gate[j];
+  }
+  AxisPathKey key;
+  std::vector<double> cuts;
+  std::vector<int> sides;
+  for (const SoftGateStep& g : path) if (g.axis == j) {
+    key.emplace_back(g.cut, g.side); cuts.push_back(g.cut); sides.push_back(g.side);
+  }
+  const auto found = cache.find(key);
+  if (found != cache.end()) { ++hard_exposure_hits; return found->second; }
+  const int count = hard_cuts[j].size();
+  std::vector<double> mass(count + 1);
+  double previous = M.region(j, 0);
+  for (int q = 0; q <= count; ++q) {
+    const double next = q < count ? hard_cuts[j][q] : M.region(j, 1);
+    mass[q] = soft_hard_interval(cuts, sides, M.region(j, 0), M.region(j, 1),
+      cur_gate[j], previous, next);
+    previous = next;
+  }
+  auto out = std::make_shared<HardAxisExposure>();
+  out->logL.resize(count); out->logR.resize(count);
+  double prefix = 0.0, suffix = 0.0;
+  for (int q = 0; q < count; ++q) {
+    prefix += mass[q];
+    out->logL[hard_order[j][q]] = std::log(prefix);
+  }
+  for (int q = count - 1; q >= 0; --q) {
+    suffix += mass[q + 1];
+    out->logR[hard_order[j][q]] = std::log(suffix);
+  }
+  // Bound vector payloads as well as path count (about 512 KiB per axis,
+  // apart from one potentially larger grid payload and map overhead).
+  const size_t max_paths = std::max<size_t>(1,
+    std::min<size_t>(256, 65536 / std::max<size_t>(1, 2 * (size_t)count)));
+  if (cache.size() >= max_paths) cache.clear();
+  cache.emplace(std::move(key), out);
+  ++hard_exposure_builds;
+  return out;
+}
+
+void SoftSMCtree::ensure_true_exposure(int v, int c) {
+  SoftPathNode& A = store[v];
+  if (!A.hard_scored || A.true_exposure_ready[c]) return;
+  const int j = G.cand_axis[c];
+  const auto path = path_of(v);
+  A.axisL[c] = cached_axis_log_integral(cur_gate, path, j, G.cand_cut[c], -1);
+  A.axisR[c] = cached_axis_log_integral(cur_gate, path, j, G.cand_cut[c], +1);
+  const double other = A.logH - A.axisH[j];
+  A.logHL[c] = other + A.axisL[c]; A.logHR[c] = other + A.axisR[c];
+  A.true_exposure_ready[c] = 1;
+  ++true_exposure_builds;
+}
+
+// Additive hard counts and hard-truncated parent exposures are a proposal
+// surrogate only. True soft child exposures are materialized after selection.
+void SoftSMCtree::expand_hard_node(int v) {
+  initialize_hard_bins();
+  SoftPathNode& A = store[v];
+  const auto path = path_of(v);
+  const int m = A.pts.size(), d = M.d(), C = G.n_cand;
+  const bool root = A.parent < 0;
+  if (root && (int)root_axis_cache.size() != d) root_axis_cache.resize(d);
+  const double rho = M.rho_depth(A.depth);
+  A.hard_scored = true;
+  A.logQA = M.logQ(m, std::exp(A.logH));
+  const double missing = std::numeric_limits<double>::quiet_NaN();
+  A.axisL.assign(C, missing); A.axisR.assign(C, missing);
+  A.logHL.assign(C, missing); A.logHR.assign(C, missing);
+  A.true_exposure_ready.assign(C, 0);
+  A.proxy_count.resize(C); A.proxy_logHL.resize(C); A.proxy_logHR.resize(C);
+  A.score.resize(C + 1); A.logprior.resize(C + 1); A.logq.resize(C + 1);
+  A.score[0] = A.logprior[0] = std::log1p(-rho);
+  for (int j = 0; j < d; ++j) {
+    const int begin = G.offset[j], end = G.offset[j + 1], count = end - begin;
+    const double prior = std::log(rho) - std::log((double)d) - std::log((double)count);
+    const bool reuse = root && cache_root && root_axis_cache[j].ready &&
+      root_axis_cache[j].hard && !root_axis_cache[j].exact &&
+      root_axis_cache[j].gate == cur_gate[j];
+    if (reuse) {
+      const auto& saved = root_axis_cache[j];
+      ++root_axis_hits;
+      for (int q = 0; q < count; ++q) {
+        const int c = begin + q;
+        A.proxy_count[c] = saved.proxy_count[q];
+        A.proxy_logHL[c] = saved.proxy_logHL[q]; A.proxy_logHR[c] = saved.proxy_logHR[q];
+        A.logprior[c + 1] = prior;
+        A.score[c + 1] = prior + M.proposal_temperature * (saved.logPsi[q] - A.logQA);
+      }
+      continue;
+    }
+    if (root) ++root_axis_builds;
+    std::vector<int> histogram(count + 1, 0);
+    for (int i : A.pts) ++histogram[hard_bins[(size_t)i * d + j]];
+    const auto exposure = hard_axis_exposures(path, j);
+    const double other = A.logH - A.axisH[j];
+    RootAxisCache saved;
+    if (root && cache_root) saved.logPsi.resize(count);
+    int left = 0;
+    for (int order = 0; order < count; ++order) {
+      left += histogram[order];
+      const int q = hard_order[j][order], c = begin + q;
+      A.proxy_count[c] = left;
+      A.proxy_logHL[c] = other + exposure->logL[q];
+      A.proxy_logHR[c] = other + exposure->logR[q];
+      const double likelihood = M.logQ(left, std::exp(A.proxy_logHL[c])) +
+        M.logQ(m - left, std::exp(A.proxy_logHR[c]));
+      A.logprior[c + 1] = prior;
+      A.score[c + 1] = prior + M.proposal_temperature * (likelihood - A.logQA);
+      if (root && cache_root) saved.logPsi[q] = likelihood;
+    }
+    if (root && cache_root) {
+      saved.ready = true; saved.hard = true; saved.exact = false; saved.gate = cur_gate[j];
+      saved.proxy_count.assign(A.proxy_count.begin() + begin, A.proxy_count.begin() + end);
+      saved.proxy_logHL.assign(A.proxy_logHL.begin() + begin, A.proxy_logHL.begin() + end);
+      saved.proxy_logHR.assign(A.proxy_logHR.begin() + begin, A.proxy_logHR.begin() + end);
+      root_axis_cache[j] = std::move(saved);
+    }
+  }
+  A.logPhi = soft_lse(A.score);
+  const double eps = M.proposal_defensive;
+  for (int c = 0; c <= C; ++c)
+    A.logq[c] = soft_logaddexp(std::log1p(-eps) + A.score[c] - A.logPhi,
+      std::log(eps) + A.logprior[c]);
+  A.expanded = true;
+  ++n_expanded;
+}
+
 // Phase 1: compute each coordinate once, retaining count coefficients for
 // allocation draws. Root payloads survive sweeps; all other nodes are local.
 void SoftSMCtree::expand_node(int v) {
   SoftPathNode& A = store[v];
   if (A.expanded) return;
+  if (M.hard_proposal && (int)A.pts.size() > M.exact_max) {
+    expand_hard_node(v);
+    return;
+  }
   const std::vector<SoftGateStep> path = path_of(v);
   const int mA = A.pts.size(), d = M.d(), C = G.n_cand;
   const double HA = std::exp(A.logH), rho_d = M.rho_depth(A.depth);
@@ -567,6 +773,7 @@ void SoftSMCtree::expand_node(int v) {
   if (root && (int)root_axis_cache.size() != d) root_axis_cache.resize(d);
   A.logQA = M.logQ(mA, HA);
   A.axisL.resize(C); A.axisR.resize(C); A.logHL.resize(C); A.logHR.resize(C);
+  A.true_exposure_ready.assign(C, 1);
   A.count_norm.assign(C, std::numeric_limits<double>::quiet_NaN());
   A.score.assign(C + 1, 0.0); A.logprior.assign(C + 1, 0.0); A.logq.assign(C + 1, 0.0);
   A.score[0] = std::log(1.0 - rho_d) + A.logQA;
@@ -575,7 +782,7 @@ void SoftSMCtree::expand_node(int v) {
     const int begin = G.offset[j], end = G.offset[j + 1], Mj = end - begin;
     const double logprior = std::log(rho_d) - std::log((double)d) - std::log((double)Mj);
     const bool reuse = root && cache_root && root_axis_cache[j].ready &&
-      root_axis_cache[j].gate == cur_gate[j] && root_axis_cache[j].exact == exact;
+      !root_axis_cache[j].hard && root_axis_cache[j].gate == cur_gate[j] && root_axis_cache[j].exact == exact;
     if (reuse) {
       const RootAxisCache& cache = root_axis_cache[j];
       ++root_axis_hits;
@@ -694,6 +901,7 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
       continue;
     }
     const int c = act - 1;
+    ensure_true_exposure(v, c);
     const double HL = std::exp(A.logHL[c]), HR = std::exp(A.logHR[c]);
     std::vector<char> B(mA, 0);
     if (forced) for (int s = 0; s < mA; ++s) B[s] = ref_bit(*ref, A.pts[s], t);

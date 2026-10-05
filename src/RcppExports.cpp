@@ -155,8 +155,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // SPPT_fit_PGAS
-Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::mat& Xtest, const arma::mat& region, Rcpp::List cut_grid, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, bool gate_shared, double rho, double eta, double max_depth, int P, int niter, int burn, int thin, int label_sweeps, bool update_gate, bool ancestor_sampling, int exact_max, double defensive, bool resample_node, double ess_threshold, bool allocation_rates, bool verbose);
-RcppExport SEXP _poistree_SPPT_fit_PGAS(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP cut_gridSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP rhoSEXP, SEXP etaSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP niterSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP label_sweepsSEXP, SEXP update_gateSEXP, SEXP ancestor_samplingSEXP, SEXP exact_maxSEXP, SEXP defensiveSEXP, SEXP resample_nodeSEXP, SEXP ess_thresholdSEXP, SEXP allocation_ratesSEXP, SEXP verboseSEXP) {
+Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::mat& Xtest, const arma::mat& region, Rcpp::List cut_grid, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, bool gate_shared, double rho, double eta, double max_depth, int P, int niter, int burn, int thin, int label_sweeps, bool update_gate, bool ancestor_sampling, int exact_max, double defensive, bool resample_node, double ess_threshold, bool allocation_rates, bool verbose, std::string proposal_score, double proposal_temperature, double proposal_defensive);
+RcppExport SEXP _poistree_SPPT_fit_PGAS(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP cut_gridSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP rhoSEXP, SEXP etaSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP niterSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP label_sweepsSEXP, SEXP update_gateSEXP, SEXP ancestor_samplingSEXP, SEXP exact_maxSEXP, SEXP defensiveSEXP, SEXP resample_nodeSEXP, SEXP ess_thresholdSEXP, SEXP allocation_ratesSEXP, SEXP verboseSEXP, SEXP proposal_scoreSEXP, SEXP proposal_temperatureSEXP, SEXP proposal_defensiveSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -189,7 +189,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type ess_threshold(ess_thresholdSEXP);
     Rcpp::traits::input_parameter< bool >::type allocation_rates(allocation_ratesSEXP);
     Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
-    rcpp_result_gen = Rcpp::wrap(SPPT_fit_PGAS(X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose));
+    Rcpp::traits::input_parameter< std::string >::type proposal_score(proposal_scoreSEXP);
+    Rcpp::traits::input_parameter< double >::type proposal_temperature(proposal_temperatureSEXP);
+    Rcpp::traits::input_parameter< double >::type proposal_defensive(proposal_defensiveSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_fit_PGAS(X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose, proposal_score, proposal_temperature, proposal_defensive));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -259,6 +262,82 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type max_aspect_ratio(max_aspect_ratioSEXP);
     Rcpp::traits::input_parameter< int >::type cut_grid_n(cut_grid_nSEXP);
     rcpp_result_gen = Rcpp::wrap(PPT_fit_SMC_shared(pts, grid, region, max_depth, P, min_leaf_n, resample_thresh, a, b, max_aspect_ratio, cut_grid_n));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_hard_node_probe
+Rcpp::List SPPT_hard_node_probe(const arma::mat& x, const arma::mat& region, Rcpp::List grids, const arma::vec& gate, const arma::mat& path, double temperature, double defensive, int selected);
+RcppExport SEXP _poistree_SPPT_hard_node_probe(SEXP xSEXP, SEXP regionSEXP, SEXP gridsSEXP, SEXP gateSEXP, SEXP pathSEXP, SEXP temperatureSEXP, SEXP defensiveSEXP, SEXP selectedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type x(xSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type region(regionSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type grids(gridsSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gate(gateSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type path(pathSEXP);
+    Rcpp::traits::input_parameter< double >::type temperature(temperatureSEXP);
+    Rcpp::traits::input_parameter< double >::type defensive(defensiveSEXP);
+    Rcpp::traits::input_parameter< int >::type selected(selectedSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_hard_node_probe(x, region, grids, gate, path, temperature, defensive, selected));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_hard_cache_probe
+Rcpp::List SPPT_hard_cache_probe(const arma::mat& gates, Rcpp::NumericVector temperature, Rcpp::NumericVector defensive, Rcpp::LogicalVector hard, bool cached);
+RcppExport SEXP _poistree_SPPT_hard_cache_probe(SEXP gatesSEXP, SEXP temperatureSEXP, SEXP defensiveSEXP, SEXP hardSEXP, SEXP cachedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type gates(gatesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type temperature(temperatureSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type defensive(defensiveSEXP);
+    Rcpp::traits::input_parameter< Rcpp::LogicalVector >::type hard(hardSEXP);
+    Rcpp::traits::input_parameter< bool >::type cached(cachedSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_hard_cache_probe(gates, temperature, defensive, hard, cached));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_hard_gate_probe
+Rcpp::List SPPT_hard_gate_probe(const arma::mat& gates, Rcpp::List requests, bool lazy, int capacity);
+RcppExport SEXP _poistree_SPPT_hard_gate_probe(SEXP gatesSEXP, SEXP requestsSEXP, SEXP lazySEXP, SEXP capacitySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type gates(gatesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type requests(requestsSEXP);
+    Rcpp::traits::input_parameter< bool >::type lazy(lazySEXP);
+    Rcpp::traits::input_parameter< int >::type capacity(capacitySEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_hard_gate_probe(gates, requests, lazy, capacity));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_hard_gate_chain
+Rcpp::List SPPT_hard_gate_chain(bool hard, int exact_max, bool update_gate, bool shared, bool lazy);
+RcppExport SEXP _poistree_SPPT_hard_gate_chain(SEXP hardSEXP, SEXP exact_maxSEXP, SEXP update_gateSEXP, SEXP sharedSEXP, SEXP lazySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type hard(hardSEXP);
+    Rcpp::traits::input_parameter< int >::type exact_max(exact_maxSEXP);
+    Rcpp::traits::input_parameter< bool >::type update_gate(update_gateSEXP);
+    Rcpp::traits::input_parameter< bool >::type shared(sharedSEXP);
+    Rcpp::traits::input_parameter< bool >::type lazy(lazySEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_hard_gate_chain(hard, exact_max, update_gate, shared, lazy));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPPT_forced_hard_probe
+Rcpp::List SPPT_forced_hard_probe(Rcpp::IntegerVector bits, const arma::vec& gate, double temperature, double defensive);
+RcppExport SEXP _poistree_SPPT_forced_hard_probe(SEXP bitsSEXP, SEXP gateSEXP, SEXP temperatureSEXP, SEXP defensiveSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type bits(bitsSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gate(gateSEXP);
+    Rcpp::traits::input_parameter< double >::type temperature(temperatureSEXP);
+    Rcpp::traits::input_parameter< double >::type defensive(defensiveSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPPT_forced_hard_probe(bits, gate, temperature, defensive));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -548,11 +627,16 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poistree_PPT_fit_SMC", (DL_FUNC) &_poistree_PPT_fit_SMC, 11},
     {"_poistree_PPT_valid_cuts", (DL_FUNC) &_poistree_PPT_valid_cuts, 6},
     {"_poistree_PPT_transition_probabilities", (DL_FUNC) &_poistree_PPT_transition_probabilities, 5},
-    {"_poistree_SPPT_fit_PGAS", (DL_FUNC) &_poistree_SPPT_fit_PGAS, 29},
+    {"_poistree_SPPT_fit_PGAS", (DL_FUNC) &_poistree_SPPT_fit_PGAS, 32},
     {"_poistree_SPPT_exact_cut_scores", (DL_FUNC) &_poistree_SPPT_exact_cut_scores, 8},
     {"_poistree_SPPT_exact_reuse_draws", (DL_FUNC) &_poistree_SPPT_exact_reuse_draws, 8},
     {"_poistree_SPPT_exact_allocation_logprob", (DL_FUNC) &_poistree_SPPT_exact_allocation_logprob, 2},
     {"_poistree_PPT_fit_SMC_shared", (DL_FUNC) &_poistree_PPT_fit_SMC_shared, 11},
+    {"_poistree_SPPT_hard_node_probe", (DL_FUNC) &_poistree_SPPT_hard_node_probe, 8},
+    {"_poistree_SPPT_hard_cache_probe", (DL_FUNC) &_poistree_SPPT_hard_cache_probe, 5},
+    {"_poistree_SPPT_hard_gate_probe", (DL_FUNC) &_poistree_SPPT_hard_gate_probe, 4},
+    {"_poistree_SPPT_hard_gate_chain", (DL_FUNC) &_poistree_SPPT_hard_gate_chain, 5},
+    {"_poistree_SPPT_forced_hard_probe", (DL_FUNC) &_poistree_SPPT_forced_hard_probe, 4},
     {"_poistree_SPPT_root_reuse_probe", (DL_FUNC) &_poistree_SPPT_root_reuse_probe, 3},
     {"_poistree_SPPT_root_reuse_chain", (DL_FUNC) &_poistree_SPPT_root_reuse_chain, 4},
     {"_poistree_SPPT_forced_exact_probe", (DL_FUNC) &_poistree_SPPT_forced_exact_probe, 2},

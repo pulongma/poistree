@@ -66,10 +66,18 @@ Particle Gibbs uses `particles`, `chains`,
 `iter`, `burn`, and `cut_candidates`. The soft PGAS backend also accepts `thin`,
 `label_sweeps` (label Gibbs sweeps per iteration), `ancestor_sampling`,
 `exact_max` (largest node occupancy for which the exact Poisson-binomial
-one-step-ahead proposal is used, default 150; above it the same
-expectation is evaluated by a Laplace approximation of its Beta-integral
-representation, O(m) per candidate),
-`defensive` (mixture weight on the prior action proposal),
+one-step-ahead proposal is used, default 150). Above that threshold,
+`proposal_score = "laplace"` (the default) uses the previous Laplace score;
+`proposal_score = "hard"` ranks actions using cumulative hard-split counts
+and exposures under the current parent path. This is a proposal surrogate
+for the soft model: selected splits still use true logistic gates and the
+full importance correction. Hard scores use `proposal_temperature`
+(default 0.5, in (0, 1]) and a prior-action mixture `proposal_defensive`
+(default 0.1, in (0, 1)); these controls do not affect exact-scored nodes.
+The hard option evaluates true routing gates lazily and retains all cuts.
+Its speed and effective-sample-size tradeoff depends on the data and gates.
+`defensive` controls the prior-action mixture for exact and Laplace scoring,
+separately from the hard scorer's `proposal_defensive`. Further controls are
 `resampling` (`"node"`, the default, resamples after every heap node at
 which some particle advanced; `"level"` resamples after every tree
 level), `ess_threshold` (resample at such an event only when the ESS is

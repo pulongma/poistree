@@ -30,7 +30,10 @@ Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::
                          int P, int niter, int burn, int thin, int label_sweeps,
                          bool update_gate, bool ancestor_sampling, int exact_max,
                          double defensive, bool resample_node, double ess_threshold,
-                         bool allocation_rates, bool verbose) {
+                         bool allocation_rates, bool verbose,
+                         std::string proposal_score = "laplace",
+                         double proposal_temperature = 0.5,
+                         double proposal_defensive = 0.1) {
   const int depth = ppt_checked_depth(max_depth, 1);
   ppt_check_soft_storage(depth);
   const int d = X.n_cols;
@@ -43,6 +46,12 @@ Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::
     stop("invalid Particle-Gibbs controls");
   if (defensive < 0.0 || defensive >= 1.0) stop("defensive must lie in [0, 1)");
   if (!(ess_threshold > 0.0 && ess_threshold <= 1.0)) stop("ess_threshold must lie in (0, 1]");
+  if (proposal_score != "laplace" && proposal_score != "hard")
+    stop("proposal_score must be laplace or hard");
+  if (!std::isfinite(proposal_temperature) || proposal_temperature <= 0 || proposal_temperature > 1)
+    stop("proposal_temperature must lie in (0, 1]");
+  if (!std::isfinite(proposal_defensive) || proposal_defensive <= 0 || proposal_defensive >= 1)
+    stop("proposal_defensive must lie in (0, 1)");
   if ((int)gate.n_elem != d || (int)a_gate.n_elem != d || (int)b_gate.n_elem != d ||
       (int)sd_gate.n_elem != d || (int)gate_min.n_elem != d)
     stop("gate parameters must have length d");
@@ -51,6 +60,8 @@ Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::
   M.X = X; M.region = region; M.a = a; M.b = b; M.rho = rho; M.eta = eta;
   M.Dmax = depth; M.n_nodes = ppt_tree_slots(depth) + 1;
   M.exact_max = exact_max; M.defensive = defensive;
+  M.hard_proposal = proposal_score == "hard";
+  M.proposal_temperature = proposal_temperature; M.proposal_defensive = proposal_defensive;
   M.init_tables();
   M.grid.resize(d);
   for (int j = 0; j < d; ++j) {

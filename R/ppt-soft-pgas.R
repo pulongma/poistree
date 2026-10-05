@@ -25,10 +25,23 @@
     exact_max = 150L, defensive = 0,
     resampling = c("node", "level"), ess_threshold = 1,
     allocation = c("sequential", "rates"),
-    seed = 1L, verbose = TRUE) {
+    seed = 1L, verbose = TRUE,
+    proposal_score = c("laplace", "hard"),
+    proposal_temperature = 0.5, proposal_defensive = 0.1) {
   gate_structure <- match.arg(gate_structure)
   resampling <- match.arg(resampling)
   allocation <- match.arg(allocation)
+  proposal_score <- match.arg(proposal_score)
+  if (!is.numeric(proposal_temperature) || length(proposal_temperature) != 1L ||
+      !is.finite(proposal_temperature) || proposal_temperature <= 0 ||
+      proposal_temperature > 1) {
+    stop("`proposal_temperature` must be a number in (0, 1].", call. = FALSE)
+  }
+  if (!is.numeric(proposal_defensive) || length(proposal_defensive) != 1L ||
+      !is.finite(proposal_defensive) || proposal_defensive <= 0 ||
+      proposal_defensive >= 1) {
+    stop("`proposal_defensive` must be a number in (0, 1).", call. = FALSE)
+  }
 
   x <- .ppt_validate_points(x, name = "x")
   d <- ncol(x)
@@ -111,7 +124,8 @@
       as.integer(label_sweeps), isTRUE(update_gate), isTRUE(ancestor_sampling),
       as.integer(exact_max), defensive,
       identical(resampling, "node"), ess_threshold,
-      identical(allocation, "rates"), isTRUE(verbose)
+      identical(allocation, "rates"), isTRUE(verbose), proposal_score,
+      proposal_temperature, proposal_defensive
     )
   })
   pull <- function(name) unlist(lapply(raw, function(z) as.numeric(z[[name]])))
@@ -194,6 +208,7 @@
         ancestor_move_rate = mean(pull("as_rate"), na.rm = TRUE),
         unique_trees = NA_integer_,
         leaf_count_trace = pull("nleaf"),
+        log_likelihood_trace = loglik,
         max_depth_trace = pull("max_depth"),
         log_evidence_increment = numeric(),
         log_evidence_running = numeric(),
@@ -222,6 +237,9 @@
         ess_threshold = ess_threshold,
         allocation = allocation,
         exact_max = as.integer(exact_max), defensive = defensive,
+        proposal_score = proposal_score,
+        proposal_temperature = proposal_temperature,
+        proposal_defensive = proposal_defensive,
         update_gate = isTRUE(update_gate), seed = seed
       ),
       backend = "SPPT_fit_PGAS"

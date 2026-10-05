@@ -79,16 +79,27 @@ test_that("soft Particle Gibbs with ancestor sampling is invariant for the exact
   tolerance <- 0.03                   # ~4 batch-means standard errors at 12k correlated draws
   # (resampling after every node | after every level) x (exact | approximate proposal)
   # x (sequential-imputation | auxiliary-rate allocation above exact_max)
-  configs <- list(c(TRUE, 500L, FALSE), c(FALSE, 500L, FALSE), c(TRUE, 0L, FALSE), c(TRUE, 0L, TRUE))
+  configs <- list(
+    list(TRUE, 500L, FALSE, "laplace", 0.5, 0.1),
+    list(FALSE, 500L, FALSE, "laplace", 0.5, 0.1),
+    list(TRUE, 0L, FALSE, "laplace", 0.5, 0.1),
+    list(TRUE, 0L, TRUE, "laplace", 0.5, 0.1),
+    list(TRUE, 0L, FALSE, "hard", 0.5, 0.1),
+    list(FALSE, 0L, FALSE, "hard", 0.5, 0.1),
+    list(TRUE, 0L, TRUE, "hard", 0.5, 0.1),
+    list(TRUE, 3L, FALSE, "hard", 0.5, 0.1),
+    list(TRUE, 0L, FALSE, "hard", 1, 0.02),
+    list(TRUE, 500L, FALSE, "hard", 0.5, 0.1)
+  )
   for (config in configs) {
-    resample_node <- as.logical(config[1]); exact_max <- as.integer(config[2])
-    allocation_rates <- as.logical(config[3])
+    resample_node <- config[[1]]; exact_max <- config[[2]]
+    allocation_rates <- config[[3]]
     set.seed(11)
     raw <- poistree:::SPPT_fit_PGAS(
       x, matrix(0.5, 1, 1), matrix(numeric(), 0, 1), region, list(grid),
       a, b, gate, 1, 1, 0.1, 0, TRUE, alpha, eta, 2L,
       3L, 12000L, 0L, 1L, 0L, FALSE, TRUE, exact_max, 0, resample_node, 1,
-      allocation_rates, FALSE
+      allocation_rates, FALSE, config[[4]], config[[5]], config[[6]]
     )
     states <- raw$state_nodes
     root <- t(vapply(states, function(st) st[st[, 1] == 1, 2:3], numeric(2)))

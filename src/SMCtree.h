@@ -191,19 +191,32 @@ public:
     // the latest gate value per coordinate; never retain sweep-local handles.
     struct RootAxisCache {
         bool ready = false, exact = false;
+        bool hard = false;
         double gate = std::numeric_limits<double>::quiet_NaN();
         std::vector<double> axisL, axisR, logHL, logHR, logPsi, count_norm;
+        std::vector<int> proxy_count;
+        std::vector<double> proxy_logHL, proxy_logHR;
         std::shared_ptr<SoftExactAxis> exact_axis;
     };
     std::vector<RootAxisCache> root_axis_cache;
     bool cache_root = true;                // internal comparison switch, not a sampler option
     size_t root_axis_builds = 0, root_axis_hits = 0;
     size_t exact_prefix_builds = 0, exact_forced_routes = 0, exact_boundary_draws = 0;
+    bool lazy_gates = false;               // hard backend default; test switch for all methods
+    std::vector<std::vector<double> > hard_cuts;  // sorted axis grids for histograms
+    std::vector<std::vector<int> > hard_order;    // sorted position -> candidate within axis
+    std::vector<int> hard_bins;             // fixed bin for each observation and coordinate
+    struct HardAxisExposure { std::vector<double> logL, logR; };
+    std::vector<std::map<AxisPathKey, std::shared_ptr<HardAxisExposure> > > hard_exposures;
+    arma::vec hard_exposure_gate;
+    size_t hard_bin_builds = 0, hard_exposure_builds = 0, hard_exposure_hits = 0;
+    size_t true_exposure_builds = 0;
 
     SoftSMCtree(const SoftModel& M_, int P_, bool use_as_) : M(M_), P(P_), use_as(use_as_) {
         ppt_check_soft_storage(M.Dmax);
         if (M.n_nodes != ppt_tree_slots(M.Dmax) + 1)
             Rcpp::stop("Invalid soft tree allocation size.");
+        lazy_gates = M.hard_proposal;
     }
 
     // shared-path machinery
@@ -214,6 +227,11 @@ public:
     std::shared_ptr<SoftExactAxis> exact_cut_axis(SoftPathNode& node, int cand,
                                                 double& delta);
     void expand_node(int v);
+    void initialize_hard_bins();
+    std::shared_ptr<HardAxisExposure> hard_axis_exposures(
+        const std::vector<SoftGateStep>& path, int j);
+    void expand_hard_node(int v);
+    void ensure_true_exposure(int v, int cand);
     void expand_level(int level);
     bool sample_position(int t, SoftRef* ref);   // true if some particle advanced at t
     void resample(SoftRef* ref);

@@ -29,8 +29,8 @@ PPT_transition_probabilities <- function(pts, region, min_leaf_n, cut_grid_n, ma
     .Call(`_poistree_PPT_transition_probabilities`, pts, region, min_leaf_n, cut_grid_n, max_aspect_ratio)
 }
 
-SPPT_fit_PGAS <- function(X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose) {
-    .Call(`_poistree_SPPT_fit_PGAS`, X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose)
+SPPT_fit_PGAS <- function(X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose, proposal_score = "laplace", proposal_temperature = 0.5, proposal_defensive = 0.1) {
+    .Call(`_poistree_SPPT_fit_PGAS`, X, grid, Xtest, region, cut_grid, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, rho, eta, max_depth, P, niter, burn, thin, label_sweeps, update_gate, ancestor_sampling, exact_max, defensive, resample_node, ess_threshold, allocation_rates, verbose, proposal_score, proposal_temperature, proposal_defensive)
 }
 
 SPPT_exact_cut_scores <- function(x, cuts, gate, width, H_left, H_right, a, b) {
@@ -47,6 +47,26 @@ SPPT_exact_allocation_logprob <- function(logits, bits) {
 
 PPT_fit_SMC_shared <- function(pts, grid, region, max_depth, P, min_leaf_n, resample_thresh, a, b, max_aspect_ratio, cut_grid_n) {
     .Call(`_poistree_PPT_fit_SMC_shared`, pts, grid, region, max_depth, P, min_leaf_n, resample_thresh, a, b, max_aspect_ratio, cut_grid_n)
+}
+
+SPPT_hard_node_probe <- function(x, region, grids, gate, path, temperature = 0.5, defensive = 0.1, selected = -1L) {
+    .Call(`_poistree_SPPT_hard_node_probe`, x, region, grids, gate, path, temperature, defensive, selected)
+}
+
+SPPT_hard_cache_probe <- function(gates, temperature, defensive, hard, cached) {
+    .Call(`_poistree_SPPT_hard_cache_probe`, gates, temperature, defensive, hard, cached)
+}
+
+SPPT_hard_gate_probe <- function(gates, requests, lazy = TRUE, capacity = 65536L) {
+    .Call(`_poistree_SPPT_hard_gate_probe`, gates, requests, lazy, capacity)
+}
+
+SPPT_hard_gate_chain <- function(hard, exact_max, update_gate, shared, lazy) {
+    .Call(`_poistree_SPPT_hard_gate_chain`, hard, exact_max, update_gate, shared, lazy)
+}
+
+SPPT_forced_hard_probe <- function(bits, gate, temperature = 0.5, defensive = 0.1) {
+    .Call(`_poistree_SPPT_forced_hard_probe`, bits, gate, temperature, defensive)
 }
 
 SPPT_root_reuse_probe <- function(gates, exact_max, cached) {

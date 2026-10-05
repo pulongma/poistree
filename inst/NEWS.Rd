@@ -3,6 +3,15 @@
 
 \section{Development changes}{
   \itemize{
+    \item Soft PGAS accepts \code{proposal_score = "hard"} above
+      \code{exact_max}: cumulative hard-split counts and path exposures
+      provide a proposal surrogate, while true soft gates and exposures
+      are evaluated lazily for selected splits. All cuts and the full
+      importance correction are retained. \code{proposal_temperature}
+      (default 0.5) and \code{proposal_defensive} (default 0.1) control this
+      proposal only. The default large-node scorer remains Laplace.
+    \item Soft PGAS records the retained log-likelihood trace in
+      \code{diagnostics$log_likelihood_trace} for mixing comparisons.
     \item Soft PGAS reuses exact logistic allocation-count distributions across
       candidate cuts by exponential tilting. Exact-scoring work is reduced to
       one Poisson-binomial recursion per node and coordinate plus linear work

@@ -168,7 +168,7 @@ the tree and the latent allocation variables of the observations jointly, one he
 with the exact one-step-ahead proposal (a Poisson-binomial expectation over
 the allocations of the node's observations to its children) for nodes with at most `exact_max`
 points and, above that, a Laplace approximation of the same expectation written
-as a one-dimensional Beta integral (O(m) per candidate, correct tails).
+as a one-dimensional Beta integral (O(m) per candidate).
 For exact-scored nodes, logistic cut locations share one Poisson-binomial
 recursion per node and coordinate. Each candidate count distribution is
 obtained by an exact exponential tilt of that reference distribution,
@@ -180,7 +180,22 @@ allocation proposal, so a forced reference allocation needs no table or replay.
 Reference count coefficients and count normalizers are reused for sampling;
 zero/all-left counts bypass allocation tables. Root scores and lazy coordinate
 tables persist across sweeps, invalidating only coordinates whose gate changes.
-The large-node Laplace proposal and `exact_max` threshold are unchanged.
+The default large-node proposal remains `proposal_score = "laplace"`,
+and `exact_max` remains 150. An optional `proposal_score = "hard"` uses
+cumulative hard-split counts and interval exposures under the current soft
+parent path to rank all cuts. It borrows GS-BART's reuse of additive summaries;
+it is a Gamma-Poisson proposal surrogate, not a change to the soft model or
+an implementation of GS-BART's importance-tempering sampler. Its action scores
+use `proposal_temperature = 0.5` and a prior mixture `proposal_defensive = 0.1`.
+These controls apply only above `exact_max`; the original `defensive` remains
+the mixture control for exact/Laplace scoring. True logistic gates and child
+exposures are computed lazily for selected or reference splits, with the full
+importance correction. The full candidate grid is retained, with 50 requested
+cuts per coordinate by default (duplicate or invalid cuts are removed).
+Count preparation costs O(d (m + M)), after fixed-bin preprocessing; path
+exposure integration is additional work. Hard surrogates can be inaccurate
+for broad soft gates, so compare effective samples per second before choosing
+this option. See `inst/benchmarks/pgas-hard-proposal-benchmark.R`.
 Above `exact_max` the allocation of the node's points is proposed either by
 sequential imputation or through auxiliary child rates (`allocation`), with
 exact importance weights in both cases.
