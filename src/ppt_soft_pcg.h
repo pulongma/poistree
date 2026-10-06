@@ -81,6 +81,8 @@ struct PPSTPCGEvaluation {
   arma::mat log_weights;
 };
 
+// Use the same family-aware basis and exposure as tree moves and prediction.
+// In particular, node-relative logistic gates need parent widths in both terms.
 static PPSTPCGEvaluation ppst_pcg_evaluate(const PPSTree&T,
     const std::vector<int>&leaves,const arma::vec&log_rate,
     const arma::mat&pts,const arma::mat&region,const arma::vec&gate,

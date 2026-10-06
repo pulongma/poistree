@@ -27,8 +27,17 @@
     allocation = c("sequential", "rates"),
     seed = 1L, verbose = TRUE,
     proposal_score = c("laplace", "hard"),
-    proposal_temperature = 0.5, proposal_defensive = 0.1) {
+    proposal_temperature = 0.5, proposal_defensive = 0.1,
+    gate_scale = NULL) {
   gate_structure <- match.arg(gate_structure)
+  gate_scale <- .ppt_resolve_gate_scale(gate_scale, "logistic")
+  if (identical(gate_scale, "node")) {
+    stop(
+      "`gate_scale = \"node\"` is not supported by soft PGAS. ",
+      "Use sampler = \"pcg\", \"rjmcmc\", or \"irjmcmc\" for node scaling.",
+      call. = FALSE
+    )
+  }
   resampling <- match.arg(resampling)
   allocation <- match.arg(allocation)
   proposal_score <- match.arg(proposal_score)
@@ -155,7 +164,7 @@
     list(
       call = NULL,
       model = list(
-        gating = "soft", gate_family = "logistic",
+        gating = "soft", gate_family = "logistic", gate_scale = gate_scale,
         scales = "leaf",
         sampler = "pgas",
         algorithm = if (isTRUE(ancestor_sampling)) "PGAS" else "PG",
@@ -219,7 +228,7 @@
         intensity = list(shape = a, rate = b),
         gate = list(
           shape = a_gate, rate = b_gate, lower = gate_min,
-          structure = gate_structure, family = "logistic"
+          structure = gate_structure, family = "logistic", scale = gate_scale
         ),
         tree = list(alpha = alpha, eta = eta, cut_grid = cut_grid)
       ),
@@ -240,6 +249,7 @@
         proposal_score = proposal_score,
         proposal_temperature = proposal_temperature,
         proposal_defensive = proposal_defensive,
+        gate_scale = gate_scale,
         update_gate = isTRUE(update_gate), seed = seed
       ),
       backend = "SPPT_fit_PGAS"

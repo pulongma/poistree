@@ -220,4 +220,100 @@ static double pst_logistic_path_axis_integral(
   return std::min(out,width);
 }
 
+// Node-relative gates can have different slopes on the same coordinate.
+// Their path product is integrated numerically over the full root domain;
+// the node width changes the slope, not the domain or the support of a gate.
+static inline double pst_logistic_node_path_product(
+    double x,const std::vector<double>&cuts,const std::vector<int>&sides,
+    const std::vector<double>&parent_widths,double gate){
+  double log_out=0.0;
+  for(size_t k=0;k<cuts.size();k++){
+    double z=gate*(x-cuts[k])/parent_widths[k];
+    log_out+=sides[k]<0 ? pst_logistic_log_right(-z)
+                        : pst_logistic_log_right(z);
+  }
+  return std::exp(log_out);
+}
+
+static double pst_logistic_node_adaptive_simpson(
+    const std::vector<double>&cuts,const std::vector<int>&sides,
+    const std::vector<double>&parent_widths,double gate,
+    double left,double right,double f_left,double f_mid,double f_right,
+    double whole,double abs_tol,int depth){
+  double mid=left+0.5*(right-left);
+  double left_mid=left+0.5*(mid-left),right_mid=mid+0.5*(right-mid);
+  if(left_mid<=left||right_mid>=right) return whole;
+  double fl=pst_logistic_node_path_product(
+    left_mid,cuts,sides,parent_widths,gate);
+  double fr=pst_logistic_node_path_product(
+    right_mid,cuts,sides,parent_widths,gate);
+  double lower=(mid-left)*(f_left+4.0*fl+f_mid)/6.0;
+  double upper=(right-mid)*(f_mid+4.0*fr+f_right)/6.0;
+  double refined=lower+upper,error=refined-whole;
+  if(depth<=0||std::abs(error)<=15.0*(abs_tol+5e-13*std::abs(refined)))
+    return std::max(0.0,refined+error/15.0);
+  return pst_logistic_node_adaptive_simpson(
+      cuts,sides,parent_widths,gate,left,mid,f_left,fl,f_mid,lower,
+      0.5*abs_tol,depth-1)+
+    pst_logistic_node_adaptive_simpson(
+      cuts,sides,parent_widths,gate,mid,right,f_mid,fr,f_right,upper,
+      0.5*abs_tol,depth-1);
+}
+
+static double pst_logistic_node_path_axis_integral(
+    const std::vector<double>&cuts,const std::vector<int>&sides,
+    const std::vector<double>&parent_widths,
+    double dom_lo,double dom_hi,double gate){
+  const double width=dom_hi-dom_lo;
+  if(cuts.empty()) return width;
+  if(!(width>0.0)||!std::isfinite(width)||!(gate>0.0)||
+     !std::isfinite(gate)||cuts.size()!=sides.size()||
+     cuts.size()!=parent_widths.size())
+    return std::numeric_limits<double>::quiet_NaN();
+  bool common_width=true;
+  for(size_t k=0;k<cuts.size();k++){
+    if(!(parent_widths[k]>0.0)||!std::isfinite(parent_widths[k])||
+       !std::isfinite(cuts[k])||(sides[k]!=-1&&sides[k]!=1))
+      return std::numeric_limits<double>::quiet_NaN();
+    common_width=common_width&&parent_widths[k]==parent_widths[0];
+  }
+  // Keep the established analytic implementation when slopes coincide.
+  const double effective_gate=gate*(width/parent_widths[0]);
+  if(common_width&&effective_gate>=1e-4&&effective_gate<=500.0)
+    return pst_logistic_path_axis_integral(
+      cuts,sides,dom_lo,dom_hi,effective_gate);
+
+  // Gate centres alone may hide very narrow transitions. Include points at
+  // several multiples of each individual bandwidth before adaptive refinement.
+  std::vector<double>breaks;
+  breaks.reserve(15*cuts.size()+2);
+  breaks.push_back(dom_lo);
+  breaks.push_back(dom_hi);
+  const double offsets[]={-32,-16,-8,-4,-2,-1,0,1,2,4,8,16,32};
+  for(size_t k=0;k<cuts.size();k++){
+    const double bandwidth=parent_widths[k]/gate;
+    for(double offset:offsets){
+      double point=cuts[k]+offset*bandwidth;
+      if(point>dom_lo&&point<dom_hi) breaks.push_back(point);
+    }
+  }
+  std::sort(breaks.begin(),breaks.end());
+  breaks.erase(std::unique(breaks.begin(),breaks.end()),breaks.end());
+  double total=0.0;
+  const double total_abs_tol=8.0*std::numeric_limits<double>::epsilon()*width;
+  for(size_t k=1;k<breaks.size();k++){
+    double left=breaks[k-1],right=breaks[k];
+    if(!(right>left)) continue;
+    double mid=left+0.5*(right-left);
+    double fl=pst_logistic_node_path_product(left,cuts,sides,parent_widths,gate);
+    double fm=pst_logistic_node_path_product(mid,cuts,sides,parent_widths,gate);
+    double fr=pst_logistic_node_path_product(right,cuts,sides,parent_widths,gate);
+    double whole=(right-left)*(fl+4.0*fm+fr)/6.0;
+    total+=pst_logistic_node_adaptive_simpson(
+      cuts,sides,parent_widths,gate,left,right,fl,fm,fr,whole,
+      total_abs_tol*(right-left)/width,24);
+  }
+  return std::max(std::numeric_limits<double>::min(),std::min(total,width));
+}
+
 #endif

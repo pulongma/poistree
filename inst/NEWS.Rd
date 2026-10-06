@@ -1,8 +1,20 @@
 \name{NEWS}
 \title{News for Package \pkg{poistree}}
 
-\section{Development changes}{
+\section{Changes in poistree version 0.5.0 (2026-10-06)}{
   \itemize{
+    \item Added optional \code{gate_scale = "node"} for logistic soft gates
+      with PCG, RJ-MCMC, and informed MH. Each split uses its parent-node
+      interval width while retaining shared or dimension-specific gate
+      parameters selected by the unchanged \code{gate_structure} argument.
+    \item Existing logistic calls retain root-range scaling. Compact gates
+      retain their existing node-range scaling. New fitted objects record
+      the effective gate scale; previously saved objects remain supported.
+    \item Node-scaled logistic exposure and marginal integrals use stable
+      adaptive numerical integration for paths with unequal slopes.
+      Posterior prediction reconstructs each node width from tree state.
+    \item PGAS rejects node scaling explicitly because its current global
+      cut-grid and ancestor-sampling calculations require root-scaled gates.
     \item Soft PGAS accepts \code{proposal_score = "hard"} above
       \code{exact_max}: cumulative hard-split counts and path exposures
       provide a proposal surrogate, while true soft gates and exposures

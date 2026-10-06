@@ -3,6 +3,22 @@
                  by = as.integer(thin)))
 }
 
+# Gate-parameter sharing and the width used to scale each gate are separate.
+# NULL retains each family's historical behavior.
+.ppt_resolve_gate_scale <- function(gate_scale, gate_family = "logistic") {
+  if (is.null(gate_scale)) {
+    return(if (identical(gate_family, "compact")) "node" else "root")
+  }
+  if (!is.character(gate_scale) || length(gate_scale) != 1L ||
+      is.na(gate_scale) || !gate_scale %in% c("root", "node")) {
+    stop("`gate_scale` must be NULL, \"root\", or \"node\".", call. = FALSE)
+  }
+  if (identical(gate_family, "compact") && identical(gate_scale, "root")) {
+    stop("Compact gates require `gate_scale = \"node\"`.", call. = FALSE)
+  }
+  gate_scale
+}
+
 .ppt_fit_soft_leaf_rjmcmc <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = NULL,
@@ -16,13 +32,13 @@
     chains = 4L, iter = 10000L, burn = 2500L, thin = 3L,
     tree_moves = 3L, change_moves = 8L,
     cut_proposal = c("quantile", "uniform", "data"),
-    cut_candidates = 50L, seed = 1L, verbose = TRUE) {
+    cut_candidates = 50L, seed = 1L, verbose = TRUE, gate_scale = NULL) {
   .ppt_fit_soft_leaf_mcmc(
     x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose,
-    informed = FALSE
+    informed = FALSE, gate_scale = gate_scale
   )
 }
 
@@ -39,13 +55,13 @@
     chains = 4L, iter = 10000L, burn = 2500L, thin = 3L,
     tree_moves = 3L, change_moves = 8L,
     cut_proposal = c("quantile", "uniform", "data"),
-    cut_candidates = 50L, seed = 1L, verbose = TRUE) {
+    cut_candidates = 50L, seed = 1L, verbose = TRUE, gate_scale = NULL) {
   .ppt_fit_soft_leaf_mcmc(
     x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose,
-    informed = TRUE
+    informed = TRUE, gate_scale = gate_scale
   )
 }
 
@@ -63,14 +79,15 @@
     tree_moves = 3L, change_moves = 8L,
     cut_proposal = c("quantile", "uniform", "data"),
     cut_candidates = 50L, seed = 1L, verbose = TRUE,
-    ram_target = 0.234, ram_decay = 0.7, ram_adapt = NULL) {
+    ram_target = 0.234, ram_decay = 0.7, ram_adapt = NULL,
+    gate_scale = NULL) {
   .ppt_fit_soft_leaf_mcmc(
     x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose,
     informed = FALSE, pcg = TRUE, ram_target = ram_target,
-    ram_decay = ram_decay, ram_adapt = ram_adapt
+    ram_decay = ram_decay, ram_adapt = ram_adapt, gate_scale = gate_scale
   )
 }
 
@@ -100,8 +117,10 @@
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose, informed,
-    pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L) {
+    pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L,
+    gate_scale = NULL) {
   gate_family <- match.arg(gate_family, c("logistic", "compact"))
+  gate_scale <- .ppt_resolve_gate_scale(gate_scale, gate_family)
   gate_structure <- match.arg(gate_structure, c("dimension", "shared"))
   cut_proposal <- match.arg(cut_proposal, c("quantile", "uniform", "data"))
   cut_mode <- switch(cut_proposal,
@@ -180,7 +199,8 @@
     as.integer(iter), as.integer(burn), as.integer(thin),
     as.integer(tree_moves), as.integer(change_moves),
     cut_mode, as.integer(cut_candidates), as.integer(update_gate),
-    as.integer(match(gate_family, c("logistic", "compact")) - 1L),
+    if (identical(gate_family, "compact")) 1L else
+      if (identical(gate_scale, "node")) 2L else 0L,
     as.integer(chains), as.integer(verbose), informed = informed, pcg = pcg,
     ram_target = ram$target, ram_decay = ram$decay, ram_adapt = ram$adapt
   )
@@ -208,7 +228,7 @@
     list(
       call = NULL,
       model = list(
-        gating = "soft", gate_family = gate_family,
+        gating = "soft", gate_family = gate_family, gate_scale = gate_scale,
         scales = "leaf",
         sampler = if (pcg) "pcg" else if (informed) "irjmcmc" else "rjmcmc",
         algorithm = if (pcg) "Partially collapsed Gibbs (RAM)" else
@@ -251,7 +271,8 @@
           mode = "heap",
           nodes = raw$state_nodes,
           gate = as.matrix(raw$state_gate),
-          gate_mode = if (identical(gate_family, "logistic")) 2L else 1L,
+          gate_mode = if (identical(gate_family, "compact")) 1L else
+            if (identical(gate_scale, "node")) 3L else 2L,
           gate_depth = 0,
           chain = rep(seq_len(chains), each = retained_per_chain)
         )
@@ -274,7 +295,7 @@
         intensity = list(shape = a, rate = b),
         gate = list(
           shape = a_gate, rate = b_gate, lower = gate_min,
-          structure = gate_structure, family = gate_family
+          structure = gate_structure, family = gate_family, scale = gate_scale
         ),
         tree = list(alpha = alpha, eta = eta)
       ),
@@ -288,7 +309,8 @@
         change_moves = as.integer(change_moves),
         cut_proposal = cut_proposal,
         cut_candidates = as.integer(cut_candidates),
-        gate_family = gate_family, update_gate = isTRUE(update_gate),
+        gate_family = gate_family, gate_scale = gate_scale,
+        update_gate = isTRUE(update_gate),
         seed = seed
       ),
       backend = "ppstree_multi"

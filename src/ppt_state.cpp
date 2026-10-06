@@ -37,7 +37,8 @@ struct SGate {
   int axis;
   double cut;
   int side;          // -1 left, +1 right
-  double eff_width;  // compact family: parent width / (1+depth)^gate_depth
+  double parent_width;  // local box width at the splitting parent
+  double eff_width;     // compact: parent width / (1+depth)^gate_depth
 };
 
 static inline int heap_depth(long hid) {
@@ -137,8 +138,9 @@ static double soft_axis_value(const std::vector<SGate>&path, int axis,
                               const arma::vec&gate, int gate_mode) {
   double log_value = 0.0;
   for (const SGate&g : path) if (g.axis == axis) {
-    if (gate_mode == 2) {
-      double width = region(axis, 1) - region(axis, 0);
+    if (gate_mode == 2 || gate_mode == 3) {
+      double width = gate_mode == 3 ? g.parent_width
+        : region(axis, 1) - region(axis, 0);
       double z = gate[axis] * (x - g.cut) / width;
       log_value += g.side < 0 ? pst_logistic_log_right(-z)
                               : pst_logistic_log_right(z);
@@ -160,10 +162,16 @@ static double soft_axis_integral(const std::vector<SGate>&path, int axis,
     );
   std::vector<double> cuts;
   std::vector<int> sides;
+  std::vector<double> parent_widths;
   for (const SGate&g : path) if (g.axis == axis) {
     cuts.push_back(g.cut);
     sides.push_back(g.side);
+    parent_widths.push_back(g.parent_width);
   }
+  if (gate_mode == 3)
+    return pst_logistic_node_path_axis_integral(
+      cuts, sides, parent_widths, region(axis, 0), region(axis, 1), gate[axis]
+    );
   return pst_logistic_path_axis_integral(
     cuts, sides, region(axis, 0), region(axis, 1), gate[axis]
   );
@@ -180,6 +188,8 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
   const arma::uword np = newdata.n_rows, d = newdata.n_cols;
   if (region.n_rows != d || region.n_cols != 2)
     stop("`region` must be a d by 2 matrix matching `newdata`.");
+  if (gate_mode < 0 || gate_mode > 3)
+    stop("`gate_mode` must be 0 (hard), 1 (compact), 2 (root logistic), or 3 (node logistic).");
   arma::mat out(np, S, arma::fill::zeros);
 
   for (int s = 0; s < S; s++) {
@@ -240,7 +250,10 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
           g.axis = pa.axis;
           g.cut = pa.cut;
           g.side = (h % 2 == 0) ? -1 : 1;
-          g.eff_width = (pa.box(pa.axis, 1) - pa.box(pa.axis, 0)) /
+          g.parent_width = pa.box(pa.axis, 1) - pa.box(pa.axis, 0);
+          if (gate_mode == 3 && !(g.parent_width > 0.0))
+            stop("node-scaled logistic state has a nonpositive parent width");
+          g.eff_width = g.parent_width /
             std::pow(1.0 + (double)heap_depth(pa.hid), gate_depth);
           paths[k].push_back(g);
           h /= 2;
@@ -267,8 +280,9 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
           double lphi = 0.0;
           bool zero = false;
           for (const SGate&g : paths[k]) {
-            if (gate_mode == 2) {
-              double width = region(g.axis, 1) - region(g.axis, 0);
+            if (gate_mode == 2 || gate_mode == 3) {
+              double width = gate_mode == 3 ? g.parent_width
+                : region(g.axis, 1) - region(g.axis, 0);
               double zz = gate[g.axis] * (x[g.axis] - g.cut) / width;
               lphi += g.side < 0 ? pst_logistic_log_right(-zz)
                                  : pst_logistic_log_right(zz);
@@ -304,8 +318,8 @@ arma::mat ppt_marginal_state(List state_nodes, arma::mat state_gate,
   if (variable < 0 || variable >= (int)d)
     stop("`variable` is outside the fitted dimension.");
   if (!grid.is_finite()) stop("`grid` must be finite.");
-  if (gate_mode < 0 || gate_mode > 2)
-    stop("`gate_mode` must be 0 (hard), 1 (compact), or 2 (logistic).");
+  if (gate_mode < 0 || gate_mode > 3)
+    stop("`gate_mode` must be 0 (hard), 1 (compact), 2 (root logistic), or 3 (node logistic).");
   if (!std::isfinite(gate_depth) || gate_depth < 0.0)
     stop("`gate_depth` must be finite and nonnegative.");
 
@@ -378,7 +392,10 @@ arma::mat ppt_marginal_state(List state_nodes, arma::mat state_gate,
           g.axis = pa.axis;
           g.cut = pa.cut;
           g.side = (h % 2 == 0) ? -1 : 1;
-          g.eff_width = (pa.box(pa.axis, 1) - pa.box(pa.axis, 0)) /
+          g.parent_width = pa.box(pa.axis, 1) - pa.box(pa.axis, 0);
+          if (gate_mode == 3 && !(g.parent_width > 0.0))
+            stop("node-scaled logistic state has a nonpositive parent width");
+          g.eff_width = g.parent_width /
             std::pow(1.0 + (double)heap_depth(pa.hid), gate_depth);
           paths[k].push_back(g);
           h /= 2;

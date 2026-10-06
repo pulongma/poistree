@@ -32,7 +32,7 @@
 # except `variable`.  The native evaluator reconstructs node boxes and soft
 # ancestor paths from the serialized topology, then uses exact box widths,
 # piecewise-polynomial compact-gate integrals, or the stable logistic path
-# integral used by the fitting backends.
+# integral used by the fitting backends (adaptive for node-scaled logistic).
 #' @keywords internal
 .ppt_state_marginal <- function(object, grid, variable, average = TRUE) {
   state <- object$posterior$state

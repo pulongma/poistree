@@ -81,8 +81,8 @@ SPPT_forced_exact_probe <- function(bits, defensive) {
     .Call(`_poistree_SPPT_forced_exact_probe`, bits, defensive)
 }
 
-ppstree_geometry <- function(axis, cut, parent_width, side, points, region, gate) {
-    .Call(`_poistree_ppstree_geometry`, axis, cut, parent_width, side, points, region, gate)
+ppstree_geometry <- function(axis, cut, parent_width, side, points, region, gate, gate_scale = 0L) {
+    .Call(`_poistree_ppstree_geometry`, axis, cut, parent_width, side, points, region, gate, gate_scale)
 }
 
 ppstree_multi <- function(X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose, informed = FALSE, pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L) {

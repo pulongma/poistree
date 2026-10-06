@@ -71,6 +71,37 @@ soft RJ-MCMC controls. Soft RJ-MCMC, informed MH, and PCG also accept `gate_fami
 `"compact"`. Soft PGAS uses logistic gates and does not accept `gate_family`.
 All soft backends accept `gate_structure`, `gate`, and gate-prior controls.
 
+All soft backends accept `gate_scale = NULL`, independently of
+`gate_structure`. For logistic gates, `NULL` retains the historical
+`"root"` scaling: the gate on input `j` is
+`plogis(gate[j] * (x[j] - cut) / root_width[j])`.
+Use `gate_scale = "node"` to divide by the splitting node's local
+width instead, so the same gate parameter gives a sharper transition
+in a narrower node. `gate_structure = "dimension"` continues to share
+one parameter per input across its nodes; `"shared"` uses one parameter
+across all inputs. Compact gates keep their historical node scaling
+when `gate_scale` is `NULL` or `"node"`; `"root"` is not supported.
+Node-relative logistic path integrals use deterministic adaptive
+quadrature. Stored posterior states retain the scale choice, and older
+fitted objects continue to use their stored gate mode.
+Node scaling for logistic gates is available with `sampler = "pcg"`,
+`"rjmcmc"`, and `"irjmcmc"`. Soft PGAS currently supports only root
+scaling; it rejects `gate_scale = "node"` before fitting because its
+fixed-grid ancestor sampler requires a different derivation for
+node-dependent widths.
+
+```r
+fit_node <- ppt_fit(
+  x, region, gating = "soft", sampler = "pcg",
+  gate_structure = "dimension", gate_scale = "node"
+)
+```
+
+Omitting `gate_scale` keeps existing calls and logistic results unchanged.
+The effective setting is recorded in `fit_node$model$gate_scale`,
+`fit_node$prior$gate$scale`, and `fit_node$control$gate_scale`.
+
+
 `max_depth` must be one finite integer. All hard samplers and soft RJ-MCMC
 informed MH, and PCG accept 0 through 20; zero gives a root-only tree. Soft PGAS
 requires at least 1 and its current reference-tree storage limit permits at

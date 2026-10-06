@@ -90,6 +90,24 @@
 #'   Soft RJ-MCMC, informed MH, and PCG accept `gate_family`, with choices
 #'   `"logistic"` (the default) and `"compact"`. Soft PGAS uses logistic gates
 #'   and does not accept a `gate_family` argument.
+#'   All soft backends accept `gate_scale = NULL`, independently of
+#'   `gate_structure`. For logistic gates, `NULL` retains the historical
+#'   `"root"` scaling: the gate on input `j` is
+#'   `plogis(gate[j] * (x[j] - cut) / root_width[j])`.
+#'   Use `gate_scale = "node"` to divide by the splitting node's local
+#'   width instead, so the same gate parameter gives a sharper transition
+#'   in a narrower node. `gate_structure = "dimension"` continues to share
+#'   one parameter per input across its nodes; `"shared"` uses one parameter
+#'   across all inputs. Compact gates keep their historical node scaling
+#'   when `gate_scale` is `NULL` or `"node"`; `"root"` is not supported.
+#'   Node-relative logistic path integrals use deterministic adaptive
+#'   quadrature. Stored posterior states retain the scale choice, and older
+#'   fitted objects continue to use their stored gate mode.
+#'   Node scaling for logistic gates is available with `sampler = "pcg"`,
+#'   `"rjmcmc"`, and `"irjmcmc"`. Soft PGAS currently supports only root
+#'   scaling; it rejects `gate_scale = "node"` before fitting because its
+#'   fixed-grid ancestor sampler requires a different derivation for
+#'   node-dependent widths.
 #'   All MCMC backends accept `verbose` (default `TRUE`), which displays an
 #'   RcppProgress bar for each chain. The bar counts completed iterations,
 #'   including burn-in and iterations discarded by thinning. Use

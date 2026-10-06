@@ -89,8 +89,9 @@ struct PPSTIContext {
     out->left.resize(pts.n_rows); out->right.resize(pts.n_rows);
     PPSTGate split={axis,cut,width,1};
     for(arma::uword i=0;i<pts.n_rows;i++){
-      if(family==0){
-        double z=gate[axis]*(pts(i,axis)-cut)/(region(axis,1)-region(axis,0));
+      if(family!=1){
+        const double scale=family==2 ? width : region(axis,1)-region(axis,0);
+        double z=gate[axis]*(pts(i,axis)-cut)/scale;
         out->left[i]=pst_logistic_log_right(-z);
         out->right[i]=pst_logistic_log_right(z);
       }else{

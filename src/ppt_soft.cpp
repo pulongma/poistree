@@ -14,7 +14,9 @@
 //
 // Thus children sum exactly to their parent.  With one shared slope per
 // dimension, the leaf exposure H_ell=int phi_ell is a product of analytic
-// one-dimensional rational integrals.  The former compact-cubic gate remains
+// one-dimensional rational integrals.  Optional node-relative logistic gates
+// instead use each split parent's width, with adaptive one-dimensional
+// integration for varying slopes along a path.  The former compact-cubic gate remains
 // available as an opt-in compatibility family.  With lambda_ell~Gamma(a,b),
 // latent leaf labels give
 //
@@ -202,10 +204,10 @@ static PPSTNode ppst_child(const PPSTNode&parent,const arma::uvec&idx,int axis,
 
 // ---- recursive logistic gate and analytic exposure -------------------------
 static double ppst_log_phi_logistic(const PPSTNode&nd,const arma::rowvec&x,
-    const arma::mat&region,const arma::vec&gate){
+    const arma::mat&region,const arma::vec&gate,bool node_gate=false){
   double ans=0.0;
   for(const PPSTGate&g:nd.path){
-    double width=region(g.axis,1)-region(g.axis,0);
+    double width=node_gate ? g.parent_width : region(g.axis,1)-region(g.axis,0);
     double z=gate[g.axis]*(x[g.axis]-g.cut)/width;
     ans+=g.side<0 ? pst_logistic_log_right(-z)
                   : pst_logistic_log_right(z);
@@ -225,6 +227,27 @@ static double ppst_exposure_logistic(const PPSTNode&nd,
     }
     H*=pst_logistic_path_axis_integral(
       cuts,sides,region(j,0),region(j,1),gate[j]
+    );
+  }
+  return std::max(H,1e-300);
+}
+
+// A node-relative gate has the same dimension-specific parameter but a
+// different physical slope at every split. Integrate over the full root
+// domain: logistic leaf bases extend outside their hard-routing boxes.
+static double ppst_exposure_logistic_node(const PPSTNode&nd,
+    const arma::mat&region,const arma::vec&gate){
+  double H=1.0;
+  for(arma::uword j=0;j<region.n_rows;j++){
+    std::vector<double> cuts,widths;
+    std::vector<int> sides;
+    for(const PPSTGate&g:nd.path) if(g.axis==(int)j){
+      cuts.push_back(g.cut);
+      sides.push_back(g.side);
+      widths.push_back(g.parent_width);
+    }
+    H*=pst_logistic_node_path_axis_integral(
+      cuts,sides,widths,region(j,0),region(j,1),gate[j]
     );
   }
   return std::max(H,1e-300);
@@ -312,9 +335,9 @@ static double ppst_exposure_compact(const PPSTNode&nd,const arma::mat&region,
 
 static double ppst_log_phi(const PPSTNode&nd,const arma::rowvec&x,
     const arma::mat&region,const arma::vec&gate,int gate_family){
-  return gate_family==0
-    ? ppst_log_phi_logistic(nd,x,region,gate)
-    : ppst_log_phi_compact(nd,x,gate);
+  return gate_family==1
+    ? ppst_log_phi_compact(nd,x,gate)
+    : ppst_log_phi_logistic(nd,x,region,gate,gate_family==2);
 }
 
 static inline double ppst_phi(const PPSTNode&nd,const arma::rowvec&x,
@@ -325,6 +348,7 @@ static inline double ppst_phi(const PPSTNode&nd,const arma::rowvec&x,
 
 static double ppst_exposure(const PPSTNode&nd,const arma::mat&region,
     const arma::vec&gate,int gate_family){
+  if(gate_family==2) return ppst_exposure_logistic_node(nd,region,gate);
   return gate_family==0
     ? ppst_exposure_logistic(nd,region,gate)
     : ppst_exposure_compact(nd,region,gate);
@@ -333,7 +357,9 @@ static double ppst_exposure(const PPSTNode&nd,const arma::mat&region,
 // [[Rcpp::export]]
 List ppstree_geometry(IntegerVector axis,NumericVector cut,
     NumericVector parent_width,IntegerVector side,arma::mat points,
-    arma::mat region,arma::vec gate){
+    arma::mat region,arma::vec gate,int gate_scale=0){
+  if(gate_scale!=0&&gate_scale!=1) stop("gate_scale must be 0 (root) or 1 (node)");
+  const int family=gate_scale==1?2:0;
   int K=axis.size();
   gate=ppst_expand_positive(gate,region.n_rows,"gate");
   if(cut.size()!=K||parent_width.size()!=K||side.size()!=K)
@@ -349,11 +375,11 @@ List ppstree_geometry(IntegerVector axis,NumericVector cut,
   }
   arma::vec phi(points.n_rows),lp(points.n_rows);
   for(arma::uword i=0;i<points.n_rows;i++){
-    lp[i]=ppst_log_phi_logistic(nd,points.row(i),region,gate);
+    lp[i]=ppst_log_phi(nd,points.row(i),region,gate,family);
     phi[i]=lp[i] < -745.0 ? 0.0 : std::exp(lp[i]);
   }
   return List::create(_["phi"]=phi,_["log_phi"]=lp,
-                      _["H"]=ppst_exposure_logistic(nd,region,gate));
+                      _["H"]=ppst_exposure(nd,region,gate,family));
 }
 
 // ---- leaf labels and gate update -------------------------------------------
@@ -734,8 +760,8 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
   if(chains<1||iters<=burn||burn<0||thin<1||depth<0||nmin<1||
      nmove<0||ncc<0||ncand<2)
     stop("invalid MCMC or tree controls");
-  if(gate_family<0||gate_family>1)
-    stop("gate_family must be 0 (logistic) or 1 (compact)");
+  if(gate_family<0||gate_family>2)
+    stop("gate_family must be 0 (root logistic), 1 (compact), or 2 (node logistic)");
   if(a<=0.0||b<=0.0) stop("a and b must be positive for the soft PPT");
   gate=ppst_expand_positive(gate,X.n_cols,"gate");
   a_gate=ppst_expand_positive(a_gate,X.n_cols,"a_gate");
@@ -828,8 +854,8 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   if(iters<=burn||burn<0||thin<1||depth<0||nmin<1||
      nmove<0||ncc<0||ncand<2)
     stop("invalid MCMC or tree controls");
-  if(gate_family<0||gate_family>1)
-    stop("gate_family must be 0 (logistic) or 1 (compact)");
+  if(gate_family<0||gate_family>2)
+    stop("gate_family must be 0 (root logistic), 1 (compact), or 2 (node logistic)");
   if(a<=0.0||b<=0.0) stop("a and b must be positive for the soft PPT");
   gate=ppst_expand_positive(gate,X.n_cols,"gate");
   a_gate=ppst_expand_positive(a_gate,X.n_cols,"a_gate");
@@ -976,7 +1002,7 @@ List ppstree_informed_transition(arma::mat X,arma::mat region,
      (arma::uword)labels.size()!=X.n_rows)
     stop("incompatible transition-inspection dimensions");
   if(a<=0||b<=0||depth<0||nmin<1||ncand<2||
-     (gate_family!=0&&gate_family!=1)||(kind!=0&&kind!=1))
+     (gate_family<0||gate_family>2)||(kind!=0&&kind!=1))
     stop("invalid transition-inspection controls");
   gate=ppst_expand_positive(gate,X.n_cols,"gate");
   PPSTree tree; PPSTNode root;
@@ -1070,7 +1096,7 @@ List ppstree_pcg_inspect(arma::mat X,arma::mat region,arma::mat splits,
     arma::vec gate_min,int gate_shared,int gate_family){
   if(X.n_rows==0||X.n_cols==0||region.n_rows!=X.n_cols||region.n_cols!=2||
      splits.n_cols!=3||!X.is_finite()||!region.is_finite()||
-     arma::any(region.col(1)<=region.col(0))||(gate_family!=0&&gate_family!=1))
+     arma::any(region.col(1)<=region.col(0))||(gate_family<0||gate_family>2))
     stop("invalid pcg inspection geometry");
   gate=ppst_expand_positive(gate,X.n_cols,"gate");
   a_gate=ppst_expand_positive(a_gate,X.n_cols,"a_gate");

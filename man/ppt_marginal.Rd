@@ -51,8 +51,10 @@ tree draw,
 By default, the integral is evaluated from every retained posterior state:
 exactly from axis-aligned boxes for hard models, from exact
 piecewise-polynomial path integrals for compact soft gates, and from the
-stable analytic logistic path integrals used during fitting (with adaptive
-quadrature for numerically ill-conditioned logistic paths). Supplying
+stable analytic root-scaled logistic path integrals used during fitting
+(with adaptive quadrature for numerically ill-conditioned paths).
+Node-scaled logistic gates use deterministic adaptive quadrature for
+products with different node widths. Supplying
 `reference` explicitly instead uses a uniform reference-design
 approximation. Its one-coordinate substitution designs are evaluated from
 the stored posterior state draws, so `reference` need not have appeared in

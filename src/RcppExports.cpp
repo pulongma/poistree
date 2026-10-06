@@ -381,8 +381,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // ppstree_geometry
-List ppstree_geometry(IntegerVector axis, NumericVector cut, NumericVector parent_width, IntegerVector side, arma::mat points, arma::mat region, arma::vec gate);
-RcppExport SEXP _poistree_ppstree_geometry(SEXP axisSEXP, SEXP cutSEXP, SEXP parent_widthSEXP, SEXP sideSEXP, SEXP pointsSEXP, SEXP regionSEXP, SEXP gateSEXP) {
+List ppstree_geometry(IntegerVector axis, NumericVector cut, NumericVector parent_width, IntegerVector side, arma::mat points, arma::mat region, arma::vec gate, int gate_scale);
+RcppExport SEXP _poistree_ppstree_geometry(SEXP axisSEXP, SEXP cutSEXP, SEXP parent_widthSEXP, SEXP sideSEXP, SEXP pointsSEXP, SEXP regionSEXP, SEXP gateSEXP, SEXP gate_scaleSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -393,7 +393,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< arma::mat >::type points(pointsSEXP);
     Rcpp::traits::input_parameter< arma::mat >::type region(regionSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type gate(gateSEXP);
-    rcpp_result_gen = Rcpp::wrap(ppstree_geometry(axis, cut, parent_width, side, points, region, gate));
+    Rcpp::traits::input_parameter< int >::type gate_scale(gate_scaleSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_geometry(axis, cut, parent_width, side, points, region, gate, gate_scale));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -640,7 +641,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poistree_SPPT_root_reuse_probe", (DL_FUNC) &_poistree_SPPT_root_reuse_probe, 3},
     {"_poistree_SPPT_root_reuse_chain", (DL_FUNC) &_poistree_SPPT_root_reuse_chain, 4},
     {"_poistree_SPPT_forced_exact_probe", (DL_FUNC) &_poistree_SPPT_forced_exact_probe, 2},
-    {"_poistree_ppstree_geometry", (DL_FUNC) &_poistree_ppstree_geometry, 7},
+    {"_poistree_ppstree_geometry", (DL_FUNC) &_poistree_ppstree_geometry, 8},
     {"_poistree_ppstree_multi", (DL_FUNC) &_poistree_ppstree_multi, 32},
     {"_poistree_ppstree_diag", (DL_FUNC) &_poistree_ppstree_diag, 30},
     {"_poistree_ppstree_informed_transition", (DL_FUNC) &_poistree_ppstree_informed_transition, 15},
