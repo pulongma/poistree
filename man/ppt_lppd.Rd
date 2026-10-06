@@ -35,6 +35,8 @@ With `type = "plugin"` the score is the log-likelihood of the test pattern
 under the posterior mean intensity \eqn{\bar\lambda=\sum_s w_s\lambda^{(s)}},
 \deqn{\sum_i \log\{r\bar\lambda(t_i)\} - r\textstyle\int_{\mathcal D}\bar\lambda.}
 Both scores are log densities, so larger values are better.
+Stored prediction draws are reused at matching test locations; only
+missing locations are evaluated from the retained posterior states.
 When `test` is supplied here, the intensities \eqn{\lambda^{(s)}(t_i)}
 are evaluated post hoc from the retained posterior state draws and the
 stored per-draw intensity integrals, so the test pattern does NOT have to

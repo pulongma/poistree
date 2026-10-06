@@ -234,30 +234,46 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
       if (!gate.is_finite() || arma::any(gate <= 0.0))
         stop("soft state draw has an invalid gate vector");
     }
-    // contributing leaves and, for soft fits, their ancestor gate paths
+    // Keep leaf accumulation in ascending heap order, as in the direct
+    // evaluator.  Soft prediction shares each internal gate and its
+    // ancestor membership across all descendant leaves.
     std::vector<int> contrib;
     contrib.reserve(nn);
     for (int r = 0; r < nn; r++)
       if (nd[r].axis < 0) contrib.push_back(r);
-    std::vector<std::vector<SGate> > paths;
+    struct PredictionSplit {
+      int node, left, right, axis;
+      double cut, width, half_width;
+    };
+    std::vector<PredictionSplit> splits;
+    std::vector<double> log_membership;
     if (gate_mode != 0) {
-      paths.resize(contrib.size());
-      for (size_t k = 0; k < contrib.size(); k++) {
-        long h = nd[contrib[k]].hid;
-        while (h > 1) {
-          const SNode&pa = nd[at[h / 2]];
-          SGate g;
-          g.axis = pa.axis;
-          g.cut = pa.cut;
-          g.side = (h % 2 == 0) ? -1 : 1;
-          g.parent_width = pa.box(pa.axis, 1) - pa.box(pa.axis, 0);
-          if (gate_mode == 3 && !(g.parent_width > 0.0))
-            stop("node-scaled logistic state has a nonpositive parent width");
-          g.eff_width = g.parent_width /
-            std::pow(1.0 + (double)heap_depth(pa.hid), gate_depth);
-          paths[k].push_back(g);
-          h /= 2;
-        }
+      splits.reserve(nn);
+      log_membership.resize(nn);
+      log_membership[at[1L]] = 0.0;
+      for (int r = 0; r < nn; r++) {
+        const SNode&z = nd[r];
+        if (z.axis < 0) continue;
+        auto left = at.find(2 * z.hid);
+        auto right = at.find(2 * z.hid + 1);
+        if (left == at.end() && right == at.end()) continue;
+        double parent_width = z.box(z.axis, 1) - z.box(z.axis, 0);
+        if (gate_mode == 3 && !(parent_width > 0.0))
+          stop("node-scaled logistic state has a nonpositive parent width");
+        PredictionSplit split;
+        split.node = r;
+        split.left = left == at.end() ? -1 : left->second;
+        split.right = right == at.end() ? -1 : right->second;
+        split.axis = z.axis;
+        split.cut = z.cut;
+        split.width = gate_mode == 3 ? parent_width
+          : region(z.axis, 1) - region(z.axis, 0);
+        split.half_width = gate_mode == 1
+          ? parent_width /
+              std::pow(1.0 + (double)heap_depth(z.hid), gate_depth) /
+              gate[z.axis]
+          : 0.0;
+        splits.push_back(split);
       }
     }
 
@@ -274,25 +290,38 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
           if (!at.count(h)) stop("state draw routing reached a missing node");
         }
       } else {
-        for (size_t k = 0; k < contrib.size(); k++) {
-          const SNode&z = nd[contrib[k]];
-          if (z.lambda <= 0.0) continue;
-          double lphi = 0.0;
-          bool zero = false;
-          for (const SGate&g : paths[k]) {
+        // Heap order guarantees the parent's log membership is available.
+        // Only one scalar per active node is retained, independently of the
+        // number of prediction locations or posterior draws.
+        const double zero_log = -std::numeric_limits<double>::infinity();
+        for (const PredictionSplit&split : splits) {
+          double left_log = zero_log, right_log = zero_log;
+          double parent_log = log_membership[split.node];
+          if (parent_log != zero_log) {
             if (gate_mode == 2 || gate_mode == 3) {
-              double width = gate_mode == 3 ? g.parent_width
-                : region(g.axis, 1) - region(g.axis, 0);
-              double zz = gate[g.axis] * (x[g.axis] - g.cut) / width;
-              lphi += g.side < 0 ? pst_logistic_log_right(-zz)
-                                 : pst_logistic_log_right(zz);
+              double zz = gate[split.axis] * (x[split.axis] - split.cut) /
+                split.width;
+              double common = std::log1p(std::exp(-std::abs(zz)));
+              left_log = parent_log + (-std::max(zz, 0.0) - common);
+              right_log = parent_log + (-std::max(-zz, 0.0) - common);
             } else {
-              double q = compact_value(g, x[g.axis], gate[g.axis]);
-              if (q <= 0.0) { zero = true; break; }
-              lphi += std::log(q);
+              double t = (x[split.axis] - (split.cut - split.half_width)) /
+                (2.0 * split.half_width);
+              double right = t <= 0.0 ? 0.0
+                : (t >= 1.0 ? 1.0 : t * t * (3.0 - 2.0 * t));
+              double left = 1.0 - right;
+              if (left > 0.0) left_log = parent_log + std::log(left);
+              if (right > 0.0) right_log = parent_log + std::log(right);
             }
           }
-          if (!zero && lphi > -745.0) val += z.lambda * std::exp(lphi);
+          if (split.left >= 0) log_membership[split.left] = left_log;
+          if (split.right >= 0) log_membership[split.right] = right_log;
+        }
+        for (int leaf : contrib) {
+          const SNode&z = nd[leaf];
+          double lphi = log_membership[leaf];
+          if (z.lambda > 0.0 && lphi > -745.0)
+            val += z.lambda * std::exp(lphi);
         }
       }
       out(i, s) = val;

@@ -28,6 +28,38 @@
   )
 }
 
+# Reuse retained prediction draws; evaluate only locations missing from them.
+# .ppt_state_eval remains the independent, unconditional state evaluator.
+#' @keywords internal
+.ppt_prediction_draws <- function(object, at) {
+  stored <- object$prediction$draws
+  locations <- object$prediction$locations
+  if (!is.matrix(stored) || is.null(locations) ||
+      nrow(stored) != nrow(locations) || !ncol(stored)) {
+    return(.ppt_state_eval(object, at))
+  }
+  state <- object$posterior$state
+  state_draws <- if (identical(state$mode, "heap")) length(state$nodes) else {
+    length(object$posterior$tree_draws)
+  }
+  if (state_draws > 0L && state_draws != ncol(stored)) {
+    return(.ppt_state_eval(object, at))
+  }
+  # Full-grid requests need neither row keys nor a copy of the draw matrix.
+  if (identical(dim(at), dim(locations)) && all(at == locations)) return(stored)
+  index <- .ppt_match_prediction_rows(at, locations)
+  known <- !is.na(index)
+  if (!any(known)) return(.ppt_state_eval(object, at))
+  if (all(known)) {
+    if (identical(index, seq_len(nrow(stored)))) return(stored)
+    return(stored[index, , drop = FALSE])
+  }
+  draws <- matrix(0, nrow(at), ncol(stored))
+  draws[known, ] <- stored[index[known], , drop = FALSE]
+  draws[!known, ] <- .ppt_state_eval(object, at[!known, , drop = FALSE])
+  draws
+}
+
 # Integrate every retained heap-state intensity draw over all coordinates
 # except `variable`.  The native evaluator reconstructs node boxes and soft
 # ancestor paths from the serialized topology, then uses exact box widths,
@@ -105,7 +137,9 @@
 #' can be reproduced exactly at any location after fitting -- no location has
 #' to be listed in `predict_at` beforehand. This is the workhorse behind
 #' plotting the estimated intensity over a grid and behind post-hoc
-#' [ppt_predict()] and [ppt_lppd()] evaluation.
+#' [ppt_predict()] and [ppt_lppd()] evaluation. Locations already present in
+#' the stored prediction draws reuse those draws. Other locations alone are
+#' evaluated from the posterior states; input order and duplicate rows are kept.
 #'
 #' @param object A fitted `ppt` object.
 #' @param at Numeric matrix of evaluation locations with one column per input.
@@ -169,22 +203,20 @@ ppt_lambda <- function(object, at = NULL, n = 50L,
   }
   at <- .ppt_validate_points(at, d, region, "at", allow_empty = FALSE)
 
-  draws <- .ppt_state_eval(object, at)
+  draws <- .ppt_prediction_draws(object, at)
   weights <- .ppt_posterior_weights(object, ncol(draws))
   if (identical(type, "draws")) {
     return(list(at = at, draws = draws, weights = weights))
   }
   alpha <- (1 - level) / 2
-  posterior_quantile <- function(probability) {
-    apply(draws, 1L, .ppt_weighted_quantile,
-          weights = weights, probability = probability)
-  }
+  quantiles <- t(apply(draws, 1L, .ppt_weighted_quantiles,
+                      weights = weights, probabilities = c(0.5, alpha, 1 - alpha)))
   out <- data.frame(at, check.names = FALSE)
   names(out) <- input_names
   out$mean <- as.numeric(draws %*% weights)
-  out$median <- posterior_quantile(0.5)
-  out$lower <- posterior_quantile(alpha)
-  out$upper <- posterior_quantile(1 - alpha)
+  out$median <- quantiles[, 1L]
+  out$lower <- quantiles[, 2L]
+  out$upper <- quantiles[, 3L]
   attr(out, "level") <- level
   class(out) <- c("ppt_lambda", "data.frame")
   out

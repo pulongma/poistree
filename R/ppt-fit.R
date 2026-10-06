@@ -58,6 +58,14 @@
 #'   `change_moves`, and do not accept `prediction_draws`. PCG accepts the same
 #'   controls as soft RJ-MCMC, plus `ram_target` (default 0.234),
 #'   `ram_decay` (default 0.7), and `ram_adapt` (default `floor(0.8 * burn)`).
+#'   Soft RJ-MCMC, informed MH, and PCG also accept `cache_geometry = TRUE`.
+#'   This reuses unchanged leaf exposures and computes point memberships
+#'   by sharing ancestor-gate calculations across leaves. It supports both
+#'   `gate_scale = "root"` and `"node"`, and the compact gate family.
+#'   Set `cache_geometry = FALSE` to use the original uncached calculations
+#'   for numerical comparisons. The cache is local to each fit, requires no
+#'   saved files, and does not change the model, priors, or sampler moves.
+#'   Floating-point rounding can differ because products are shared.
 #'   Particle Gibbs uses `particles`, `chains`,
 #'   `iter`, `burn`, and `cut_candidates`. The soft PGAS backend also accepts `thin`,
 #'   `label_sweeps` (label Gibbs sweeps per iteration), `ancestor_sampling`,

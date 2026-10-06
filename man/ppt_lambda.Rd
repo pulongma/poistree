@@ -41,7 +41,9 @@ and gate vectors), so the intensity \eqn{\lambda(s)} of each retained draw
 can be reproduced exactly at any location after fitting -- no location has
 to be listed in `predict_at` beforehand. This is the workhorse behind
 plotting the estimated intensity over a grid and behind post-hoc
-[ppt_predict()] and [ppt_lppd()] evaluation.
+[ppt_predict()] and [ppt_lppd()] evaluation. Locations already present in
+the stored prediction draws reuse those draws. Other locations alone are
+evaluated from the posterior states; input order and duplicate rows are kept.
 }
 \examples{
 \dontrun{

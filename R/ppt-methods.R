@@ -7,6 +7,7 @@
 #' in `predict_at` before fitting. (The two paths can differ very slightly in
 #' the interval convention: stored summaries follow the fitting backend,
 #' post-hoc summaries use the weighted quantile of [ppt_lambda()].)
+#' Mean-only predictions avoid calculating posterior quantiles.
 #'
 #' @param object A fitted `ppt` object.
 #' @param newdata Optional matrix of prediction locations. If `NULL`, all
@@ -40,6 +41,10 @@ ppt_predict <- function(object, newdata = NULL,
           "poistree version, or include those rows in `predict_at`.",
           call. = FALSE
         )
+      }
+      if (identical(type, "mean")) {
+        lambda <- ppt_lambda(object, at = newdata, type = "draws")
+        return(as.numeric(lambda$draws %*% lambda$weights))
       }
       lambda <- ppt_lambda(object, at = newdata, type = "summary")
       if (identical(type, "interval")) {
@@ -428,6 +433,8 @@ logLik.ppt <- function(object, ...) ppt_logLik(object, ...)
 #' under the posterior mean intensity \eqn{\bar\lambda=\sum_s w_s\lambda^{(s)}},
 #' \deqn{\sum_i \log\{r\bar\lambda(t_i)\} - r\textstyle\int_{\mathcal D}\bar\lambda.}
 #' Both scores are log densities, so larger values are better.
+#' Stored prediction draws are reused at matching test locations; only
+#' missing locations are evaluated from the retained posterior states.
 #' When `test` is supplied here, the intensities \eqn{\lambda^{(s)}(t_i)}
 #' are evaluated post hoc from the retained posterior state draws and the
 #' stored per-draw intensity integrals, so the test pattern does NOT have to
@@ -483,7 +490,7 @@ ppt_lppd <- function(object, test = NULL, scale = 1,
       call. = FALSE
     )
   }
-  draws <- .ppt_state_eval(object, test)
+  draws <- .ppt_prediction_draws(object, test)
   if (ncol(draws) != length(integral)) {
     stop("Posterior state draws and integral draws are inconsistent.",
          call. = FALSE)

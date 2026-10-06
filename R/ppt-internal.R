@@ -150,9 +150,17 @@
 }
 
 .ppt_match_prediction_rows <- function(newdata, locations) {
+  if (!nrow(newdata)) return(integer())
+  if (is.null(locations) || !nrow(locations)) {
+    return(rep.int(NA_integer_, nrow(newdata)))
+  }
   key <- function(z) {
-    apply(z, 1L, function(row)
-      paste(format(row, digits = 17L, scientific = TRUE), collapse = "\r"))
+    columns <- lapply(seq_len(ncol(z)), function(j) {
+      values <- z[, j]
+      values[values == 0] <- 0  # Match negative zero to positive zero.
+      sprintf("%.17g", values)  # Round-trip precision for every finite double.
+    })
+    do.call(paste, c(columns, sep = "\r"))
   }
   match(key(newdata), key(locations))
 }
@@ -175,6 +183,23 @@
   x <- x[ord]
   weights <- weights[ord] / sum(weights)
   x[which(cumsum(weights) >= probability)[1L]]
+}
+
+# Return several weighted inverse-CDF quantiles using one sort per row.
+# Keep the filtering and normalization used by .ppt_weighted_quantile.
+.ppt_weighted_quantiles <- function(x, weights, probabilities) {
+  keep <- is.finite(x) & is.finite(weights) & weights >= 0
+  x <- x[keep]
+  weights <- weights[keep]
+  if (!length(x) || sum(weights) <= 0) {
+    return(rep(NA_real_, length(probabilities)))
+  }
+  ord <- order(x)
+  x <- x[ord]
+  cumulative <- cumsum(weights[ord] / sum(weights))
+  vapply(probabilities, function(probability) {
+    x[which(cumulative >= probability)[1L]]
+  }, numeric(1L))
 }
 
 .ppt_tree_marginal <- function(tree, grid, variable, region,

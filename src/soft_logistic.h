@@ -260,7 +260,7 @@ static double pst_logistic_node_adaptive_simpson(
       0.5*abs_tol,depth-1);
 }
 
-static double pst_logistic_node_path_axis_integral(
+static inline double pst_logistic_node_path_axis_integral(
     const std::vector<double>&cuts,const std::vector<int>&sides,
     const std::vector<double>&parent_widths,
     double dom_lo,double dom_hi,double gate){

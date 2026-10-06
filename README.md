@@ -183,6 +183,16 @@ convergence or improved sampling efficiency. `ppt_diagnostics(sppt_pcg)` exposes
 joint gate acceptance and per-chain final proposal covariance, factor, and
 adaptation counts in `ram`. PCG uses ordinary posterior weights.
 
+Soft RJ-MCMC, informed MH, and PCG use `cache_geometry = TRUE` by default.
+They reuse shared ancestor log-memberships and cache leaf exposures for both
+`gate_scale = "root"` and `"node"`. The optimization also supports compact
+gates. Set `cache_geometry = FALSE` to use direct calculations for validation.
+The cache is confined to a fit/chain; proposed gates are evaluated separately,
+and changes to ancestor rules or local widths invalidate affected entries.
+This changes computation only: priors, tree proposals, update counts, and
+random-number generation are unchanged. In the private quadrature adapter,
+background memberships serve both weighted exposure and grid prediction.
+
 The hard PPT SMC sampler (`sampler = "smc"`) runs by default on a shared-path
 store (`engine = "shared"`): particles that reach the same box share one stored
 node with its candidate cuts and marginal-likelihood scores, scores are computed
@@ -299,3 +309,14 @@ precomputed fast path.
 over axis-aligned boxes for hard gates and using the fitted compact/logistic
 path integrals for soft gates. A user-supplied uniform reference design remains
 available as an explicit approximation; see `?ppt_marginal`.
+
+### Prediction performance (0.5.2)
+
+Post-hoc soft prediction shares ancestor calculations across leaves, for root
+and node logistic scales and compact gates. It needs only one scalar per
+active node as temporary working memory. Existing saved fits are supported.
+`ppt_lambda()` and `ppt_lppd()` reuse retained prediction draws for matching
+locations, including reordered or repeated rows, and evaluate only missing
+locations. `ppt_predict(type = "mean")` skips unrequested quantiles; intensity
+summary quantiles share one sort while keeping the same weighted definition.
+These changes require no refitting or changes to chain settings.

@@ -87,7 +87,7 @@ static PPSTPCGEvaluation ppst_pcg_evaluate(const PPSTree&T,
     const std::vector<int>&leaves,const arma::vec&log_rate,
     const arma::mat&pts,const arma::mat&region,const arma::vec&gate,
     const arma::vec&a_gate,const arma::vec&b_gate,const arma::vec&gate_min,
-    bool shared,int family){
+    bool shared,int family,PPSTGeometryCache*cache=nullptr){
   PPSTPCGEvaluation out;
   if(!gate.is_finite()||arma::any(gate<=gate_min)||arma::any(gate<=0.0))
     return out;
@@ -98,11 +98,16 @@ static PPSTPCGEvaluation ppst_pcg_evaluate(const PPSTree&T,
   out.log_weights.set_size(pts.n_rows,leaves.size());
   for(size_t k=0;k<leaves.size();k++){
     const PPSTNode&nd=T.at(leaves[k]);
-    const double H=ppst_exposure(nd,region,gate,family);
+    const double H=ppst_cached_exposure(nd,region,gate,family,cache);
     if(!std::isfinite(H)||H<0.0) return out;
     if(H>0.0) target-=std::exp(log_rate[k]+std::log(H));
-    for(arma::uword i=0;i<pts.n_rows;i++)
-      out.log_weights(i,k)=log_rate[k]+ppst_log_phi(nd,pts.row(i),region,gate,family);
+    if(cache){
+      const arma::vec&basis=cache->training(nd);
+      for(arma::uword i=0;i<pts.n_rows;i++) out.log_weights(i,k)=log_rate[k]+basis[i];
+    }else{
+      for(arma::uword i=0;i<pts.n_rows;i++)
+        out.log_weights(i,k)=log_rate[k]+ppst_log_phi(nd,pts.row(i),region,gate,family);
+    }
   }
   std::vector<double> lw(leaves.size());
   for(arma::uword i=0;i<pts.n_rows;i++){
@@ -139,16 +144,16 @@ static void ppst_pcg_block(PPSTree&T,std::vector<int>&labels,
     const arma::mat&pts,const arma::mat&region,double a,double b,
     arma::vec&gate,const arma::vec&a_gate,const arma::vec&b_gate,
     const arma::vec&gate_min,bool shared,int family,bool update_gate,
-    PPSTPCGStats&stats){
+    PPSTPCGStats&stats,PPSTGeometryCache*cache=nullptr){
   stats.pending=false;
   std::vector<int> leaves;ppst_leaves(T,leaves);
   arma::vec log_rate(leaves.size());
   for(size_t k=0;k<leaves.size();k++){
     const PPSTNode&nd=T.at(leaves[k]);
-    log_rate[k]=ppst_pcg_log_rate(a+nd.m,b+ppst_exposure(nd,region,gate,family));
+    log_rate[k]=ppst_pcg_log_rate(a+nd.m,b+ppst_cached_exposure(nd,region,gate,family,cache));
   }
   PPSTPCGEvaluation current=ppst_pcg_evaluate(T,leaves,log_rate,pts,region,
-    gate,a_gate,b_gate,gate_min,shared,family);
+    gate,a_gate,b_gate,gate_min,shared,family,cache);
   if(!std::isfinite(current.target)) stop("non-finite current gate target in pcg");
   if(update_gate){
     const arma::uword p=stats.factor.n_rows;
@@ -159,8 +164,10 @@ static void ppst_pcg_block(PPSTree&T,std::vector<int>&labels,
     arma::vec proposal=gate;
     if(shared) proposal.fill(std::exp(proposed_theta[0]));
     else proposal=arma::exp(proposed_theta);
+    std::unique_ptr<PPSTGeometryCache> proposed_cache;
+    if(cache) proposed_cache.reset(new PPSTGeometryCache(*cache,proposal));
     PPSTPCGEvaluation proposed=ppst_pcg_evaluate(T,leaves,log_rate,pts,region,
-      proposal,a_gate,b_gate,gate_min,shared,family);
+      proposal,a_gate,b_gate,gate_min,shared,family,proposed_cache.get());
     const double log_ratio=proposed.target-current.target+
       arma::sum(proposed_theta-theta);
     double alpha=0.0;
@@ -169,6 +176,7 @@ static void ppst_pcg_block(PPSTree&T,std::vector<int>&labels,
     stats.proposals++;stats.alpha_sum+=alpha;
     if(R::runif(0.0,1.0)<alpha){
       gate=proposal;current=std::move(proposed);stats.accepted++;
+      if(cache) *cache=std::move(*proposed_cache);
     }
     // Adapt only after label restoration and the collapsed tree moves.
     stats.direction=std::move(u);stats.last_alpha=alpha;stats.pending=true;

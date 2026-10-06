@@ -32,13 +32,14 @@
     chains = 4L, iter = 10000L, burn = 2500L, thin = 3L,
     tree_moves = 3L, change_moves = 8L,
     cut_proposal = c("quantile", "uniform", "data"),
-    cut_candidates = 50L, seed = 1L, verbose = TRUE, gate_scale = NULL) {
+    cut_candidates = 50L, seed = 1L, verbose = TRUE, gate_scale = NULL,
+    cache_geometry = TRUE) {
   .ppt_fit_soft_leaf_mcmc(
     x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose,
-    informed = FALSE, gate_scale = gate_scale
+    informed = FALSE, gate_scale = gate_scale, cache_geometry = cache_geometry
   )
 }
 
@@ -55,13 +56,14 @@
     chains = 4L, iter = 10000L, burn = 2500L, thin = 3L,
     tree_moves = 3L, change_moves = 8L,
     cut_proposal = c("quantile", "uniform", "data"),
-    cut_candidates = 50L, seed = 1L, verbose = TRUE, gate_scale = NULL) {
+    cut_candidates = 50L, seed = 1L, verbose = TRUE, gate_scale = NULL,
+    cache_geometry = TRUE) {
   .ppt_fit_soft_leaf_mcmc(
     x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose,
-    informed = TRUE, gate_scale = gate_scale
+    informed = TRUE, gate_scale = gate_scale, cache_geometry = cache_geometry
   )
 }
 
@@ -80,14 +82,15 @@
     cut_proposal = c("quantile", "uniform", "data"),
     cut_candidates = 50L, seed = 1L, verbose = TRUE,
     ram_target = 0.234, ram_decay = 0.7, ram_adapt = NULL,
-    gate_scale = NULL) {
+    gate_scale = NULL, cache_geometry = TRUE) {
   .ppt_fit_soft_leaf_mcmc(
     x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose,
     informed = FALSE, pcg = TRUE, ram_target = ram_target,
-    ram_decay = ram_decay, ram_adapt = ram_adapt, gate_scale = gate_scale
+    ram_decay = ram_decay, ram_adapt = ram_adapt, gate_scale = gate_scale,
+    cache_geometry = cache_geometry
   )
 }
 
@@ -118,7 +121,7 @@
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose, informed,
     pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L,
-    gate_scale = NULL) {
+    gate_scale = NULL, cache_geometry = TRUE) {
   gate_family <- match.arg(gate_family, c("logistic", "compact"))
   gate_scale <- .ppt_resolve_gate_scale(gate_scale, gate_family)
   gate_structure <- match.arg(gate_structure, c("dimension", "shared"))
@@ -185,6 +188,11 @@
     stop("`update_gate` must be a logical scalar.", call. = FALSE)
   }
 
+  if (!is.logical(cache_geometry) || length(cache_geometry) != 1L ||
+      is.na(cache_geometry)) {
+    stop("`cache_geometry` must be a logical scalar.", call. = FALSE)
+  }
+
   if (pcg && informed) {
     stop("The PCG sampler uses standard collapsed tree proposals.", call. = FALSE)
   }
@@ -202,7 +210,8 @@
     if (identical(gate_family, "compact")) 1L else
       if (identical(gate_scale, "node")) 2L else 0L,
     as.integer(chains), as.integer(verbose), informed = informed, pcg = pcg,
-    ram_target = ram$target, ram_decay = ram$decay, ram_adapt = ram$adapt
+    ram_target = ram$target, ram_decay = ram$decay, ram_adapt = ram$adapt,
+    cache_geometry = cache_geometry
   )
 
   input_names <- colnames(x)
@@ -311,6 +320,7 @@
         cut_candidates = as.integer(cut_candidates),
         gate_family = gate_family, gate_scale = gate_scale,
         update_gate = isTRUE(update_gate),
+        cache_geometry = cache_geometry,
         seed = seed
       ),
       backend = "ppstree_multi"

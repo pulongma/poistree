@@ -35,4 +35,5 @@ post hoc from the retained posterior state draws via the same machinery as
 in `predict_at` before fitting. (The two paths can differ very slightly in
 the interval convention: stored summaries follow the fitting backend,
 post-hoc summaries use the weighted quantile of [ppt_lambda()].)
+Mean-only predictions avoid calculating posterior quantiles.
 }
