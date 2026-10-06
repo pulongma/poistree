@@ -320,3 +320,27 @@ locations, including reordered or repeated rows, and evaluate only missing
 locations. `ppt_predict(type = "mean")` skips unrequested quantiles; intensity
 summary quantiles share one sort while keeping the same weighted definition.
 These changes require no refitting or changes to chain settings.
+
+### Fitting performance (0.5.3)
+
+Soft RJ-MCMC and PCG cache candidate cuts and split support for unchanged
+node paths. The cache is local to each chain, fills axes only as needed, and
+discards obsolete paths after every tree proposal. PCG also reuses the event
+log-normalizers from the selected gate evaluation when restoring allocations.
+These optimizations apply automatically to root- and node-scaled logistic
+gates and compact gates, including the private quadrature adapter. Candidate
+ordering, acceptance probabilities and random draws are unchanged; no new
+settings or changes to chain length are required. The informed sampler keeps
+its existing candidate cache.
+
+### Membership reuse during fitting (0.5.4)
+
+Soft RJ-MCMC and PCG grow/change proposals reuse cached parent log-memberships
+and evaluate only the proposed split for affected observations. With the
+private quadrature adapter, exact matching training rows also reuse background
+memberships; repeated events retain their individual labels and counts.
+Unmatched rows use direct gate calculations, without approximate matching.
+The immutable row mapping is shared by gate proposals within each chain.
+Both optimizations support root/node logistic and compact gates, preserve
+random-number order and the existing probability calculations, and are enabled
+by the existing default `cache_geometry = TRUE`.

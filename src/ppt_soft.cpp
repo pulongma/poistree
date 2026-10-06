@@ -140,10 +140,13 @@ static std::vector<double> ppst_axis_cuts(const arma::mat&pts,
   return cuts;
 }
 
+#include "ppt_soft_cuts_cache.h"
+
 static bool ppst_can_split(const PPSTNode&nd,const arma::mat&pts,int Dmax,
-    int nmin,int mode,int ncand){
+    int nmin,int mode,int ncand,PPSTCutsCache*cuts_cache=nullptr){
   if(nd.axis>=0||nd.depth>=Dmax) return false;
   if((int)nd.idx.n_elem<2*std::max(1,nmin)) return false;
+  if(cuts_cache) return cuts_cache->any(nd);
   for(arma::uword j=0;j<nd.box.n_rows;j++)
     if(!ppst_axis_cuts(pts,nd.idx,nd.box,j,mode,ncand,nmin).empty())
       return true;
@@ -151,7 +154,13 @@ static bool ppst_can_split(const PPSTNode&nd,const arma::mat&pts,int Dmax,
 }
 
 static double ppst_stop_factor(const PPSTNode&nd,const arma::mat&pts,int Dmax,
-    int nmin,int mode,int ncand,double alpha,double eta){
+    int nmin,int mode,int ncand,double alpha,double eta,
+    PPSTCutsCache*cuts_cache=nullptr){
+  if(cuts_cache){
+    const bool supported=nd.depth<Dmax &&
+      (int)nd.idx.n_elem>=2*std::max(1,nmin) && cuts_cache->any(nd);
+    return supported ? 1.0-ppst_rho(nd.depth,alpha,eta) : 1.0;
+  }
   PPSTNode tmp=nd; tmp.axis=-1;
   return ppst_can_split(tmp,pts,Dmax,nmin,mode,ncand)
     ? 1.0-ppst_rho(nd.depth,alpha,eta) : 1.0;
@@ -162,10 +171,11 @@ static void ppst_leaves(const PPSTree&T,std::vector<int>&out){
   for(const auto&kv:T) if(kv.second.axis<0) out.push_back(kv.first);
 }
 static void ppst_growable(const PPSTree&T,const arma::mat&pts,int Dmax,
-    int nmin,int mode,int ncand,std::vector<int>&out){
+    int nmin,int mode,int ncand,std::vector<int>&out,
+    PPSTCutsCache*cuts_cache=nullptr){
   out.clear();
   for(const auto&kv:T)
-    if(ppst_can_split(kv.second,pts,Dmax,nmin,mode,ncand))
+    if(ppst_can_split(kv.second,pts,Dmax,nmin,mode,ncand,cuts_cache))
       out.push_back(kv.first);
 }
 static void ppst_prunable(const PPSTree&T,std::vector<int>&out){
@@ -464,14 +474,46 @@ static int ppst_gate_update(const PPSTree&T,const std::vector<int>&labels,
 #include "ppt_soft_pcg.h"
 
 // ---- reversible tree moves -------------------------------------------------
-static int ppst_draw_side(const PPSTNode&left,const PPSTNode&right,
-    const arma::rowvec&x,const arma::mat&region,const arma::vec&gate,
-    int gate_family){
-  double ll=ppst_log_phi(left,x,region,gate,gate_family);
-  double lr=ppst_log_phi(right,x,region,gate,gate_family);
+static void ppst_child_log_memberships(const PPSTGate&split,double x,
+    double parent_log_phi,const arma::mat&region,const arma::vec&gate,
+    int gate_family,double&ll,double&lr){
+  if(gate_family==1){
+    PPSTGate right=split;right.side=1;
+    const double q=ppst_compact_gate_value(right,x,gate[split.axis]);
+    const double l=1.0-q;
+    ll=l<=0.0?-std::numeric_limits<double>::infinity():parent_log_phi+std::log(l);
+    lr=q<=0.0?-std::numeric_limits<double>::infinity():parent_log_phi+std::log(q);
+  }else{
+    const double width=gate_family==2?split.parent_width:
+      region(split.axis,1)-region(split.axis,0);
+    const double z=gate[split.axis]*(x-split.cut)/width;
+    const double common=std::log1p(std::exp(-std::abs(z)));
+    ll=parent_log_phi+(-std::max(z,0.0)-common);
+    lr=parent_log_phi+(-std::max(-z,0.0)-common);
+  }
+}
+
+static double ppst_side_probability(double ll,double lr){
   double den=std::max(ll,lr);
-  double p_left=std::exp(ll-den)/
+  return std::exp(ll-den)/
     (std::exp(ll-den)+std::exp(lr-den));
+}
+
+static int ppst_draw_side(const PPSTNode&left,const PPSTNode&right,
+    const arma::mat&pts,arma::uword i,const arma::mat&region,
+    const arma::vec&gate,int gate_family,const arma::vec*parent_log_phi){
+  double ll,lr;
+  if(parent_log_phi){
+    const PPSTGate&split=right.path.back();
+    ppst_child_log_memberships(split,pts(i,split.axis),(*parent_log_phi)[i],
+      region,gate,gate_family,ll,lr);
+  }else{
+    ll=ppst_log_phi(left,pts.row(i),region,gate,gate_family);
+    lr=ppst_log_phi(right,pts.row(i),region,gate,gate_family);
+  }
+  // Keep the parent terms and the original probability arithmetic: cancelling
+  // their common factor changes floating-point rounding for extreme gates.
+  const double p_left=ppst_side_probability(ll,lr);
   return R::unif_rand()<p_left ? -1 : 1;
 }
 
@@ -479,16 +521,16 @@ static int ppst_grow_prune(PPSTree&T,std::vector<int>&labels,
     const arma::mat&pts,const arma::mat&region,double a,double b,
     const arma::vec&gate,int gate_family,
     double alpha,double eta,int Dmax,int nmin,int mode,int ncand,int&which_move,
-    PPSTGeometryCache*cache=nullptr){
+    PPSTGeometryCache*cache=nullptr,PPSTCutsCache*cuts_cache=nullptr){
   std::vector<int>G,P;
-  ppst_growable(T,pts,Dmax,nmin,mode,ncand,G);
+  ppst_growable(T,pts,Dmax,nmin,mode,ncand,G,cuts_cache);
   ppst_prunable(T,P);
   if(R::unif_rand()<0.5){
     which_move=0;
     if(G.empty()) return 0;
     int v=G[ppst_runif_int(G.size())],L=2*v,R=2*v+1;
     PPSTNode old=T.at(v); int axis=ppst_runif_int(pts.n_cols);
-    std::vector<double> cuts=ppst_axis_cuts(pts,old.idx,old.box,axis,mode,ncand,nmin);
+    std::vector<double> cuts=ppst_cached_axis_cuts(old,pts,axis,mode,ncand,nmin,cuts_cache);
     if(cuts.empty()) return 0;
     double cut=cuts[ppst_runif_int(cuts.size())];
     arma::uvec li,ri; ppst_split_indices(old,pts,axis,cut,li,ri);
@@ -496,9 +538,12 @@ static int ppst_grow_prune(PPSTree&T,std::vector<int>&labels,
     PPSTNode nr=ppst_child(old,ri,axis,cut,1);
     std::vector<std::pair<int,int> > reass;
     int mL=0,mR=0;
+    const arma::vec*parent_log_phi=nullptr;
     for(size_t i=0;i<labels.size();i++) if(labels[i]==v){
+      // Do not populate a training basis for a proposal with no affected labels.
+      if(cache&&!parent_log_phi) parent_log_phi=&cache->training(old);
       int dest=ppst_draw_side(
-        nl,nr,pts.row(i),region,gate,gate_family
+        nl,nr,pts,i,region,gate,gate_family,parent_log_phi
       )<0?L:R;
       reass.push_back(std::make_pair((int)i,dest));
       if(dest==L) mL++; else mR++;
@@ -511,8 +556,8 @@ static int ppst_grow_prune(PPSTree&T,std::vector<int>&labels,
     double HR=ppst_cached_exposure(nr,region,gate,gate_family,cache);
     double dp=std::log(ppst_rho(old.depth,alpha,eta))
       -std::log(1.0-ppst_rho(old.depth,alpha,eta))
-      +std::log(ppst_stop_factor(nl,pts,Dmax,nmin,mode,ncand,alpha,eta))
-      +std::log(ppst_stop_factor(nr,pts,Dmax,nmin,mode,ncand,alpha,eta));
+      +std::log(ppst_stop_factor(nl,pts,Dmax,nmin,mode,ncand,alpha,eta,cuts_cache))
+      +std::log(ppst_stop_factor(nr,pts,Dmax,nmin,mode,ncand,alpha,eta,cuts_cache));
     double logA=ppst_log_g(mL,HL,a,b)+ppst_log_g(mR,HR,a,b)
       -ppst_log_g(old.m,Hp,a,b)+dp
       +std::log((double)G.size())-std::log((double)Pnew.size());
@@ -534,10 +579,10 @@ static int ppst_grow_prune(PPSTree&T,std::vector<int>&labels,
   double HR=ppst_cached_exposure(oldR,region,gate,gate_family,cache);
   double dp=std::log(ppst_rho(oldp.depth,alpha,eta))
     -std::log(1.0-ppst_rho(oldp.depth,alpha,eta))
-    +std::log(ppst_stop_factor(oldL,pts,Dmax,nmin,mode,ncand,alpha,eta))
-    +std::log(ppst_stop_factor(oldR,pts,Dmax,nmin,mode,ncand,alpha,eta));
+    +std::log(ppst_stop_factor(oldL,pts,Dmax,nmin,mode,ncand,alpha,eta,cuts_cache))
+    +std::log(ppst_stop_factor(oldR,pts,Dmax,nmin,mode,ncand,alpha,eta,cuts_cache));
   T.erase(L); T.erase(R); T[v].axis=-1; T[v].cut=NA_REAL; T[v].m=M;
-  std::vector<int>Gnew; ppst_growable(T,pts,Dmax,nmin,mode,ncand,Gnew);
+  std::vector<int>Gnew; ppst_growable(T,pts,Dmax,nmin,mode,ncand,Gnew,cuts_cache);
   if(Gnew.empty()){T[v]=oldp;T[L]=oldL;T[R]=oldR;return 0;}
   double logA=ppst_log_g(M,Hp,a,b)-ppst_log_g(oldL.m,HL,a,b)
     -ppst_log_g(oldR.m,HR,a,b)-dp
@@ -555,12 +600,12 @@ static int ppst_change_cut(PPSTree&T,std::vector<int>&labels,
     const arma::mat&pts,const arma::mat&region,double a,double b,
     const arma::vec&gate,int gate_family,
     double alpha,double eta,int Dmax,int nmin,int mode,int ncand,
-    PPSTGeometryCache*cache=nullptr){
+    PPSTGeometryCache*cache=nullptr,PPSTCutsCache*cuts_cache=nullptr){
   std::vector<int>P; ppst_prunable(T,P); if(P.empty()) return 0;
   int v=P[ppst_runif_int(P.size())],L=2*v,R=2*v+1;
   PPSTNode parent=T.at(v),oldL=T.at(L),oldR=T.at(R);
   int axis=ppst_runif_int(pts.n_cols);
-  std::vector<double>cuts=ppst_axis_cuts(pts,parent.idx,parent.box,axis,mode,ncand,nmin);
+  std::vector<double>cuts=ppst_cached_axis_cuts(parent,pts,axis,mode,ncand,nmin,cuts_cache);
   if(cuts.empty()) return 0;
   double cut=cuts[ppst_runif_int(cuts.size())];
   arma::uvec li,ri; ppst_split_indices(parent,pts,axis,cut,li,ri);
@@ -568,9 +613,11 @@ static int ppst_change_cut(PPSTree&T,std::vector<int>&labels,
   PPSTNode nr=ppst_child(parent,ri,axis,cut,1);
   std::vector<std::pair<int,int> >reass;
   int mL=0,mR=0;
+  const arma::vec*parent_log_phi=nullptr;
   for(size_t i=0;i<labels.size();i++) if(labels[i]==L||labels[i]==R){
+    if(cache&&!parent_log_phi) parent_log_phi=&cache->training(parent);
     int dest=ppst_draw_side(
-      nl,nr,pts.row(i),region,gate,gate_family
+      nl,nr,pts,i,region,gate,gate_family,parent_log_phi
     )<0?L:R;
     reass.push_back(std::make_pair((int)i,dest));
     if(dest==L)mL++;else mR++;
@@ -582,10 +629,10 @@ static int ppst_change_cut(PPSTree&T,std::vector<int>&labels,
   double HnR=ppst_cached_exposure(nr,region,gate,gate_family,cache);
   double oldg=ppst_log_g(oldL.m,HoL,a,b)+ppst_log_g(oldR.m,HoR,a,b);
   double newg=ppst_log_g(mL,HnL,a,b)+ppst_log_g(mR,HnR,a,b);
-  double oldS=std::log(ppst_stop_factor(oldL,pts,Dmax,nmin,mode,ncand,alpha,eta))
-             +std::log(ppst_stop_factor(oldR,pts,Dmax,nmin,mode,ncand,alpha,eta));
-  double newS=std::log(ppst_stop_factor(nl,pts,Dmax,nmin,mode,ncand,alpha,eta))
-             +std::log(ppst_stop_factor(nr,pts,Dmax,nmin,mode,ncand,alpha,eta));
+  double oldS=std::log(ppst_stop_factor(oldL,pts,Dmax,nmin,mode,ncand,alpha,eta,cuts_cache))
+             +std::log(ppst_stop_factor(oldR,pts,Dmax,nmin,mode,ncand,alpha,eta,cuts_cache));
+  double newS=std::log(ppst_stop_factor(nl,pts,Dmax,nmin,mode,ncand,alpha,eta,cuts_cache))
+             +std::log(ppst_stop_factor(nr,pts,Dmax,nmin,mode,ncand,alpha,eta,cuts_cache));
   if(std::log(R::unif_rand())<(newg-oldg)+(newS-oldS)){
     T[v].axis=axis;T[v].cut=cut;T[L]=nl;T[R]=nr;
     for(const auto&z:reass) labels[z.first]=z.second;
@@ -621,12 +668,14 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
     arma::vec&gate_accept,
     std::vector<arma::mat>&state_nodes,arma::mat&state_gate,bool informed,bool verbose,
     bool pcg,double ram_target,double ram_decay,int ram_adapt,PPSTPCGStats&pcg_stats,
-    bool cache_geometry){
+    bool cache_geometry,bool cache_cuts){
   int n=pts.n_rows,si=0; double nls=0.0,mds=0.0;
   arma::vec gate=gate0,gs(gate0.n_elem,arma::fill::zeros);
   if(pcg) pcg_stats.initialize(sd_gate,gate_shared);
-  PPSTGeometryCache geometry(pts,region,gate,gate_family,&grid);
+  PPSTGeometryCache geometry(pts,region,gate,gate_family,&grid,cache_geometry);
   PPSTGeometryCache*cache=cache_geometry?&geometry:nullptr;
+  PPSTCutsCache cuts(pts,nmin,mode,ncand);
+  PPSTCutsCache*cuts_cache=cache_cuts&&!informed?&cuts:nullptr;
   PPSTree T; PPSTNode root;
   root.box=region; root.idx=arma::regspace<arma::uvec>(0,n-1);
   root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;
@@ -664,9 +713,10 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
                                 informed_gp,valid_gp,move);
       else ok=ppst_grow_prune(
         T,labels,pts,region,a,b,gate,gate_family,alpha,eta,
-        Dmax,nmin,mode,ncand,move,cache
+        Dmax,nmin,mode,ncand,move,cache,cuts_cache
       );
       if(cache) cache->trim(T);
+      if(cuts_cache) cuts_cache->trim(T);
       if(move==0){ag+=ok;tg++;}else if(move==1){ap+=ok;tp++;}
     }
     for(int r=0;r<ncc;r++){
@@ -676,9 +726,10 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
                       informed_change,valid_change,move);
       }else ac+=ppst_change_cut(
         T,labels,pts,region,a,b,gate,gate_family,alpha,eta,Dmax,nmin,
-        mode,ncand,cache
+        mode,ncand,cache,cuts_cache
       );
       if(cache) cache->trim(T);
+      if(cuts_cache) cuts_cache->trim(T);
       tc++;
     }
     if(pcg) ppst_pcg_adapt(pcg_stats,it,ram_target,ram_decay,ram_adapt);
@@ -780,7 +831,8 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
     double eta,double Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
     int cut_mode,int ncand,int update_gate,int gate_family,int chains,
     int verbose,bool informed=false,bool pcg=false,double ram_target=0.234,
-    double ram_decay=0.7,int ram_adapt=0,bool cache_geometry=true){
+    double ram_decay=0.7,int ram_adapt=0,bool cache_geometry=true,
+    bool cache_cuts=true){
   const int depth = ppt_checked_depth(Dmax);
   ppst_pcg_controls(pcg,informed,ram_target,ram_decay,ram_adapt,burn);
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
@@ -824,7 +876,7 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
       gate_min,gate_shared,gate_family,alpha,eta,depth,nmin,iters,burn,thin,
       nmove,ncc,cut_mode,ncand,update_gate,D,ll,llt,integrated_intensity,
       row,nl,md,gm,ak,gak,state_nodes,state_gate,informed,verbose != 0,
-      pcg,ram_target,ram_decay,ram_adapt,pcg_stats,cache_geometry);
+      pcg,ram_target,ram_decay,ram_adapt,pcg_stats,cache_geometry,cache_cuts);
     row+=got;leaves[k]=nl;maxdepth[k]=md;gates.row(k)=gm.t();acc.row(k)=ak.t();
     gacc.row(k)=gak.t();
     if(pcg){
@@ -875,7 +927,8 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
     double eta,double Dmax,int nmin,int iters,int burn,int thin,int nmove,int ncc,
     int cut_mode,int ncand,int update_gate,int gate_family,bool informed=false,
     bool verbose=false,bool pcg=false,double ram_target=0.234,
-    double ram_decay=0.7,int ram_adapt=0,bool cache_geometry=true){
+    double ram_decay=0.7,int ram_adapt=0,bool cache_geometry=true,
+    bool cache_cuts=true){
   const int depth = ppt_checked_depth(Dmax);
   ppst_pcg_controls(pcg,informed,ram_target,ram_decay,ram_adapt,burn);
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
@@ -900,8 +953,10 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   for(int it=burn;it<iters;it++)
     if((it-burn)%thin==0) ns++;
 
-  PPSTGeometryCache geometry(X,region,gate,gate_family,&mon);
+  PPSTGeometryCache geometry(X,region,gate,gate_family,&mon,cache_geometry);
   PPSTGeometryCache*cache=cache_geometry?&geometry:nullptr;
+  PPSTCutsCache cuts(X,nmin,cut_mode,ncand);
+  PPSTCutsCache*cuts_cache=cache_cuts&&!informed?&cuts:nullptr;
   PPSTree T; PPSTNode root;
   root.box=region; root.idx=arma::regspace<arma::uvec>(0,n-1);
   root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;
@@ -947,9 +1002,10 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
                                 informed_gp,valid_gp,move);
       else ok=ppst_grow_prune(
         T,labels,X,region,a,b,gate,gate_family,alpha,eta,
-        depth,nmin,cut_mode,ncand,move,cache
+        depth,nmin,cut_mode,ncand,move,cache,cuts_cache
       );
       if(cache) cache->trim(T);
+      if(cuts_cache) cuts_cache->trim(T);
       if(move==0){ag+=ok;tg++;}
       else if(move==1){ap+=ok;tp++;}
     }
@@ -960,9 +1016,10 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
                       informed_change,valid_change,move);
       }else ac+=ppst_change_cut(
         T,labels,X,region,a,b,gate,gate_family,alpha,eta,depth,nmin,
-        cut_mode,ncand,cache
+        cut_mode,ncand,cache,cuts_cache
       );
       if(cache) cache->trim(T);
+      if(cuts_cache) cuts_cache->trim(T);
       tc++;
     }
 
@@ -1164,7 +1221,7 @@ List ppstree_pcg_inspect(arma::mat X,arma::mat region,arma::mat splits,
   std::vector<int> leaves;ppst_leaves(tree,leaves);std::sort(leaves.begin(),leaves.end());
   if(lambda.n_elem!=leaves.size()||!lambda.is_finite()||arma::any(lambda<=0.0))
     stop("lambda must be positive, with one value per leaf in ascending node order");
-  PPSTGeometryCache geometry(X,region,gate,gate_family);
+  PPSTGeometryCache geometry(X,region,gate,gate_family,nullptr,cache_geometry);
   PPSTGeometryCache*cache=cache_geometry?&geometry:nullptr;
   const arma::vec log_rate=arma::log(lambda);
   const PPSTPCGEvaluation value=ppst_pcg_evaluate(tree,leaves,log_rate,X,region,
@@ -1179,12 +1236,127 @@ List ppstree_pcg_inspect(arma::mat X,arma::mat region,arma::mat splits,
   }
   for(arma::uword i=0;i<X.n_rows;i++){
     for(size_t k=0;k<leaves.size();k++) lw[k]=value.log_weights(i,k);
-    const double den=ppst_logsumexp(lw);
+    const double den=value.log_normalizers[i];
     for(size_t k=0;k<leaves.size();k++) probability(i,k)=std::exp(lw[k]-den);
   }
   const int p=gate_shared?1:(int)gate.n_elem;
   return List::create(_["log_target"]=value.target,
     _["log_scale_target"]=value.target+arma::sum(arma::log(gate.head(p))),
-    _["allocation_prob"]=probability,_["phi"]=phi,_["exposure"]=H,
+    _["allocation_prob"]=probability,_["log_normalizers"]=value.log_normalizers,
+    _["phi"]=phi,_["exposure"]=H,
     _["leaf_ids"]=leaves);
+}
+
+// Internal test/diagnostic helper: report ordinary cut support without sampling.
+// [[Rcpp::export]]
+List ppstree_cuts_inspect(arma::mat X,arma::mat region,arma::mat splits,
+    double Dmax,int nmin,int cut_mode,int ncand,bool cache_cuts=true){
+  const int depth=ppt_checked_depth(Dmax);
+  if(X.n_rows==0||X.n_cols==0||region.n_rows!=X.n_cols||region.n_cols!=2||
+     splits.n_cols!=3||!X.is_finite()||!region.is_finite()||
+     arma::any(region.col(1)<=region.col(0))||nmin<1||ncand<2||
+     cut_mode<0||cut_mode>2)
+    stop("invalid cut inspection controls or geometry");
+  PPSTree tree;PPSTNode root;
+  root.box=region;root.idx=arma::regspace<arma::uvec>(0,X.n_rows-1);
+  root.axis=-1;root.cut=NA_REAL;root.depth=0;root.m=0;tree[1]=root;
+  const arma::uvec order=arma::sort_index(splits.col(0));
+  for(arma::uword k:order){
+    if(!std::isfinite(splits(k,0))||!std::isfinite(splits(k,1))||
+       splits(k,0)<1||splits(k,0)>(std::numeric_limits<int>::max()-1)/2||
+       splits(k,1)<0||splits(k,1)>=(double)X.n_cols)
+      stop("invalid cut inspection split indices");
+    const int id=(int)splits(k,0),axis=(int)splits(k,1);
+    const double cut=splits(k,2);
+    if(splits(k,0)!=id||splits(k,1)!=axis||tree.find(id)==tree.end()||
+       tree.at(id).axis>=0||!std::isfinite(cut)||
+       cut<=tree.at(id).box(axis,0)||cut>=tree.at(id).box(axis,1))
+      stop("invalid cut inspection split topology");
+    PPSTNode parent=tree.at(id);arma::uvec left,right;
+    ppst_split_indices(parent,X,axis,cut,left,right);
+    tree[id].axis=axis;tree[id].cut=cut;
+    tree[2*id]=ppst_child(parent,left,axis,cut,-1);
+    tree[2*id+1]=ppst_child(parent,right,axis,cut,1);
+  }
+  std::vector<int> ids;
+  for(const auto&kv:tree) ids.push_back(kv.first);
+  std::sort(ids.begin(),ids.end());
+  PPSTCutsCache cuts(X,nmin,cut_mode,ncand);
+  PPSTCutsCache*cache=cache_cuts?&cuts:nullptr;
+  List out_cuts(ids.size());LogicalVector can_split(ids.size());
+  // Repeat identical queries to exercise cache hits as well as cold values.
+  for(int pass=0;pass<2;pass++) for(size_t k=0;k<ids.size();k++){
+    const PPSTNode&node=tree.at(ids[k]);
+    can_split[k]=ppst_can_split(node,X,depth,nmin,cut_mode,ncand,cache);
+    List axis(X.n_cols);
+    for(arma::uword j=0;j<X.n_cols;j++)
+      axis[j]=ppst_cached_axis_cuts(node,X,j,cut_mode,ncand,nmin,cache);
+    out_cuts[k]=axis;
+  }
+  cuts.trim(tree);
+  return List::create(_["node_ids"]=ids,_["cuts"]=out_cuts,
+    _["can_split"]=can_split,_["cache_entries"]=(double)cuts.size());
+}
+
+// Internal deterministic check for proposal labels, including zero support.
+// parent_path columns are zero-based axis, cut, parent width, and side (-1/+1).
+// [[Rcpp::export]]
+List ppstree_side_inspect(arma::mat X,arma::mat region,arma::mat parent_path,
+    int axis,double cut,double parent_width,arma::vec gate,int gate_family,
+    bool cache_geometry=true){
+  if(X.n_cols==0||region.n_rows!=X.n_cols||region.n_cols!=2||
+     parent_path.n_cols!=4||!X.is_finite()||!region.is_finite()||
+     !parent_path.is_finite()||arma::any(region.col(1)<=region.col(0))||
+     axis<0||axis>=(int)X.n_cols||!std::isfinite(cut)||
+     !std::isfinite(parent_width)||parent_width<=0.0||
+     gate_family<0||gate_family>2)
+    stop("invalid proposal-side inspection geometry");
+  gate=ppst_expand_positive(gate,X.n_cols,"gate");
+  PPSTNode parent;
+  parent.box=region;parent.axis=-1;parent.cut=NA_REAL;
+  parent.depth=parent_path.n_rows;parent.m=0;
+  for(arma::uword k=0;k<parent_path.n_rows;k++){
+    if(parent_path(k,0)<0.0||parent_path(k,0)>=(double)X.n_cols||
+       parent_path(k,0)!=std::floor(parent_path(k,0))||parent_path(k,2)<=0.0||
+       (parent_path(k,3)!=-1.0&&parent_path(k,3)!=1.0))
+      stop("invalid proposal-side inspection parent path");
+    PPSTGate g={(int)parent_path(k,0),parent_path(k,1),parent_path(k,2),
+      (int)parent_path(k,3)};
+    parent.path.push_back(g);
+  }
+  PPSTNode left=parent,right=parent;
+  PPSTGate split={axis,cut,parent_width,1};right.path.push_back(split);
+  split.side=-1;left.path.push_back(split);
+  PPSTGeometryCache geometry(X,region,gate,gate_family,nullptr,cache_geometry);
+  const arma::vec*prefix=cache_geometry?&geometry.training(parent):nullptr;
+  arma::mat logs(X.n_rows,2);arma::vec probability(X.n_rows);
+  for(arma::uword i=0;i<X.n_rows;i++){
+    if(prefix) ppst_child_log_memberships(split,X(i,axis),(*prefix)[i],
+      region,gate,gate_family,logs(i,0),logs(i,1));
+    else{
+      logs(i,0)=ppst_log_phi(left,X.row(i),region,gate,gate_family);
+      logs(i,1)=ppst_log_phi(right,X.row(i),region,gate,gate_family);
+    }
+    probability[i]=ppst_side_probability(logs(i,0),logs(i,1));
+  }
+  return List::create(_["log_children"]=logs,_["p_left"]=probability);
+}
+
+// Internal exact-row-map check for the quadrature adapter. Core has no map.
+// [[Rcpp::export]]
+IntegerVector ppstree_training_background_inspect(arma::mat X,arma::mat region,
+    arma::vec gate,int gate_family){
+  if(X.n_cols==0||region.n_rows!=X.n_cols||region.n_cols!=2||
+     !X.is_finite()||!region.is_finite()||
+     arma::any(region.col(1)<=region.col(0))||gate_family<0||gate_family>2)
+    stop("invalid training/background inspection geometry");
+  gate=ppst_expand_positive(gate,X.n_cols,"gate");
+  PPSTGeometryCache geometry(X,region,gate,gate_family);
+  IntegerVector rows(X.n_rows,NA_INTEGER);
+#ifdef POISTREE_SPATIAL_QUADRATURE_H
+  const arma::uvec*map=geometry.training_background_rows();
+  if(map) for(arma::uword i=0;i<X.n_rows;i++)
+    if((*map)[i]<qpp_background.n_rows) rows[i]=(*map)[i]+1;
+#endif
+  return rows;
 }

@@ -1,6 +1,7 @@
 #ifndef POISTREE_PPT_SOFT_GEOMETRY_CACHE_H
 #define POISTREE_PPT_SOFT_GEOMETRY_CACHE_H
 
+#include <memory>
 #include <string>
 #include <unordered_set>
 
@@ -14,12 +15,20 @@ struct PPSTGeometryEntry {
   double exposure=0.0;
 };
 
+// This map depends only on the fixed observation and quadrature rows.  It is
+// shared by current/proposed gate caches, but never by different fit contexts.
+struct PPSTBackgroundRows {
+  arma::uvec rows,unmatched;
+  arma::uword matched=0;
+};
+
 class PPSTGeometryCache {
   const arma::mat *training_,*region_,*background_=nullptr,*prediction_=nullptr;
   const arma::vec *weights_=nullptr;
   arma::vec gate_;
   int family_,prediction_role_=-1;
   std::unordered_map<std::string,PPSTGeometryEntry> entries_;
+  std::shared_ptr<const PPSTBackgroundRows> background_rows_;
 
   template<class Value> static void append(std::string&key,const Value&value){
     key.append(reinterpret_cast<const char*>(&value),sizeof(Value));
@@ -35,6 +44,36 @@ class PPSTGeometryCache {
   static bool same_points(const arma::mat&a,const arma::mat&b){
     return a.n_rows==b.n_rows&&a.n_cols==b.n_cols&&
       (a.memptr()==b.memptr()||arma::approx_equal(a,b,"absdiff",0.0));
+  }
+  static std::string row_key(const arma::mat&points,arma::uword row){
+    std::string out;
+    out.reserve(points.n_cols*sizeof(double));
+    for(arma::uword j=0;j<points.n_cols;j++) append(out,points(row,j));
+    return out;
+  }
+  static std::shared_ptr<const PPSTBackgroundRows> map_background_rows(
+      const arma::mat&training,const arma::mat&background){
+    if(training.n_cols!=background.n_cols) return nullptr;
+    auto out=std::make_shared<PPSTBackgroundRows>();
+    out->rows.set_size(training.n_rows);
+    std::unordered_map<std::string,arma::uword> lookup;
+    lookup.reserve(background.n_rows);
+    // The first identical quadrature row is sufficient.  Keep the exact bytes
+    // (including signed zeros), so reuse cannot alter scalar gate arithmetic.
+    for(arma::uword i=0;i<background.n_rows;i++)
+      lookup.emplace(row_key(background,i),i);
+    std::vector<arma::uword> unmatched;
+    unmatched.reserve(training.n_rows);
+    for(arma::uword i=0;i<training.n_rows;i++){
+      auto found=lookup.find(row_key(training,i));
+      if(found==lookup.end()){
+        out->rows[i]=background.n_rows;unmatched.push_back(i);
+      }else{
+        out->rows[i]=found->second;out->matched++;
+      }
+    }
+    out->unmatched=arma::uvec(unmatched);
+    return out;
   }
   arma::vec& values(PPSTGeometryEntry&entry,bool background){
     return background?entry.background:entry.training;
@@ -53,16 +92,37 @@ class PPSTGeometryCache {
     }
     std::vector<PPSTGate> parent=path;
     const PPSTGate split=parent.back();parent.pop_back();
-    const arma::vec&prefix=basis(parent,background);
     std::vector<PPSTGate> sibling=path;sibling.back().side=-split.side;
     PPSTGeometryEntry&other=entries_[key(sibling)];
     arma::vec&left=values(split.side<0?entry:other,background);
     arma::vec&right=values(split.side>0?entry:other,background);
     left.set_size(points.n_rows);right.set_size(points.n_rows);
+    const PPSTBackgroundRows*rows=!background&&background_rows_&&
+      background_rows_->matched?background_rows_.get():nullptr;
+    if(rows){
+      // Background paths are needed for exposure anyway.  Repeated event rows
+      // each receive their own value; only the gate evaluation is shared.
+      basis(path,true);
+      const arma::vec&left_background=values(split.side<0?entry:other,true);
+      const arma::vec&right_background=values(split.side>0?entry:other,true);
+      for(arma::uword i=0;i<points.n_rows;i++){
+        const arma::uword q=rows->rows[i];
+        if(q<background_->n_rows){
+          left[i]=left_background[q];right[i]=right_background[q];
+        }
+      }
+      if(rows->unmatched.n_elem==0){
+        ready(entry,background)=true;ready(other,background)=true;
+        return values(entry,background);
+      }
+    }
+    const arma::vec&prefix=basis(parent,background);
+    const arma::uword count=rows?rows->unmatched.n_elem:points.n_rows;
     const double*coordinate=points.colptr(split.axis);
     if(family_==1){
       PPSTGate right_split=split;right_split.side=1;
-      for(arma::uword i=0;i<points.n_rows;i++){
+      for(arma::uword j=0;j<count;j++){
+        const arma::uword i=rows?rows->unmatched[j]:j;
         const double q=ppst_compact_gate_value(right_split,coordinate[i],gate_[split.axis]);
         const double l=1.0-q;
         left[i]=l<=0.0?-std::numeric_limits<double>::infinity():prefix[i]+std::log(l);
@@ -71,7 +131,8 @@ class PPSTGeometryCache {
     }else{
       const double width=family_==2?split.parent_width:
         (*region_)(split.axis,1)-(*region_)(split.axis,0);
-      for(arma::uword i=0;i<points.n_rows;i++){
+      for(arma::uword j=0;j<count;j++){
+        const arma::uword i=rows?rows->unmatched[j]:j;
         // Match the original multiplication/division and path addition order.
         // The expensive log1p(exp()) term is shared by the two children.
         const double z=gate_[split.axis]*(coordinate[i]-split.cut)/width;
@@ -86,11 +147,14 @@ class PPSTGeometryCache {
 
 public:
   PPSTGeometryCache(const arma::mat&training,const arma::mat&region,
-      const arma::vec&gate,int family,const arma::mat*prediction=nullptr):
+      const arma::vec&gate,int family,const arma::mat*prediction=nullptr,
+      bool reuse_background=true):
     training_(&training),region_(&region),prediction_(prediction),gate_(gate),family_(family){
 #ifdef POISTREE_SPATIAL_QUADRATURE_H
     if(qpp_active){background_=&qpp_background;weights_=&qpp_weights;}
 #endif
+    if(background_&&reuse_background)
+      background_rows_=map_background_rows(training,*background_);
     if(prediction_){
       if(background_&&same_points(*prediction_,*background_)) prediction_role_=1;
       else if(same_points(*prediction_,*training_)) prediction_role_=0;
@@ -102,8 +166,11 @@ public:
     training_(current.training_),region_(current.region_),
     background_(current.background_),prediction_(current.prediction_),
     weights_(current.weights_),gate_(gate),family_(current.family_),
-    prediction_role_(current.prediction_role_){}
+    prediction_role_(current.prediction_role_),background_rows_(current.background_rows_){}
 
+  const arma::uvec* training_background_rows() const{
+    return background_rows_?&background_rows_->rows:nullptr;
+  }
   const arma::vec& training(const PPSTNode&node){return basis(node.path,false);}
   double exposure(const PPSTNode&node){
     PPSTGeometryEntry&entry=entries_[key(node.path)];
@@ -135,7 +202,7 @@ public:
     else if(&points==prediction_) role=prediction_role_;
     if(role<0){
       // Other prediction/test sets are temporary, bounded by that one set.
-      PPSTGeometryCache temporary(points,*region_,gate_,family_);
+      PPSTGeometryCache temporary(points,*region_,gate_,family_,nullptr,false);
       return temporary.intensity(tree,lambda,points);
     }
     arma::vec out(points.n_rows,arma::fill::zeros);

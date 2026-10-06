@@ -79,6 +79,7 @@ static double ppst_pcg_log_rate(double shape,double rate){
 struct PPSTPCGEvaluation {
   double target=-std::numeric_limits<double>::infinity();
   arma::mat log_weights;
+  arma::vec log_normalizers;
 };
 
 // Use the same family-aware basis and exposure as tree moves and prediction.
@@ -109,11 +110,13 @@ static PPSTPCGEvaluation ppst_pcg_evaluate(const PPSTree&T,
         out.log_weights(i,k)=log_rate[k]+ppst_log_phi(nd,pts.row(i),region,gate,family);
     }
   }
+  out.log_normalizers.set_size(pts.n_rows);
   std::vector<double> lw(leaves.size());
   for(arma::uword i=0;i<pts.n_rows;i++){
     for(size_t k=0;k<leaves.size();k++) lw[k]=out.log_weights(i,k);
     const double den=ppst_logsumexp(lw);
     if(!std::isfinite(den)) return out;
+    out.log_normalizers[i]=den;
     target+=den;
   }
   if(std::isfinite(target)) out.target=target;
@@ -121,12 +124,12 @@ static PPSTPCGEvaluation ppst_pcg_evaluate(const PPSTree&T,
 }
 
 static void ppst_pcg_restore(PPSTree&T,std::vector<int>&labels,
-    const std::vector<int>&leaves,const arma::mat&log_weights){
+    const std::vector<int>&leaves,const PPSTPCGEvaluation&value){
   for(int id:leaves) T.at(id).m=0;
   std::vector<double> lw(leaves.size());
   for(size_t i=0;i<labels.size();i++){
-    for(size_t k=0;k<leaves.size();k++) lw[k]=log_weights(i,k);
-    const double den=ppst_logsumexp(lw),u=R::runif(0.0,1.0);
+    for(size_t k=0;k<leaves.size();k++) lw[k]=value.log_weights(i,k);
+    const double den=value.log_normalizers[i],u=R::runif(0.0,1.0);
     if(!std::isfinite(den)) stop("invalid allocation probabilities in pcg");
     double cumulative=0.0;int pick=-1;
     for(size_t k=0;k<leaves.size();k++){
@@ -183,7 +186,9 @@ static void ppst_pcg_block(PPSTree&T,std::vector<int>&labels,
   }
   // This exact independent conditional refresh also runs after rejection
   // and when gate updating is disabled. Temporary rates leave scope here.
-  ppst_pcg_restore(T,labels,leaves,current.log_weights);
+  // The selected evaluation keeps weights paired with their normalization
+  // constants whether the gate proposal was accepted, rejected, or disabled.
+  ppst_pcg_restore(T,labels,leaves,current);
 }
 
 static void ppst_pcg_adapt(PPSTPCGStats&stats,int iteration,
