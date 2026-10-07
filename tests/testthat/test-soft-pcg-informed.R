@@ -62,8 +62,7 @@ test_that("informed PCG proposals leave the tree-size posterior unchanged", {
   }
   standard <- size_distribution(seed = 1L)
   informed <- size_distribution(seed = 2L, informed = TRUE)
-  # Both chains mix well on this two-level problem; Monte Carlo standard
-  # errors are below 0.01 per probability (checked with 200,000 iterations).
+
   expect_true(all(abs(standard - informed) < 0.04))
   expect_equal(sum(informed), 1)
 })

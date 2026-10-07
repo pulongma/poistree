@@ -1,8 +1,8 @@
 Package: poistree
 Type: Package
 Title: Bayesian Poisson Point Process Tree Models
-Version: 0.5.7
-Date: 2026-10-06
+Version: 0.5.8
+Date: 2026-10-07
 Authors@R: person(
     given = "Pulong",
     family = "Ma",
@@ -26,6 +26,7 @@ Imports:
 LinkingTo: Rcpp, RcppArmadillo, RcppProgress
 NeedsCompilation: yes
 RoxygenNote: 7.3.3
+Roxygen: list(markdown = TRUE)
 Suggests:
     ggplot2,
     patchwork,

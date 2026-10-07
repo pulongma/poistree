@@ -1,14 +1,3 @@
-// ===========================================================================
-// MCMCtree.cpp -- RcppArmadillo reversible-jump MCMC for the Poisson Process
-// Tree model (comparison with the SMC). Leaf intensities lambda_l ~ Ga(a,b) are
-// integrated out, so the chain moves over TREE space with target
-//     pi(T|x) propto prior(T) * m(T),  m(T) = prod_leaf Q0(A_leaf),
-//     Q0(A) = Gamma(n+a)/area^{n+a}    (Jeffreys a=0.5,b=0; general b>0 supported).
-// Moves: GROW / PRUNE / CHANGE (Green 1995; Chipman-George-McCulloch 1998).
-// Acceptance ratios validated against exact enumeration (see verification/).
-//
-//   Rcpp::sourceCpp("MCMCtree.cpp")        # standalone, or build as part of PPTree
-// ===========================================================================
 #ifndef _USE_Armadillo
 #define _USE_Armadillo
 #include <RcppArmadillo.h>
@@ -25,24 +14,21 @@
 #include <utility>
 using namespace Rcpp;
 
-// ---- leaf marginal Q0 (log) and depth-dependent split prior ----------------
+// Return the collapsed leaf log marginal.
 static inline double mlogQ0(int n, double area, double a, double b) {
-  if (b <= 0.0) return R::lgammafn(n + a) - (n + a) * std::log(area);      // Jeffreys/improper limit
+  if (b <= 0.0) return R::lgammafn(n + a) - (n + a) * std::log(area);
   return R::lgammafn(a + n) - R::lgammafn(a) + a*std::log(b) - (a + n)*std::log(b + area);
 }
 static inline double mrho(int depth, double alpha, double eta) {
   double r = alpha * std::pow(1.0 + depth, -eta);
   if (r < 1e-12) r = 1e-12; if (r > 1.0 - 1e-12) r = 1.0 - 1e-12; return r;
 }
-static inline int runif_int(int k) { return (int)(R::unif_rand() * k); }     // 0..k-1
+static inline int runif_int(int k) { return (int)(R::unif_rand() * k); }
 
-// Geometry and the hyperparameters are fixed for the lifetime of a fit. These
-// caches are shared by copies of a node in the current and proposed trees only;
-// rejected tree states are never retained in a global history cache.
 struct MLocalSplit {
   int axis;
   double cut;
-  double log_weight;                 // split prior times the two terminal leaves
+  double log_weight;
   bool left_growable, right_growable;
 };
 struct MNodeCache {
@@ -53,10 +39,9 @@ struct MNodeCache {
   std::vector<MLocalSplit> splits;
 };
 
-// ---- pointer-based tree node (so GROW/PRUNE can add/remove nodes) -----------
 struct MNode {
-  arma::mat box;       // d x 2 : [lower, upper] per axis
-  arma::uvec idx;      // indices of points in this node
+  arma::mat box;
+  arma::uvec idx;
   int depth;
   MNode* L; MNode* R; MNode* parent; int axis; double cut;
   double lambda;
@@ -72,7 +57,7 @@ struct MNode {
 static void collect_leaves(MNode* nd, std::vector<MNode*>& out) {
   if (nd->leaf()) out.push_back(nd); else { collect_leaves(nd->L, out); collect_leaves(nd->R, out); }
 }
-static void collect_prunable(MNode* nd, std::vector<MNode*>& out) {           // internal, both children leaves
+static void collect_prunable(MNode* nd, std::vector<MNode*>& out) {
   if (!nd->leaf()) {
     if (nd->L->leaf() && nd->R->leaf()) out.push_back(nd);
     collect_prunable(nd->L, out); collect_prunable(nd->R, out);
@@ -114,8 +99,8 @@ static Rcpp::List mtree_to_R(MNode* root) {
   return out;
 }
 
-// ---- valid quantile cuts at a node (filtered by min_leaf & a small buffer) --
-static inline double qtype1(const arma::vec& s, double p) {                   // type-1 quantile (matches PPTree)
+// Return a type-1 sample quantile.
+static inline double qtype1(const arma::vec& s, double p) {
   int n = s.n_elem; double h = (n - 1) * p + 1.0; int i = std::max(1, (int)std::floor(h)); return s(i - 1);
 }
 static const std::vector< std::vector<double> >&
@@ -136,7 +121,7 @@ mvalid_cuts(MNode* nd, const arma::mat& pts, int min_leaf, int cut_grid_n) {
       double c = qtype1(s, p);
       if (c == last) continue; last = c;
       if (c > lo + 1e-3 && c < hi - 1e-3) {
-        int nl = (int)(std::lower_bound(s.begin(), s.end(), c) - s.begin());  // # points < c
+        int nl = (int)(std::lower_bound(s.begin(), s.end(), c) - s.begin());
         if (nl >= min_leaf && n - nl >= min_leaf) out[j].push_back(c);
       }
     }
@@ -168,9 +153,8 @@ static void make_children(MNode* nd, int j, double c, const arma::mat& pts, MNod
   Lo = left.release();
   Ro = right.release();
 }
-// Draw leaf intensities lambda_l|x ~ Ga(a+n, b+area), evaluate them at the
-// requested locations, and retain the exact point-process compensator and
-// in-sample log likelihood for the same intensity draw.
+// Draw leaf intensities and evaluate predictions and point-process summaries.
+
 static arma::vec predict_grid(MNode* root, const arma::mat& grid,
                               double a, double b, double& integral,
                               double& poisson_loglik) {
@@ -184,9 +168,9 @@ static arma::vec predict_grid(MNode* root, const arma::mat& grid,
     integral += lam * lf->area();
     if (lf->n() > 0)
       poisson_loglik += lf->n() * std::log(std::max(lam, std::numeric_limits<double>::min()));
-    arma::uvec inside(np, arma::fill::ones);                  // membership over all axes
+    arma::uvec inside(np, arma::fill::ones);
     for (int j = 0; j < d; ++j) {
-      arma::vec gj = grid.col(j);                             // materialise column (proven pattern)
+      arma::vec gj = grid.col(j);
       inside %= ((gj >= lf->box(j,0)) % (gj <= lf->box(j,1)));
     }
     arma::uvec in_idx = arma::find(inside);
@@ -201,7 +185,6 @@ static double tree_loglik(MNode* root, double a, double b) {
   return s;
 }
 
-// ---- Locally balanced informed MH -----------------------------------------
 struct MInformedControl {
   const arma::mat& pts;
   int max_depth, min_leaf, cut_grid_n;
@@ -217,7 +200,7 @@ static const MNodeCache& mlocal_scores(MNode* nd, const MInformedControl& ctl) {
   const double rho = mrho(nd->depth, ctl.alpha, ctl.eta);
   cache.leaf_log_weight = mlogQ0(nd->n(), nd->area(), ctl.a, ctl.b) +
     (can_split ? std::log1p(-rho) : 0.0);
-  // Build into a temporary vector: an R interrupt cannot leave a partial cache.
+
   std::vector<MLocalSplit> scores;
   if (can_split) {
     for (size_t j = 0; j < cuts.size(); ++j) {
@@ -263,14 +246,12 @@ static std::unique_ptr<MNode> mclone_tree(MNode* node, MNode* parent = nullptr) 
 }
 
 struct MNeighbor {
-  int move;                           // 0 grow, 1 prune, 2 change
-  int node_index;                     // preorder index in the source tree
+  int move;
+  int node_index;
   int axis;
   double cut;
   double log_target_ratio, log_q0, log_q0_reverse, log_ratio, log_weight;
-  // A neighbor is deterministic given this current tree. Retain only its
-  // scalar reverse normalizer, not its tree or candidate table. The vector
-  // owning this scalar is discarded whenever the chain accepts a new state.
+
   double reverse_log_normalizer = std::numeric_limits<double>::quiet_NaN();
 };
 struct MNeighborhood {
@@ -338,8 +319,7 @@ static MNeighborhood mneighborhood(MNode* root, const MInformedControl& ctl) {
         -log3 - std::log((double)reverse_growable) - logd - std::log((double)cuts[node->axis].size()));
       for (size_t k = 0; k < local.splits.size(); ++k) {
         const MLocalSplit& split = local.splits[k];
-        // The original CHANGE move may redraw its current rule. It is a null
-        // transition and is excluded, without renormalizing the remaining q0.
+
         if (&split == previous) continue;
         madd_neighbor(out, 2, i, split.axis, split.cut,
           split.log_weight - previous->log_weight,
@@ -389,10 +369,9 @@ static size_t mdraw_neighbor(const MNeighborhood& neighborhood) {
     cdf += std::exp(neighborhood.candidates[i].log_weight - neighborhood.log_normalizer);
     if (u < cdf) return i;
   }
-  return neighborhood.candidates.size() - 1; // rounding at the last CDF endpoint
+  return neighborhood.candidates.size() - 1;
 }
 
-// ===========================================================================
 static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const arma::mat& region,
                         int niter = 4000, int burnin = 1000, int max_depth = 8, int min_leaf_n = 1,
                         int cut_grid_n = 50, double a = 0.5, double b = 0.0,
@@ -436,9 +415,7 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
           candidate.reverse_log_normalizer = next.log_normalizer;
         } else ++reverse_cache_hits;
         if (std::log(R::unif_rand()) < current.log_normalizer - candidate.reverse_log_normalizer) {
-          // Cached normalizers allow a repeated rejected proposal to avoid
-          // constructing and scoring its tree. Materialize an accepted state
-          // only after the test; these deterministic builders use no RNG.
+
           if (!proposed) {
             proposed = mpropose_neighbor(root, candidate, ctl);
             next = mneighborhood(proposed.get(), ctl);
@@ -450,13 +427,12 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
           root = root_owner.get();
           current = std::move(next);
         }
-        // A rejection keeps the current tree, candidate table, and known
-        // reverse normalizers. Memory is linear in the current neighborhood.
+
       }
     } else {
     double u = R::unif_rand();
 
-    if (u < 1.0/3.0) {                                   // ---- GROW ----
+    if (u < 1.0/3.0) {
       tot_g++;
       std::vector<MNode*> lv; collect_leaves(root, lv);
       std::vector<MNode*> B;
@@ -473,7 +449,7 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
           double SR = mSfac(R,pts,max_depth,min_leaf_n,cut_grid_n,alpha,eta);
           double rd = mrho(ell->depth, alpha, eta);
           double dp = std::log(rd) + std::log(SL) + std::log(SR) - std::log(1.0 - rd);
-          ell->L=L; ell->R=R; ell->axis=j; ell->cut=c;                       // tentatively attach
+          ell->L=L; ell->R=R; ell->axis=j; ell->cut=c;
           std::vector<MNode*> pr; collect_prunable(root, pr); int Wp = pr.size();
           double logA = dm + dp + std::log((double)nB) - std::log((double)Wp);
           if (std::log(R::unif_rand()) < logA) acc_g++;
@@ -481,7 +457,7 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
         }
       }
 
-    } else if (u < 2.0/3.0) {                            // ---- PRUNE ----
+    } else if (u < 2.0/3.0) {
       tot_p++;
       std::vector<MNode*> pr; collect_prunable(root, pr);
       if (!pr.empty()) {
@@ -491,17 +467,17 @@ static Rcpp::List mfit_tree(const arma::mat& pts, const arma::mat& grid, const a
         double SR = mSfac(v->R,pts,max_depth,min_leaf_n,cut_grid_n,alpha,eta);
         double rd = mrho(v->depth, alpha, eta);
         double dp = std::log(rd) + std::log(SL) + std::log(SR) - std::log(1.0 - rd);
-        std::vector<MNode*> lv; collect_leaves(root, lv); int Bnow=0;         // splittable leaves now
+        std::vector<MNode*> lv; collect_leaves(root, lv); int Bnow=0;
         for (size_t k=0;k<lv.size();++k) if (msplittable(lv[k],pts,max_depth,min_leaf_n,cut_grid_n)) Bnow++;
         int sL = msplittable(v->L,pts,max_depth,min_leaf_n,cut_grid_n)?1:0;
         int sR = msplittable(v->R,pts,max_depth,min_leaf_n,cut_grid_n)?1:0;
         int sV = (v->depth<max_depth && has_valid(mvalid_cuts(v,pts,min_leaf_n,cut_grid_n)))?1:0;
-        int Bp = Bnow - sL - sR + sV;                                         // splittable leaves after prune
+        int Bp = Bnow - sL - sR + sV;
         double logA = -dm - dp + std::log((double)nW) - std::log((double)Bp);
         if (std::log(R::unif_rand()) < logA) { delete v->L; delete v->R; v->L=nullptr; v->R=nullptr; v->axis=-1; acc_p++; }
       }
 
-    } else {                                             // ---- CHANGE (terminal split) ----
+    } else {
       tot_c++;
       std::vector<MNode*> pr; collect_prunable(root, pr);
       if (!pr.empty()) {
@@ -599,9 +575,8 @@ Rcpp::List PPT_fit_IMCMC(const arma::mat& pts, const arma::mat& grid, const arma
                    cut_grid_n, a, b, alpha, eta, n_pred, true, verbose);
 }
 
-// A deterministic diagnostic entry point for exact finite-state tests. Trees
-// are encoded by rows (binary-heap node id, zero-based axis, cut); an empty
-// 0-by-3 matrix denotes the root leaf. This is intentionally an internal API.
+// Decode a tree from heap-node, axis, and cut rows for finite-state diagnostics.
+
 static void mdecode_splits(MNode* node, double id, const arma::mat& splits,
                            std::vector<bool>& used, const MInformedControl& ctl) {
   for (arma::uword k = 0; k < splits.n_rows; ++k) {

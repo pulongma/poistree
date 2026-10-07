@@ -39,13 +39,12 @@ test_that("shared and dense SMC engines agree and share the API", {
   expect_true(is.na(fits[[2]]$diagnostics$expanded_nodes))
   expect_true(all(is.finite(ppt_predict(fits[[1]]))))
   expect_length(fits[[1]]$diagnostics$ess_history, 2^4 - 1)
-  # Both engines use the same formal b = 0 leaf-score convention.
+
   expect_lt(abs(fits[[1]]$posterior$log_relative_normalizer -
                   fits[[2]]$posterior$log_relative_normalizer), 6)
   expect_true(is.na(fits[[1]]$posterior$log_evidence))
   expect_true(is.na(fits[[2]]$posterior$log_evidence))
-  # a node's observation sets are released once decided: the serialized tree
-  # still carries the counts
+
   leaf_m <- unlist(lapply(fits[[1]]$posterior$tree_draws[[1]], function(node) if (isTRUE(node$is_leaf)) node$m))
   expect_equal(sum(leaf_m), nrow(x))
 })

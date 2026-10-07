@@ -1,10 +1,10 @@
+# Count retained iterations using the native burn/thin convention.
 .ppt_retained_per_chain <- function(iter, burn, thin) {
   length(seq.int(as.integer(burn), as.integer(iter) - 1L,
                  by = as.integer(thin)))
 }
 
-# Gate-parameter sharing and the width used to scale each gate are separate.
-# NULL retains each family's historical behavior.
+# Resolve the gate-family default and validate its scaling choice.
 .ppt_resolve_gate_scale <- function(gate_scale, gate_family = "logistic") {
   if (is.null(gate_scale)) {
     return(if (identical(gate_family, "compact")) "node" else "root")
@@ -19,6 +19,7 @@
   gate_scale
 }
 
+# Fit S-PPT by RJ-MCMC; see ?ppt_controls for backend arguments.
 .ppt_fit_soft_leaf_rjmcmc <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = NULL,
@@ -43,6 +44,7 @@
   )
 }
 
+# Fit S-PPT by informed MH; see ?ppt_controls for backend arguments.
 .ppt_fit_soft_leaf_irjmcmc <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = NULL,
@@ -67,6 +69,7 @@
   )
 }
 
+# Fit S-PPT by partially collapsed Gibbs; see ?ppt_controls.
 .ppt_fit_soft_leaf_pcg <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = NULL,
@@ -97,6 +100,7 @@
   )
 }
 
+# Validate the RAM target, decay, and adaptation length.
 .ppt_validate_ram_controls <- function(target, decay, adapt, burn) {
   scalar_finite <- function(x) {
     is.numeric(x) && !is.complex(x) && length(x) == 1L && is.finite(x)
@@ -118,6 +122,7 @@
   list(target = target, decay = decay, adapt = as.integer(adapt))
 }
 
+# Run a soft MCMC backend and assemble the standard fitted object.
 .ppt_fit_soft_leaf_mcmc <- function(
     x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,

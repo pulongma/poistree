@@ -22,8 +22,7 @@ hard_test_axis_integral <- function(path, axis, gate, region, lower, upper,
 test_that("hard histograms preserve cut order and strict boundary comparisons", {
   x <- cbind(c(-1, 0.5, 0.5, 1, 2.5), c(10.2, 11, 11, 12, 13.7))
   region <- rbind(c(-2, 3), c(10, 14))
-  # Unsorted native grids and repeated cuts exercise the mapping back to the
-  # original action order; observations exactly on cuts belong to the right.
+
   grids <- list(c(1, 0.5, 0.5, -0.5), c(12, 11, 13))
   path <- matrix(numeric(), 0, 3)
   out <- poistree:::SPPT_hard_node_probe(x, region, grids, c(9, 3.2), path)
@@ -124,7 +123,7 @@ test_that("sparse gate entries invalidate per coordinate and remain numerically 
   expect_equal(lazy$evaluations, c(3, 3, 5, 6))
   expect_equal(eager$evaluations, c(30, 30, 48, 60))
   expect_equal(lazy$entries, rep(3, 4))
-  # Tiny/disabled caches exercise eviction without stale last-entry reuse.
+
   for (capacity in c(0L, 1L, 2L)) {
     small <- poistree:::SPPT_hard_gate_probe(gates, requests, TRUE, capacity)
     expect_identical(small$values, eager$values)
@@ -164,8 +163,7 @@ test_that("forced hard actions use true soft targets and sequential proposal wei
       lr <- plogis(logits, lower.tail = FALSE, log.p = TRUE)
       H_left <- exp(out$logHL)
       H_right <- exp(out$logHR)
-      # Independent analytic logistic integrals at a noncentral cut. Broad
-      # gates have true exposures near 1/2, whereas the hard proxy uses 0.2/0.8.
+
       softplus <- function(z) pmax(z, 0) + log1p(exp(-abs(z)))
       expected_left <- (softplus(0.2 * gate[1]) - softplus(-0.8 * gate[1])) / gate[1]
       expected_right <- (softplus(0.8 * gate[1]) - softplus(-0.2 * gate[1])) / gate[1]

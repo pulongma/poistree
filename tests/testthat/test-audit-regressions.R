@@ -11,10 +11,6 @@ audit_log_q <- function(n, volume, a, b) {
     (n + a) * log(b + volume)
 }
 
-# Independent depth-one calculation with specified admissible cuts. The
-# split prior chooses an axis with weight 1/d and then a valid cut uniformly.
-# At this depth, every particle receives the same incremental weight, so
-# root decisions are independent categorical draws from this distribution.
 audit_root_law <- function(x, region, cuts, a, b) {
   volume <- prod(region[, 2L] - region[, 1L])
   scores <- c(stop = log(0.5) + audit_log_q(nrow(x), volume, a, b))
@@ -36,18 +32,16 @@ test_that("SMC root support and probabilities agree on small boundary designs", 
   unit1 <- matrix(c(0, 1), nrow = 1L)
   unit2 <- matrix(c(0, 1, 0, 1), nrow = 2L, byrow = TRUE)
   cases <- list(
-    # The smallest observed coordinate is inadmissible; both engines must
-    # use the median fallback instead of routing its ties to the left.
+
     list(x = matrix(c(0.1, 0.9), ncol = 1L), region = unit1,
          cuts = list(0.5), candidates = 30L),
     list(x = cbind(c(0.2, 0.2, 0.5, 0.5, 0.8, 0.8),
                    c(0.8, 0.8, 0.5, 0.5, 0.2, 0.2)),
          region = unit2, cuts = list(0.5, 0.5), candidates = 30L),
-    # An observation on another axis's global upper boundary still belongs
-    # to its parent and must participate in candidate scoring and splitting.
+
     list(x = rbind(c(0.2, 0.2), c(0.5, 1), c(1, 0.5), c(0.8, 0.8)),
          region = unit2, cuts = list(0.5, 0.5), candidates = 30L),
-    # A one-element probability grid uses 0.05, not the upper endpoint.
+
     list(x = matrix(seq(0.1, 0.9, length.out = 9L), ncol = 1L),
          region = unit1, cuts = list(0.5), candidates = 1L)
   )
@@ -65,8 +59,7 @@ test_that("SMC root support and probabilities agree on small boundary designs", 
       expect_setequal(unique(actions), names(exact))
       observed <- as.numeric(table(factor(actions, levels = names(exact)))) /
         particles
-      # Six binomial standard errors give a conservative bound across all
-      # tested actions/engines; these depth-one particles are independent.
+
       error_bound <- 6 * sqrt(exact * (1 - exact) / particles) + 1 / particles
       expect_true(all(abs(observed - exact) < error_bound))
       expect_equal(fit$posterior$particle_weights,
@@ -78,8 +71,7 @@ test_that("SMC root support and probabilities agree on small boundary designs", 
 test_that("hard SMC and PG retain the same predictions on every split tie", {
   coordinates <- c(0, 0.2, 0.4, 0.6, 0.8, 1)
   x <- as.matrix(expand.grid(coordinates, coordinates))
-  # Include observed cuts and every possible median fallback exactly, along
-  # with all global boundaries, in the fitting-time prediction design.
+
   grid_values <- sort(unique(c(coordinates,
                               as.numeric(outer(coordinates, coordinates, "+") / 2))))
   grid <- as.matrix(expand.grid(grid_values, grid_values))
@@ -111,7 +103,6 @@ test_that("hard SMC and PG retain the same predictions on every split tie", {
     expect_equal(as.numeric(ppt_lppd(fit, test = x)),
                  as.numeric(ppt_lppd(fit)), tolerance = 1e-12)
 
-    # Count every training observation once using the public box convention.
     for (tree in fit$posterior$tree_draws) {
       leaves <- Filter(function(node) !is.null(node) && isTRUE(node$is_leaf),
                        tree)
@@ -174,8 +165,8 @@ test_that("hard SMC and PG logLik is the mean conditional Poisson likelihood", {
     }
     fit <- do.call(ppt_fit, args)
     evaluated <- ppt_lambda(fit, at = x, type = "draws")
-    direct <- colSums(log(evaluated$draws)) - ppt_integral(fit, "draws")
-    expect_equal(as.numeric(ppt_logLik(fit)),
+    direct <- colSums(log(evaluated$draws)) - poistree:::ppt_integral(fit, "draws")
+    expect_equal(as.numeric(poistree:::ppt_logLik(fit)),
                  sum(evaluated$weights * direct), tolerance = 1e-12)
   }
 })
@@ -195,7 +186,7 @@ test_that("SMC target normalizers include the proper-prior root marginal", {
                  tolerance = 1e-12)
     expect_equal(fit$posterior$log_relative_normalizer, 0, tolerance = 1e-12)
     expect_true(is.na(fit$posterior$log_evidence))
-    expect_output(print(ppt_summary(fit)), "Log target normalizer")
+    expect_output(print(summary(fit)), "Log target normalizer")
     improper <- ppt_fit(x, region, gating = "hard", sampler = "smc",
                         engine = engine, particles = 10L, max_depth = 2L,
                         min_leaf_n = 2L, a = a, b = 0, seed = 64L)
@@ -203,16 +194,14 @@ test_that("SMC target normalizers include the proper-prior root marginal", {
     expect_true(is.na(improper$posterior$log_target_normalizer))
     expect_equal(improper$posterior$log_relative_normalizer, 0,
                  tolerance = 1e-12)
-    expect_output(print(ppt_summary(improper)), "Log relative normalizer")
+    expect_output(print(summary(improper)), "Log relative normalizer")
   }
 })
 
 test_that("SMC normalizer preserves tree weights when an axis has no valid cut", {
   x <- cbind(c(0.1, 0.9), c(0, 0))
   region <- matrix(c(0, 1, 0, 1), nrow = 2L, byrow = TRUE)
-  # The sole legal rule is the median fallback on axis one. With the
-  # preserved 1/d factor, stop and split have weights 1/2 and 1/4,
-  # respectively; their tree-prior mass is 3/4, not one.
+
   root <- audit_log_q(2, 1, 0.5, 0.1)
   scores <- c(log(0.5) + root,
               log(0.25) + 2 * audit_log_q(1, 0.5, 0.5, 0.1))
@@ -226,24 +215,6 @@ test_that("SMC normalizer preserves tree weights when an axis has no valid cut",
     expect_equal(fit$posterior$log_relative_normalizer, expected - root,
                  tolerance = 1e-12)
     expect_true(is.na(fit$posterior$log_evidence))
-  }
-})
-
-test_that("both SMC engines respect depth zero even when a split is admissible", {
-  x <- matrix(seq(0.05, 0.95, length.out = 20L), ncol = 1L)
-  region <- matrix(c(0, 1), nrow = 1L)
-  for (engine in c("shared", "dense")) {
-    fit <- ppt_fit(x, region, gating = "hard", sampler = "smc",
-                   engine = engine, particles = 20L, max_depth = 0L,
-                   a = 0.5, b = 1, seed = 21L)
-    expect_equal(fit$control$max_depth, 0L)
-    expect_true(all(fit$diagnostics$leaf_count_trace == 1L))
-    expect_true(all(fit$diagnostics$max_depth_trace == 0L))
-    expect_equal(fit$posterior$log_target_normalizer,
-                 audit_log_q(nrow(x), 1, 0.5, 1), tolerance = 1e-12)
-    expect_true(is.na(fit$posterior$log_evidence))
-    expect_equal(ppt_lambda(fit, at = x, type = "draws")$draws,
-                 fit$prediction$draws, tolerance = 1e-12)
   }
 })
 

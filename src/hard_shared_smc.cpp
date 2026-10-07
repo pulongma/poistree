@@ -1,8 +1,3 @@
-// Shared-path SMC for the hard terminal-leaf PPT; see hard_smc.h and
-// CLAUDE/shared_path_smc_hard_ppt.tex.  The sampler follows Ma (2026),
-// Sect. 3: breadth-first growth, one-step lookahead proposal, adaptive
-// multinomial resampling, and a log estimate of the normalizer relative
-// to the root model (the normalizer estimate, not its logarithm, is unbiased).
 #ifndef _USE_Armadillo
 #define _USE_Armadillo
 #include <RcppArmadillo.h>
@@ -31,7 +26,7 @@ static inline int hard_sample_log(const std::vector<double>& logp) {
   return (int)logp.size() - 1;
 }
 
-// box constraints of PPT::find_valid_cuts: minimal side 1e-2, aspect ratio cap
+// Check minimum side lengths and the aspect-ratio bound.
 static inline bool hard_good_shape(const arma::mat& box, double rmax) {
   arma::vec side = box.col(1) - box.col(0);
   if (side.min() < 1e-2) return false;
@@ -77,18 +72,15 @@ int HardSMCtree::make_child(int parent, int cand, int side, std::vector<int>&& p
   return (int)store.size() - 1;
 }
 
-// Same increasing-row summation order as qpp_box_exposure().
+// Sum background weights for the supplied row indices.
 double HardSMCtree::rows_exposure(const std::vector<int>& rows) const {
   double area = 0.0;
   for (int i : rows) area += qpp_weights[i];
   return area;
 }
 
-// Candidate cuts and scores of one box (the one-step lookahead ingredients of
-// Ma 2026, eqs. (4)-(6)), computed once per distinct node.  Per axis: sort the
-// coordinate, take type-1 quantiles of the distinct interior values at
-// cut_grid_n probabilities in [0.05, 0.95], count the left observations by
-// binary search; a node with no valid cut stops with probability one.
+// Compute a node's candidate cuts and lookahead scores.
+
 void HardSMCtree::expand_node(int v) {
   HardNode& A = store[v];
   if (A.expanded) return;
@@ -118,7 +110,7 @@ void HardSMCtree::expand_node(int v) {
         arma::mat boxL = A.box, boxR = A.box;
         boxL(j, 1) = cut; boxR(j, 0) = cut;
         if (!hard_good_shape(boxL, max_aspect) || !hard_good_shape(boxR, max_aspect)) return;
-        // Interior ties go right on every axis, matching the dense engine.
+
         const int nL = (int)(std::lower_bound(xs.begin(), xs.end(), cut) - xs.begin()), nR = A.m - nL;
         double areaL = 0.0, areaR = 0.0;
         if (qpp_active) {
@@ -131,13 +123,13 @@ void HardSMCtree::expand_node(int v) {
         ++axis_count[j];
       };
       for (double cut : cuts) try_cut(cut);
-      if (axis_count[j] == 0) {                       // median fallback of find_valid_cuts
+      if (axis_count[j] == 0) {
         const double med = A.m % 2 ? xs[A.m / 2] : 0.5 * (xs[A.m / 2 - 1] + xs[A.m / 2]);
         if (med > lo && med < hi) try_cut(med);
       }
     }
   }
-  // prior of a split: rho_d x (1/d) x (1/K_j); the increment is action independent
+
   const int C = A.cand_axis.size();
   A.logq.assign(C + 1, 0.0);
   std::vector<double> full(C + 1);
@@ -153,8 +145,8 @@ void HardSMCtree::expand_node(int v) {
   ++n_expanded;
 }
 
-// Every particle with an undecided record at heap position t draws its
-// decision; children are created once per (node, candidate) and shared.
+// Draw particle decisions at the requested heap position.
+
 bool HardSMCtree::sample_position(int t) {
   bool advanced = false;
   std::vector<int> touched;
@@ -185,18 +177,18 @@ bool HardSMCtree::sample_position(int t) {
       rid = make_child(v, c, +1, std::move(right));
       store[v].children.emplace(c, std::make_pair(lid, rid));
     }
-    HardRecord& R = particles[p].rec[t];                 // store may have grown
+    HardRecord& R = particles[p].rec[t];
     R.S = 1; R.act = c;
     particles[p].rec[2 * t] = HardRecord{lid, -1, -1};
     particles[p].rec[2 * t + 1] = HardRecord{rid, -1, -1};
   }
-  // observation sets of decided nodes are no longer needed
+
   for (int v : touched) { std::vector<int>().swap(store[v].pts); std::vector<int>().swap(store[v].qrows); }
   return advanced;
 }
 
-// Multinomial resampling when ESS < resample_thresh * P; offspring take the
-// ancestor's record map (first by move, others by copy).
+// Resample particle records when their ESS falls below the threshold.
+
 void HardSMCtree::resample() {
   std::vector<double> lw(P);
   for (int p = 0; p < P; ++p) lw[p] = particles[p].logw;
@@ -248,8 +240,8 @@ void HardSMCtree::sweep() {
   for (int p = 0; p < P; ++p) weights[p] = std::exp(lw[p] - norm);
 }
 
-// Draw leaf rates, evaluate the intensity at `grid`, and serialize the
-// particles as lists of their nodes (region, depth, is_leaf, S, J, L, lambda, m).
+// Draw leaf rates, evaluate predictions, and serialize the particles.
+
 Rcpp::List HardSMCtree::export_particles(const arma::mat& grid, arma::mat& lam_draws, arma::vec& loglik,
                                          arma::vec& lppd, arma::vec& integral) {
   const int np = grid.n_rows;
@@ -257,7 +249,7 @@ Rcpp::List HardSMCtree::export_particles(const arma::mat& grid, arma::mat& lam_d
   Rcpp::List out(P);
   for (int p = 0; p < P; ++p) {
     const HardParticle& par = particles[p];
-    std::unordered_map<int, double> lambda;       // heap -> rate of a terminal node
+    std::unordered_map<int, double> lambda;
     double ll = 0.0, tot = 0.0;
     Rcpp::List nodes(par.rec.size());
     int k = 0;

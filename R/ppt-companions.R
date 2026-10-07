@@ -10,9 +10,23 @@
 #' contains final proposal factors/covariances and adaptation counts per chain.
 #' The per-dimension gate acceptance entries repeat the joint acceptance rate.
 #'
-#' @param object A fitted `ppt` object.
-#' @param plot Draw an acceptance-rate bar plot.
-#' @return An object of class `ppt_diagnostics`.
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()]. Diagnostics depend on the fitted sampler; fields not
+#'   supplied by its backend are empty or `NA`.
+#' @param plot Logical scalar, default `FALSE`. If `TRUE`, also call the
+#'   diagnostic plot method:
+#'   \describe{
+#'     \item{SMC and PGAS}{Plot the available particle effective sample size
+#'       (ESS) history. An error is raised if no positive finite ESS values
+#'       are available.}
+#'     \item{Other samplers}{Plot the available acceptance rates as bars.
+#'       An error is raised if no acceptance summaries are available.}
+#'   }
+#' @return `ppt_diagnostics()` returns a list of class `ppt_diagnostics`
+#'   containing model and sampler labels, posterior draw and tree summaries,
+#'   acceptance rates, and available scalar histories. The print and plot
+#'   methods return their input invisibly.
+#' @md
 #' @export
 ppt_diagnostics <- function(object, plot = FALSE) {
   if (!inherits(object, "ppt")) {
@@ -52,6 +66,14 @@ ppt_diagnostics <- function(object, plot = FALSE) {
   out
 }
 
+#' @rdname ppt_diagnostics
+#' @param x An object of class `ppt_diagnostics`, returned by
+#'   [ppt_diagnostics()].
+#' @param ... For the plot method, additional graphical arguments passed to
+#'   [graphics::plot()] for SMC/PGAS or [graphics::barplot()] for other
+#'   samplers. Arguments already supplied by the method must not be repeated:
+#'   `type`, `xlab`, `ylab`, and `main` for ESS plots; `ylim`, `ylab`, `main`,
+#'   and `las` for acceptance plots. The print method ignores `...`.
 #' @method print ppt_diagnostics
 #' @export
 print.ppt_diagnostics <- function(x, ...) {
@@ -81,6 +103,7 @@ print.ppt_diagnostics <- function(x, ...) {
   invisible(x)
 }
 
+#' @rdname ppt_diagnostics
 #' @method plot ppt_diagnostics
 #' @export
 plot.ppt_diagnostics <- function(x, ...) {
@@ -115,13 +138,33 @@ plot.ppt_diagnostics <- function(x, ...) {
 
 #' Simulate a Poisson point process by thinning
 #'
-#' @param intensity Function accepting an `n` by `d` matrix and returning
-#'   nonnegative intensities.
-#' @param region Numeric `d` by 2 observation bounds.
-#' @param lambda_max Finite upper bound for `intensity` over `region`.
-#' @param nsim Number of independent point patterns.
-#' @param seed Optional random seed.
-#' @return A matrix when `nsim = 1`, otherwise a list of matrices.
+#' Generate a homogeneous Poisson candidate pattern with rate `lambda_max`
+#' over the region, then independently retain each candidate location with
+#' probability `intensity(location) / lambda_max`.
+#'
+#' @param intensity A function accepting an `n` by `d` numeric matrix of
+#'   locations and returning one finite, nonnegative intensity per row. It
+#'   must accept any positive candidate count `n`, including a single row.
+#'   Intensities are expected point counts per unit region volume.
+#' @param region Finite numeric `d` by 2 matrix, where `d >= 1`. Column 1
+#'   contains lower bounds and column 2 contains strictly larger upper
+#'   bounds. Rows correspond to the columns accepted by `intensity`.
+#' @param lambda_max Positive finite numeric scalar bounding `intensity`
+#'   everywhere on `region`. Values evaluated above this bound raise an error
+#'   (up to floating-point tolerance); the function does not verify the bound
+#'   at unevaluated locations.
+#' @param nsim Positive integer scalar, default `1`, giving the number of
+#'   independently generated point patterns.
+#' @param seed Optional integer seed passed to [set.seed()] once before
+#'   simulation. The default, `NULL`, uses the current random-number state.
+#'   The random-number state advances normally and is not restored on return.
+#' @return The output depends on `nsim`:
+#'   \describe{
+#'     \item{`nsim = 1`}{A numeric matrix with `d` columns and one row per
+#'       retained point. A simulated empty pattern has zero rows.}
+#'     \item{`nsim > 1`}{A list of `nsim` such matrices.}
+#'   }
+#' @md
 #' @export
 ppt_sim <- function(intensity, region, lambda_max, nsim = 1L, seed = NULL) {
   if (!is.function(intensity)) {

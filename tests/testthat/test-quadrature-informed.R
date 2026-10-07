@@ -1,5 +1,3 @@
-# Small deterministic fits; no Monte Carlo convergence assertions. These
-# references use the retained tree directly, without the native evaluator.
 quadrature_informed_args <- function() {
   background <- cbind(
     c(0, .04, .16, .23, .31, .42, .53, .64, .76, .88, 1),
@@ -79,8 +77,6 @@ quadrature_informed_lppd <- function(draws, integral, weights) {
   center + log(sum(weights * exp(ll - center)))
 }
 
-# Reproduce the old wrapper's fitting path (controls passed through ...).
-# Comparing only numerical fit components leaves version labels unrestricted.
 quadrature_informed_legacy_fit <- function(args) {
   poistree:::qpp_set_quadrature(args$background, args$weights, args$region)
   on.exit(poistree:::qpp_clear_quadrature(), add = TRUE)
@@ -119,7 +115,7 @@ test_that("quadrature informed PCG preserves weighted targets for all gate scale
       expect_equal(background, fit$prediction$draws, tolerance = 1e-10)
       expect_equal(integral, fit$posterior$integrated_intensity_draws,
                    tolerance = 1e-10)
-      expect_equal(ppt_integral(fit, type = "draws"), integral, tolerance = 1e-10)
+      expect_equal(poistree:::ppt_integral(fit, type = "draws"), integral, tolerance = 1e-10)
       train <- quadrature_informed_soft_draws(fit, args$x)
       expect_equal(mean(colSums(log(train)) - integral),
                    fit$posterior$mean_log_likelihood, tolerance = 1e-10)
@@ -154,7 +150,7 @@ test_that("quadrature defaults preserve the original uninformed PCG path", {
   expect_false(default$control$informed)
   expect_null(default$control$proposal_temperature)
   expect_null(default$control$proposal_defensive)
-  # New controls must not change positional matching of existing arguments.
+
   formal_names <- names(formals(ppt_fit_quadrature))
   expect_identical(formal_names[seq_len(9L)],
                    c("x", "region", "background", "weights", "gating",
@@ -170,7 +166,7 @@ test_that("quadrature errors clear the active integration rule", {
   plain_args$b <- .04
   before <- do.call(ppt_fit, plain_args)
   before_rng <- .Random.seed
-  # cache_geometry is validated by the backend, after the rule is installed.
+
   expect_error(do.call(ppt_fit_quadrature, c(args, list(
     informed = TRUE, cache_geometry = NA
   ))), "cache_geometry")
@@ -178,7 +174,7 @@ test_that("quadrature errors clear the active integration rule", {
   expect_identical(before_rng, .Random.seed)
   before$call <- after$call <- NULL
   expect_identical(before, after)
-  # A subsequent quadrature fit also detects a leaked active/nested context.
+
   again <- do.call(ppt_fit_quadrature, c(args, list(informed = TRUE)))
   expect_true(all(is.finite(again$posterior$integrated_intensity_draws)))
 })
@@ -238,7 +234,7 @@ test_that("hard shared SMC integrates weights once at cut ties and outer edges",
     }, numeric(1))
     expect_equal(sum(exposures), sum(weights), tolerance = 1e-12)
     for (node in Filter(function(node) !isTRUE(node$is_leaf), tree)) {
-      # Every possible cut is an observed coordinate included in background.
+
       expect_true(any(background[, 1L] == node$L))
     }
   }
@@ -246,14 +242,13 @@ test_that("hard shared SMC integrates weights once at cut ties and outer edges",
   integral <- colSums(draws * weights)
   expect_equal(draws, fit$prediction$draws, tolerance = 1e-10)
   expect_equal(integral, fit$posterior$integrated_intensity_draws, tolerance = 1e-10)
-  expect_equal(ppt_integral(fit, type = "draws"), integral, tolerance = 1e-10)
+  expect_equal(poistree:::ppt_integral(fit, type = "draws"), integral, tolerance = 1e-10)
   expected <- quadrature_informed_lppd(
     quadrature_informed_hard_draws(fit, test), integral, fit$posterior$particle_weights
   )
   expect_equal(fit$posterior$lppd, expected, tolerance = 1e-10)
   expect_equal(as.numeric(ppt_lppd(fit, test = test)), expected, tolerance = 1e-10)
 })
-
 
 test_that("compact informed quadrature agrees with uncached exposure", {
   args <- quadrature_informed_args()

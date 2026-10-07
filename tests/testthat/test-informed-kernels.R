@@ -93,8 +93,7 @@ test_that("informed samplers return unweighted draws from enumerated targets", {
     expect_length(fit$posterior$particle_weights,0L)
     expect_equal(fit$prediction$mean,rowMeans(fit$prediction$draws),tolerance=1e-12)
     if (gating == "soft") {
-      # Same tree and count may have many different labeled allocations.
-      # Checking a count moment also exercises the tilted-count subset sampler.
+
       want_count <- sum(exact$pi*vapply(exact$states,function(s)
         sum(tabulate(match(s$labels,names(s$info$leaves)),length(s$info$leaves))^2),0.0))
       count_trace <- vapply(fit$posterior$state$nodes,function(st)
@@ -124,7 +123,7 @@ test_that("soft reverse probabilities remain correct with multiple terminal spli
     nmin=1L,cut_mode=1L,ncand=4L,gate_family=0L,kind=kind)
   for (kind in 0:1) {
     current <- law(splits,labels,kind)
-    # Two distinct cherry actions can reproduce the same augmented state.
+
     self <- vapply(current$neighbors,function(z)
       reference$key(decode(z$splits),as.integer(z$labels)) == original_key,TRUE)
     if (kind == 1L) expect_equal(sum(self),2L)

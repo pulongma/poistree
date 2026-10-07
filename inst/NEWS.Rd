@@ -1,207 +1,122 @@
 \name{NEWS}
 \title{News for Package \pkg{poistree}}
 
-\section{Changes in poistree version 0.5.7 (2026-10-06)}{
-  \itemize{
-    \item Exported \code{ppt_fit_quadrature()} in the main package, with
-      weighted physical-domain integration for soft PCG and hard shared SMC.
-    \item Added explicit \code{informed}, \code{proposal_temperature}, and
-      \code{proposal_defensive} quadrature controls for soft PCG, with both
-      root- and node-scaled gates. The default remains uninformed PCG.
-    \item Removed the unused surrogate region reference from compiled code.
-  }
-}
+\section{Changes in poistree version 0.5.8 (2026-10-07)}{
 
-\section{Changes in poistree version 0.5.6 (2026-10-06)}{
-  \itemize{
-    \item PCG accepts \code{informed = TRUE}: grow, prune, and change proposals
-      are drawn from a hard surrogate (hard-routed counts and box exposures of
-      every candidate split, scored once per node) through the mixture
-      \eqn{(1-\epsilon)\exp(\tau \tilde s)/\sum + \epsilon/N}, with
-      \code{proposal_temperature} \eqn{\tau} (default 0.5) and
-      \code{proposal_defensive} \eqn{\epsilon} (default 0.1). The acceptance
-      ratio uses the true soft exposures and exact proposal probabilities, so
-      the posterior is unchanged. \code{informed = FALSE} is bit-identical to
-      0.5.5. New test file \code{test-soft-pcg-informed.R}.
-  }
-}
-
-\section{Changes in poistree version 0.5.5 (2026-10-06)}{
-  \itemize{
-    \item Soft gates with a quadrature background (private adapter): background
-      memberships of logistic gates are now stored on the linear scale,
-      \eqn{\phi_{child} = \phi_{parent}\,\sigma(z)}, so each proposed gate costs
-      one \code{exp} per point and split and the exposure is a weighted sum.
-      Training memberships stay in logs. Results agree with 0.5.4 to rounding
-      (gates to about 1e-9); they are not bit-identical. Compact gates and the
-      analytic (no-quadrature) exposure are unchanged.
-  }
-}
-
-\section{Changes in poistree version 0.5.0 (2026-10-06)}{
-  \itemize{
-    \item Added optional \code{gate_scale = "node"} for logistic soft gates
-      with PCG, RJ-MCMC, and informed MH. Each split uses its parent-node
-      interval width while retaining shared or dimension-specific gate
-      parameters selected by the unchanged \code{gate_structure} argument.
-    \item Existing logistic calls retain root-range scaling. Compact gates
-      retain their existing node-range scaling. New fitted objects record
-      the effective gate scale; previously saved objects remain supported.
-    \item Node-scaled logistic exposure and marginal integrals use stable
-      adaptive numerical integration for paths with unequal slopes.
-      Posterior prediction reconstructs each node width from tree state.
-    \item PGAS rejects node scaling explicitly because its current global
-      cut-grid and ancestor-sampling calculations require root-scaled gates.
-    \item Soft PGAS accepts \code{proposal_score = "hard"} above
-      \code{exact_max}: cumulative hard-split counts and path exposures
-      provide a proposal surrogate, while true soft gates and exposures
-      are evaluated lazily for selected splits. All cuts and the full
-      importance correction are retained. \code{proposal_temperature}
-      (default 0.5) and \code{proposal_defensive} (default 0.1) control this
-      proposal only. The default large-node scorer remains Laplace.
-    \item Soft PGAS records the retained log-likelihood trace in
-      \code{diagnostics$log_likelihood_trace} for mixing comparisons.
-    \item Soft PGAS reuses exact logistic allocation-count distributions across
-      candidate cuts by exponential tilting. Exact-scoring work is reduced to
-      one Poisson-binomial recursion per node and coordinate plus linear work
-      per cut; the model, cut support, and large-node Laplace branch are unchanged.
-    \item Gate and conditional-allocation calculations use both branches in
-      log space, preserving rare routing probabilities and subnormal gate tails.
-    \item Exact PGAS updates now use the cancelled importance ratio; forced
-      reference allocations route directly without allocation-proposal replay.
-      Conditional prefix tables are shared across cuts on each coordinate,
-      stored triangularly, and skipped for deterministic counts.
-    \item Root scores and lazy allocation tables persist across sweeps with
-      coordinate-specific gate invalidation. Count coefficients and their
-      candidate normalizers are reused for scoring and sampling.
-  }
-}
-
-\section{Changes in poistree version 0.4.0 (2026-10-04)}{
-  \itemize{
-    \item Added \code{sampler = "pcg"} for soft terminal-leaf trees. The
-      ordered iteration draws temporary intensities, jointly updates gates
-      with labels integrated out, restores labels by categorical draws,
-      and applies standard collapsed tree updates before drawing output rates.
-    \item Added robust adaptive Metropolis controls \code{ram_target},
-      \code{ram_decay}, and \code{ram_adapt}. Adaptation ends during burn-in;
-      \code{sd_gate} supplies initial log-gate proposal scales. Logistic and
-      compact gates, shared and dimension-specific gates, and fixed gates
-      retain the existing fitted-object prediction interface.
-    \item PCG diagnostics report joint gate acceptance and per-chain final
-      proposal covariance, factor, successful adaptations, and numerical failures.
-  }
-}
-
-\section{Changes in poistree version 0.3.0 (2026-10-04)}{
-  \subsection{Held-out scoring}{
+  \subsection{Samplers and proposals}{
     \itemize{
-      \item \code{ppt_lppd()} gains \code{scale}, a factor \eqn{r} applied to
-        the fitted intensity (e.g. \eqn{r=(1-p)/p} for a \eqn{p}-thinned
-        training/test split), and \code{type = "plugin"}, the test-pattern
-        log likelihood under the posterior mean intensity. With
-        \code{test = NULL} the stored test pattern is rescored when needed.
+      \item Added cached informed Metropolis--Hastings tree updates through
+        \code{sampler = "irjmcmc"} for hard and soft terminal-leaf models.
+        Forward and reverse proposal probabilities enter the acceptance ratio;
+        retained draws have ordinary posterior weights.
+      \item Added soft Particle Gibbs with ancestor sampling
+        (\code{sampler = "pgas"}), jointly updating trees and allocations.
+        Small-node proposals sum over allocation counts exactly; larger nodes
+        use a Laplace scorer with sequential or auxiliary-rate allocation
+        proposals and full importance correction. Node- or level-wise
+        resampling and an optional ESS threshold are supported.
+      \item Added partially collapsed Gibbs (\code{sampler = "pcg"}) for
+        soft trees. Gates are updated jointly with labels integrated out,
+        followed by label restoration and collapsed tree updates. Robust
+        adaptive Metropolis controls and gate-adaptation diagnostics are
+        available; adaptation stops no later than the end of burn-in.
+      \item Added optional hard-surrogate proposals for soft PCG
+        (\code{informed = TRUE}) and large-node soft PGAS
+        (\code{proposal_score = "hard"}). Both use \code{proposal_temperature}
+        and \code{proposal_defensive}, with sampler-specific mixture laws and
+        exact proposal corrections. Defaults remain uninformed PCG and
+        Laplace-scored PGAS.
+      \item All samplers default to \code{cut_candidates = 50}.
+        The supported intensity scale is \code{scales = "leaf"} for both
+        hard PPT and soft S-PPT.
     }
   }
-  \subsection{Informed MH and candidate controls}{
+
+  \subsection{Gates and physical-domain integration}{
     \itemize{
-      \item Added \code{sampler = "irjmcmc"} for the hard and soft
-        terminal-leaf models. Square-root balanced proposals include the
-        reverse base-proposal probability and the full Metropolis correction.
-        The sampler targets the corresponding RJ-MCMC posterior and returns
-        ordinary, equally weighted posterior draws.
-      \item Hard informed MH caches candidate cuts, local collapsed scores,
-        and the current neighborhood across rejections. Soft informed MH
-        exactly aggregates latent-allocation proposals by Poisson-binomial
-        count recursion, retaining separate grow/prune and change kernels,
-        allocation Gibbs sweeps, and gate updates.
-      \item Every sampler now defaults to \code{cut_candidates = 50}.
-        Hard Particle Gibbs accepts and forwards this control instead of
-        hardcoding 30. Explicit user-specified counts and soft PGAS cut grids
-        retain their existing meaning; duplicate and invalid cuts are removed.
+      \item Soft models default to dimension-specific gate parameters;
+        shared gates remain available. Soft RJ-MCMC and PGAS update every
+        gate coordinate once per iteration.
+      \item Added \code{gate_scale = "node"} for logistic gates with
+        RJ-MCMC, informed MH, and PCG. Existing logistic calls retain root
+        scaling; compact gates retain node scaling. Prediction retains the
+        scale choice, and earlier saved fits remain supported. PGAS requires
+        root-scaled logistic gates.
+      \item Added \code{ppt_fit_quadrature()} for intensity models using
+        background covariates and physical exposure weights. Supported
+        samplers are soft PCG, including informed proposals, and hard shared
+        SMC. Weighted integrals are retained for post-fit scoring.
+      \item Improved stability of logistic gate tails, conditional routing,
+        and exposure calculations. Node-scaled logistic paths with unequal
+        slopes use adaptive numerical integration; weighted background
+        memberships use linear-scale products for exposure calculations.
     }
   }
-  \subsection{Audit fixes}{
+
+  \subsection{Computation and prediction}{
     \itemize{
-      \item Added scalar integer depth validation and native allocation guards
-        before complete-tree size calculations. Unsafe depths and oversized
-        particle-tree allocations now fail with explicit errors; supported
-        controls retain their existing posterior and proposal rules.
-      \item Removed precompiled object files from the source checkout so direct
-        installations compile the current native interfaces and samplers.
-      \item Clarified the backend-specific availability of \code{min_leaf_n},
-        \code{prediction_draws}, and \code{gate_family}.
-      \item Unified hard SMC and Particle-Gibbs split ties with retained-state
-        evaluation: ties go to the right child on every input. Split routing
-        preserves observations on unrelated outer-region boundaries.
-      \item Shared SMC now honors \code{max_depth = 0}; dense SMC honors
-        \code{cut_candidates}, including a single-candidate grid.
-      \item Single-location hard marginal queries retain every posterior draw.
+      \item Hard SMC uses shared-path storage by default; the dense engine
+        remains available. Soft PGAS also shares node computations across
+        particles, avoiding repeated expansion and full-tree copies.
+      \item Exact soft PGAS reuses Poisson-binomial count distributions
+        across cuts by exponential tilting. It shares triangular conditional
+        allocation tables, skips deterministic tables, reuses root scores
+        with coordinate-specific gate invalidation, and uses the cancelled
+        exact importance ratio for ordinary and reference particles.
+      \item The optional hard PGAS scorer uses cumulative split counts and
+        cached path exposures, evaluating true soft gates and exposures only
+        for selected or forced splits.
+      \item Soft fitting reuses ancestor memberships, leaf exposures, and
+        candidate cuts. PCG reuses event normalizers when restoring labels;
+        grow/change proposals reuse parent memberships. Weighted-integration
+        fits also reuse memberships for exactly matching background rows.
+      \item Post-fit prediction shares ancestor calculations and reuses
+        retained draws at matching, reordered, or repeated locations.
+        Mean-only predictions skip quantiles, and requested quantiles share
+        a sort while retaining the weighted quantile convention.
+      \item Held-out scoring adds intensity \code{scale} and
+        \code{type = "plugin"}; stored test patterns can be rescored.
+        Soft PGAS retains a log-likelihood trace for mixing diagnostics.
+    }
+  }
+
+  \subsection{Robustness and diagnostics}{
+    \itemize{
+      \item Added integer depth checks and native allocation guards, and
+        removed stale precompiled objects from source installations.
+      \item Corrected hard SMC/Particle-Gibbs routing at split ties and
+        outer-region boundaries, root-only shared SMC fits, dense SMC cut
+        counts, and single-location hard marginal draw retention.
       \item Hard SMC and Particle Gibbs report the conditional point-process
-        log likelihood of the sampled rates, consistently with RJ-MCMC.
-      \item SMC reports \code{log_relative_normalizer} and, for \code{b > 0},
-        \code{log_target_normalizer} including the root marginal factor.
-        Absolute \code{log_evidence} is unavailable because the existing
-        tree-prior weights have an uncomputed normalizing constant. The tree
-        weights and backend-specific prior choices are preserved.
-      \item The internal soft-tree diagnostic updates all dimension-specific
-        gate parameters, matching the public fitting backend.
+        log likelihood of sampled rates. SMC distinguishes relative and
+        target normalizers; absolute Bayesian evidence remains unavailable
+        because the existing tree-prior normalization is unknown.
     }
   }
-  \subsection{Model interface}{
+
+  \subsection{Interface and documentation}{
     \itemize{
-      \item The package implements two terminal-leaf intensity
-        models, PPT (\code{gating = "hard"}) and S-PPT
-        (\code{gating = "soft"}, the default), with samplers
-        \code{rjmcmc}, the new terminal-leaf \code{irjmcmc},
-        \code{smc} (PPT only), and \code{pgas}.
-        The \code{scales} argument accepts only \code{"leaf"}.
-    }
-  }
-  \subsection{New sampler}{
-    \itemize{
-      \item Added Particle Gibbs with ancestor sampling for the soft
-        terminal-leaf model through \code{ppt_fit(gating = "soft",
-        scales = "leaf", sampler = "pgas")}. The conditional SMC runs over
-        the tree and the latent allocation variables of the observations jointly on an extended
-        complete-tree space with a fixed per-input cut grid, which makes the
-        full suffix target ratio of the ancestor-sampling weights available.
-        The forward proposal is the exact one-step-ahead posterior of the
-        node decision (a Poisson-binomial expectation over the allocations of the node's observations)
-        for nodes with at most \code{exact_max} points (log-space
-        Poisson-binomial recursion) and a Laplace approximation of its
-        Beta-integral representation otherwise; the gate is updated
-        by Metropolis--Hastings and the labels by Gibbs sweeps. Resampling
-        (with ancestor sampling) takes place after every heap node at which
-        a particle advanced (\code{resampling = "node"}) or after every
-        level (\code{"level"}), subject to an optional ESS threshold
-        (\code{ess_threshold}). Above \code{exact_max} the allocation of a
-        node's points to its children is proposed by sequential imputation
-        (\code{allocation = "sequential"}) or through auxiliary child rates
-        (\code{allocation = "rates"}); both are exact importance proposals.
-      \item The hard PPT SMC sampler runs on a shared-path store
-        (\code{src/hard_shared_smc.cpp}, \code{engine = "shared"}, the
-        default): nodes are boxes shared by every particle that reaches
-        them, candidate cuts are scored once per distinct node with sorted
-        coordinates and binary-search counts, observation sets are released
-        once a node is decided, and resampling copies record maps instead
-        of trees. Same law as the dense sampler (\code{engine = "dense"});
-        at d = 10, n = 11,000, 60 particles and depth 5 the sweep takes
-        0.2 s instead of 25 s. New diagnostics \code{expanded_nodes} and
-        \code{resampling_events} (NA where not applicable) in every backend.
-      \item Soft models default to one gating parameter per input
-        (\code{gate_structure = "dimension"}); the Metropolis update of the
-        gating parameters now proposes every coordinate once per iteration
-        (systematic scan) instead of one coordinate chosen at random, in
-        both the RJ-MCMC and the PGAS backends. Implemented in \code{SMCtree.cpp}
-        (class \code{SoftSMCtree}) and \code{soft_smc.h}.
-      \item The soft particle system is stored as a shared-path trie of
-        coloured path nodes (\code{SoftPathNode} in \code{soft_smc.h}):
-        the expansion of a frontier node is computed once per distinct node
-        and shared by all particles holding it, gate values are tabulated
-        once per gate vector, and resampling copies handle maps instead of
-        trees. Typically 4--10 times faster than the dense version.
-      \item Regenerated \code{RcppExports}.
+      \item Reduced the exported interface to \code{ppt_fit},
+        \code{ppt_fit_quadrature}, \code{ppt_predict}, \code{ppt_sim},
+        \code{ppt_lambda}, \code{ppt_lppd}, \code{ppt_marginal}, and
+        \code{ppt_diagnostics}.
+        Marginal prediction remains public for existing analysis notebooks.
+        Sampler diagnostics and diagnostic plotting remain public.
+      \item Made \code{ppt_logLik}, \code{ppt_integral},
+        \code{ppt_quadrature_geometry}, and \code{ppt_summary} internal.
+        Removed the \code{logLik.ppt}
+        forwarding method and S3 registration; \code{summary(fit)} remains
+        available.
+      \item Removed redundant tests and consolidated overlapping cases,
+        reducing declared test cases from 148 to 142 while retaining
+        numerical, posterior, boundary, and cache regression coverage.
+      \item Expanded argument documentation with types, defaults,
+        restrictions, and organized option lists. Added \code{ppt_controls},
+        a grouped reference for the 48 fitting controls passed through
+        \code{ppt_fit(...)}.
+      \item Clarified backend-specific controls, weighted-domain integration,
+        and prediction quantiles. Removed implementation comments while
+        retaining brief function-purpose notes and required metadata.
     }
   }
 }

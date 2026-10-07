@@ -3,7 +3,7 @@ test_that("shared ancestor prediction agrees with independent leaf probabilities
     x = c(-2, -1, -0.3, 0, 1.8, 3), y = c(4, 6, 7, 12))),
     c(-0.30000001, 7.00000001))
   tree <- prediction_tree()
-  # Rows may arrive in any order, including children preceding their parents.
+
   nodes <- list(tree, tree[c(9, 3, 6, 1, 8, 4, 7, 2, 5), ])
   gates <- rbind(c(8, 13), c(1e6, 1e3))
   for (mode in c(1L, 2L, 3L)) {
@@ -14,7 +14,7 @@ test_that("shared ancestor prediction agrees with independent leaf probabilities
                                         locations, mode, depth)
     expect_equal(actual, expected, tolerance = 2e-12, ignore_attr = TRUE)
     expect_true(all(is.finite(actual)))
-    # A complete partition with equal rates has that constant intensity.
+
     equal_tree <- tree
     equal_tree[equal_tree[, 2] < 0, 4] <- 7
     constant <- poistree:::ppt_eval_state(list(equal_tree), gates[1, , drop = FALSE],
@@ -54,7 +54,7 @@ test_that("root-only, invalid-rate and deep skew states retain legacy semantics"
 })
 
 test_that("prediction row matching distinguishes adjacent doubles and accepts signed zero", {
-  # Decimal display rounding must never turn a nearby point into a cached row.
+
   one_up <- 1 + .Machine$double.eps
   one_down <- 1 - .Machine$double.eps / 2
   locations <- rbind(c(0, 5), c(1, 5), c(one_up, 5), c(one_down, 5), c(1, 5))
@@ -72,7 +72,7 @@ test_that("stored posterior draws are reused for full, repeated and mixed locati
   fit <- prediction_fixture()
   locations <- fit$prediction$locations
   fresh <- rbind(c(-0.6, 10), c(2.5, 5))
-  # Distinct stored values prove the fast path does not reevaluate stored rows.
+
   fit$prediction$draws <- fit$prediction$draws + 100
   for (index in list(1:4, c(4L, 2L, 2L, 1L))) {
     raw <- ppt_lambda(fit, at = locations[index, , drop = FALSE], type = "draws")
@@ -88,7 +88,7 @@ test_that("stored posterior draws are reused for full, repeated and mixed locati
                      fit$prediction$draws[3, ], fresh_draws[2, ])
   expect_equal(ppt_lambda(fit, at = mixed, type = "draws")$draws,
                expected, tolerance = 1e-12, ignore_attr = TRUE)
-  # Direct state evaluation stays independent of stored prediction values.
+
   direct <- poistree:::.ppt_state_eval(fit, locations)
   expect_equal(direct, fit$prediction$draws - 100,
                tolerance = 1e-12, ignore_attr = TRUE)
@@ -118,7 +118,7 @@ test_that("only missing rows require native posterior evaluation", {
   expect_length(evaluated, 1)
   expect_true(all(evaluated[[1]][, 1] == fresh[1, 1]))
   expect_true(all(evaluated[[1]][, 2] == fresh[1, 2]))
-  # Either evaluating duplicates once or keeping duplicate rows is valid.
+
   expect_true(nrow(evaluated[[1]]) %in% 1:2)
 })
 
@@ -172,7 +172,6 @@ test_that("posterior and plug-in lppd retain the exact scaled Poisson likelihood
   }
 })
 
-
 test_that("mean prediction avoids sorting posterior credible intervals", {
   skip_if_not(exists("local_mocked_bindings", asNamespace("testthat"), inherits = FALSE))
   fit <- prediction_fixture()
@@ -202,11 +201,9 @@ test_that("one-location and one-draw posterior predictions keep their shapes", {
   expect_equal(unname(unlist(summary[3:6])), rep(2, 4))
 })
 
-
 test_that("inconsistent stored-draw counts fall back to complete posterior states", {
   fit <- prediction_fixture()
-  # This can occur in older or manually subsetted fit objects. Reusing these
-  # columns would silently mix different posterior draws on new locations.
+
   fit$prediction$draws <- fit$prediction$draws[, 1:2, drop = FALSE]
   for (at in list(fit$prediction$locations,
                  rbind(fit$prediction$locations[2, ], c(1.1, 9)))) {

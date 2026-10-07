@@ -2,8 +2,7 @@ test_that("cached parent membership preserves deep split probabilities", {
   region <- rbind(c(-2, 3), c(4, 7))
   x <- cbind(c(-2, -.9, -.4, .1, .2, .3, .4, .5, 2.5, 3),
               c(4, 6.7, 5, 4.3, 5.4, 5.8, 5.9, 6.2, 6.8, 7))
-  # Three successive splits on the first coordinate give a deep parent.
-  # The compact basis is exactly zero outside some ancestor supports.
+
   deep_path <- rbind(c(0, .5, 5, -1), c(0, -.4, 2.5, 1),
                      c(1, 5.9, 3, -1), c(0, .1, .9, 1))
   for (family in 0:2) {

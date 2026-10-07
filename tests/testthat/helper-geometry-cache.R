@@ -13,8 +13,6 @@ geometry_cache_args <- function() {
   )
 }
 
-# Numerical agreement of the retained generative state is stronger than
-# checking only posterior means. The RNG check also detects extra draws.
 expect_cache_same_fit <- function(cached, reference, cached_rng, reference_rng) {
   expect_identical(cached_rng, reference_rng)
   expect_equal(cached$prediction, reference$prediction, tolerance = 1e-10)
@@ -22,8 +20,8 @@ expect_cache_same_fit <- function(cached, reference, cached_rng, reference_rng) 
   expect_equal(cached$diagnostics, reference$diagnostics, tolerance = 1e-10)
   expect_identical(cached$diagnostics$leaf_count_trace,
                    reference$diagnostics$leaf_count_trace)
-  expect_equal(ppt_integral(cached, type = "draws"),
-               ppt_integral(reference, type = "draws"), tolerance = 1e-10)
+  expect_equal(poistree:::ppt_integral(cached, type = "draws"),
+               poistree:::ppt_integral(reference, type = "draws"), tolerance = 1e-10)
   at <- cbind(c(.01, .27, .51, .76, .99), c(.15, .44, .85, .23, .62))
   expect_equal(poistree:::.ppt_state_eval(cached, at),
                poistree:::.ppt_state_eval(reference, at), tolerance = 1e-10)

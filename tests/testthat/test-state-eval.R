@@ -1,7 +1,3 @@
-# Posterior state store: exact post-hoc reproduction of every retained
-# intensity draw at arbitrary locations, and the features built on it
-# (ppt_lambda, post-hoc ppt_predict / ppt_lppd / ppt_marginal).
-
 make_data <- function(seed, n = 80) {
   set.seed(seed)
   x <- matrix(runif(2 * n), ncol = 2)
@@ -50,8 +46,6 @@ test_that("heap state reproduces stored draws: soft leaf, compact", {
   expect_state_matches_prediction(fit, grid)
 })
 
-
-
 test_that("leaf-box state reproduces stored draws: hard leaf RJ and SMC", {
   x <- make_data(105)
   grid <- matrix(runif(24), ncol = 2)
@@ -96,7 +90,6 @@ test_that("ppt_lambda summarizes on a grid and matches raw draws", {
   expect_equal(as.numeric(raw$draws %*% raw$weights), surface$mean,
                tolerance = 1e-12)
 
-  # one-dimensional grid path
   x1 <- matrix(runif(40), ncol = 1)
   fit1 <- ppt_fit(
     x1, matrix(c(0, 1), nrow = 1),
@@ -129,7 +122,7 @@ test_that("ppt_predict evaluates locations outside predict_at", {
   interval <- ppt_predict(fit, newdata = fresh, type = "interval")
   expect_equal(interval$lower, lam$lower, tolerance = 1e-12,
                ignore_attr = TRUE)
-  # rows present in predict_at still take the stored fast path
+
   expect_equal(
     as.numeric(ppt_predict(fit, newdata = grid[c(4, 2), , drop = FALSE])),
     as.numeric(ppt_predict(fit)[c(4, 2)]),
@@ -196,7 +189,6 @@ test_that("ppt_marginal works without pre-listed reference rows", {
   expect_equal(marg$value, values)
   expect_true(all(is.finite(marg$mean)))
 
-  # agrees with a manual average of state-evaluated substitution designs
   draws <- ppt_marginal(fit, "x", grid = values, reference = reference,
                         type = "draws")
   substituted <- reference

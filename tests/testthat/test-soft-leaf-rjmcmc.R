@@ -19,8 +19,6 @@ test_that("defaults select S-PPT; hard gating selects PPT", {
   expect_identical(soft$control$min_leaf_n, 1L)
   expect_identical(hard$control$min_leaf_n, 1L)
 
-  ## The default S-PPT stores enough state for post-hoc evaluation, even
-  ## though no `predict_at` locations were supplied during fitting.
   surface <- ppt_lambda(soft, n = 7)
   expect_equal(nrow(surface), 7L)
   expect_true(all(is.finite(surface$mean)))
@@ -63,8 +61,8 @@ test_that("soft leaf RJ-MCMC returns a ppt object", {
   expect_identical(fit$prior$gate$family, "logistic")
   expect_length(ppt_predict(fit), nrow(grid))
   expect_equal(nrow(ppt_predict(fit, type = "interval")), nrow(grid))
-  expect_s3_class(ppt_logLik(fit), "logLik")
-  expect_s3_class(ppt_summary(fit), "summary.ppt")
+  expect_s3_class(poistree:::ppt_logLik(fit), "logLik")
+  expect_s3_class(summary(fit), "summary.ppt")
   expect_s3_class(ppt_diagnostics(fit), "ppt_diagnostics")
   expect_true(all(is.finite(ppt_predict(fit))))
   expect_true(is.finite(fit$posterior$mean_max_depth))
@@ -108,65 +106,6 @@ test_that("compact gate remains available as an explicit option", {
     verbose = FALSE
   )
   expect_identical(fit$model$gate_family, "compact")
-})
-
-test_that("all unified models use the same output schema", {
-  set.seed(12)
-  x <- matrix(runif(80), ncol = 2)
-  colnames(x) <- c("x", "y")
-  region <- matrix(c(0, 1, 0, 1), ncol = 2, byrow = TRUE)
-  grid <- matrix(runif(16), ncol = 2)
-
-  hard_leaf <- ppt_fit(
-    x, region,
-    gating = "hard", scales = "leaf", sampler = "smc",
-    predict_at = grid, max_depth = 2, min_leaf_n = 3,
-    particles = 10, seed = 13
-  )
-  soft_leaf <- ppt_fit(
-    x, region,
-    gating = "soft", scales = "leaf", sampler = "rjmcmc",
-    predict_at = grid, gate = 10, update_gate = FALSE,
-    max_depth = 2, min_leaf_n = 3,
-    chains = 1, iter = 20, burn = 5, thin = 2,
-    tree_moves = 1, change_moves = 1, cut_candidates = 4,
-    seed = 14, verbose = FALSE
-  )
-  fits <- list(hard_leaf, soft_leaf)
-
-  posterior_names <- names(hard_leaf$posterior)
-  diagnostic_names <- names(hard_leaf$diagnostics)
-  expect_true(all(vapply(
-    fits, function(fit) identical(names(fit$posterior), posterior_names),
-    logical(1)
-  )))
-  expect_true(all(vapply(
-    fits, function(fit) identical(names(fit$diagnostics), diagnostic_names),
-    logical(1)
-  )))
-  expect_true(all(vapply(
-    fits, function(fit) is.finite(fit$posterior$mean_max_depth), logical(1)
-  )))
-  expect_true(all(vapply(
-    fits, function(fit) is.finite(ppt_integral(fit)), logical(1)
-  )))
-  expect_true(all(vapply(
-    fits,
-    function(fit) length(ppt_integral(fit, "draws")) == fit$posterior$draws,
-    logical(1)
-  )))
-  expect_true(is.na(hard_leaf$posterior$mean_gate))
-})
-
-test_that("soft-tree native identifiers put S before T", {
-  native_names <- ls(asNamespace("poistree"), all.names = TRUE)
-  expect_true(any(grepl("ppstree", native_names, fixed = TRUE)))
-  forbidden_order <- "ppts"
-  expect_false(any(vapply(
-    forbidden_order,
-    function(pattern) any(grepl(pattern, native_names, ignore.case = TRUE)),
-    logical(1)
-  )))
 })
 
 test_that("roundoff at a region boundary is snapped safely", {

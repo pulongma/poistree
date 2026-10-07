@@ -1,5 +1,5 @@
 capture_mcmc_progress <- function(args) {
-  # RcppProgress writes to the message stream; other fit messages may use stdout.
+
   output <- capture.output({
     messages <- capture.output({
       fit <- do.call(ppt_fit, args)
@@ -24,7 +24,7 @@ for (gating in c("hard", "soft")) {
         a = 0.5, b = 0.1, seed = 812L
       )
       if (gating == "soft") {
-        # The final iteration is discarded, so thinning must not stall the bar.
+
         args$thin <- 3L
       } else if (sampler != "pgas") {
         args$prediction_draws <- 2L

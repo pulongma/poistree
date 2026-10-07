@@ -1,6 +1,4 @@
-# Fixed per-axis cut grid for the soft Particle-Gibbs backend: type-1 quantiles
-# of each coordinate on [0.05, 0.95], strictly inside the region.  A fixed,
-# box-free grid is what makes ancestor sampling valid for trees.
+# Construct fixed per-input quantile cut grids for soft PGAS.
 .ppt_soft_cut_grid <- function(x, region, cut_candidates) {
   probs <- seq(0.05, 0.95, length.out = cut_candidates)
   lapply(seq_len(ncol(x)), function(j) {
@@ -12,6 +10,7 @@
   })
 }
 
+# Fit S-PPT by PGAS; see ?ppt_controls for backend arguments.
 .ppt_fit_soft_leaf_pgas <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = NULL,

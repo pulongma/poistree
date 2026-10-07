@@ -2,8 +2,7 @@ test_that("cached candidate cuts have the expected tied-data support", {
   x <- cbind(c(0, .2, .2, .4, .4, .6, .6, .8, .8, 1), rep(.5, 10L))
   region <- matrix(c(0, 1, 0, 1), 2L, byrow = TRUE)
   splits <- matrix(c(1, 0, .5), ncol = 3L)
-  # These expectations are hand-calculated for the tied observations above.
-  # The constant second coordinate has no admissible split in any mode.
+
   expected <- list(
     list(c(.3, .5, .7), .3, .7),
     list(c(.4, .6, .8), .4, .8),
@@ -38,8 +37,6 @@ test_that("cached candidate cuts have the expected tied-data support", {
     expect_length(too_small$cuts[[3L]][[1L]], 0L)
   }
 
-  # Reusing the same inspection entry point with different controls/data
-  # must not retain a previous fit's support cache.
   args <- list(X = x, region = region, splits = matrix(numeric(), 0L, 3L),
                Dmax = 1L, nmin = 4L, cut_mode = 0L, ncand = 2L)
   root <- do.call(poistree:::ppstree_cuts_inspect, args)
@@ -63,7 +60,7 @@ test_that("cut caching preserves complete seeded sampler trajectories", {
         args$cut_mode <- mode
         args$gate_shared <- as.integer((family + mode) %% 2L == 0L)
         args$nmin <- if (mode == 2L) 2L else 1L
-        # Ties exercise stable candidate ordering and exact boundary routing.
+
         if (mode == 0L) args$X[2L, ] <- args$X[1L, ]
         cached <- cut_cache_run(args, TRUE)
         direct <- cut_cache_run(args, FALSE)
@@ -79,8 +76,7 @@ test_that("cut caching preserves complete seeded sampler trajectories", {
       }
     }
   }
-  # Establish that agreement includes accepted/rejected topology proposals,
-  # accepted/rejected gate proposals, and changed rules at existing node IDs.
+
   expect_true(all(accepted))
   expect_true(all(rejected))
   expect_true(gate_both)
@@ -123,8 +119,7 @@ test_that("reused PCG normalizers equal independent mixture intensities", {
   x <- cbind(c(-2, -1.2, -.3, .9, 2.1, 3), c(4, 6.8, 4.9, 5.6, 6.3, 7))
   region <- matrix(c(-2, 3, 4, 7), 2L, byrow = TRUE)
   splits <- rbind(c(1, 0, .5), c(2, 0, -.75), c(3, 1, 6))
-  # A very wide range of rates also checks that normalization stays on the
-  # log scale. Compact gates additionally exercise exactly zero memberships.
+
   rates <- c(1e-100, .2, 3, 1e80)
   for (family in 0:2) {
     for (shared in c(FALSE, TRUE)) {

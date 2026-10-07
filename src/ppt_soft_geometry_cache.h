@@ -5,21 +5,12 @@
 #include <string>
 #include <unordered_set>
 
-// Geometry is local to one chain and one gate vector.  Full path keys include
-// the split parent's width, so a node-relative gate cannot reuse a value from
-// a former ancestor geometry.  Counts and intensities are deliberately absent
-// from this cache: changing allocations does not change a leaf basis.
-// Training values are log memberships.  Background (quadrature) values of
-// logistic gates are stored on the linear scale, phi_child = phi_parent *
-// sigmoid, so exposure is a plain weighted sum; compact gates stay in logs.
 struct PPSTGeometryEntry {
   arma::vec training,background;
   bool training_ready=false,background_ready=false,exposure_ready=false;
   double exposure=0.0;
 };
 
-// This map depends only on the fixed observation and quadrature rows.  It is
-// shared by current/proposed gate caches, but never by different fit contexts.
 struct PPSTBackgroundRows {
   arma::uvec rows,unmatched;
   arma::uword matched=0;
@@ -61,8 +52,7 @@ class PPSTGeometryCache {
     out->rows.set_size(training.n_rows);
     std::unordered_map<std::string,arma::uword> lookup;
     lookup.reserve(background.n_rows);
-    // The first identical quadrature row is sufficient.  Keep the exact bytes
-    // (including signed zeros), so reuse cannot alter scalar gate arithmetic.
+
     for(arma::uword i=0;i<background.n_rows;i++)
       lookup.emplace(row_key(background,i),i);
     std::vector<arma::uword> unmatched;
@@ -116,12 +106,11 @@ class PPSTGeometryCache {
       ready(entry,true)=true;ready(other,true)=true;
       return values(entry,true);
     }
-    // Logistic background values are linear, so only compact gates reuse them.
+
     const PPSTBackgroundRows*rows=family_==1&&!background&&background_rows_&&
       background_rows_->matched?background_rows_.get():nullptr;
     if(rows){
-      // Background paths are needed for exposure anyway.  Repeated event rows
-      // each receive their own value; only the gate evaluation is shared.
+
       basis(path,true);
       const arma::vec&left_background=values(split.side<0?entry:other,true);
       const arma::vec&right_background=values(split.side>0?entry:other,true);
@@ -153,8 +142,7 @@ class PPSTGeometryCache {
         (*region_)(split.axis,1)-(*region_)(split.axis,0);
       for(arma::uword j=0;j<count;j++){
         const arma::uword i=rows?rows->unmatched[j]:j;
-        // Match the original multiplication/division and path addition order.
-        // The expensive log1p(exp()) term is shared by the two children.
+
         const double z=gate_[split.axis]*(coordinate[i]-split.cut)/width;
         const double common=std::log1p(std::exp(-std::abs(z)));
         left[i]=prefix[i]+(-std::max(z,0.0)-common);
@@ -180,8 +168,8 @@ public:
       else if(same_points(*prediction_,*training_)) prediction_role_=0;
     }
   }
-  // A proposed gate vector starts empty; acceptance moves its cache into the
-  // chain, whereas rejection destroys only the proposal's geometry.
+  // Create an empty geometry cache for a proposed gate vector.
+
   PPSTGeometryCache(const PPSTGeometryCache&current,const arma::vec&gate):
     training_(current.training_),region_(current.region_),
     background_(current.background_),prediction_(current.prediction_),
@@ -199,7 +187,7 @@ public:
     if(background_){
       const arma::vec&lp=basis(node.path,true);
       H=0.0;
-      // Keep the scalar quadrature summation and underflow convention intact.
+
       if(family_==1) for(arma::uword i=0;i<weights_->n_elem;i++)
         H+=(*weights_)[i]*(lp[i]<-745.0?0.0:std::exp(lp[i]));
       else for(arma::uword i=0;i<weights_->n_elem;i++) H+=(*weights_)[i]*lp[i];
@@ -222,12 +210,12 @@ public:
     else if(&points==background_) role=1;
     else if(&points==prediction_) role=prediction_role_;
     if(role<0){
-      // Other prediction/test sets are temporary, bounded by that one set.
+
       PPSTGeometryCache temporary(points,*region_,gate_,family_,nullptr,false);
       return temporary.intensity(tree,lambda,points);
     }
     arma::vec out(points.n_rows,arma::fill::zeros);
-    // lambda's iteration order is also used by ppst_eval_intensity().
+
     for(const auto&item:lambda){
       const arma::vec&lp=basis(tree.at(item.first).path,role==1);
       if(role==1&&family_!=1) for(arma::uword i=0;i<points.n_rows;i++) out[i]+=item.second*lp[i];

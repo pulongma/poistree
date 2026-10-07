@@ -1,6 +1,3 @@
-# PGAS retains its box-free cut prior and root-scaled logistic gates. A local
-# gate width would change both the valid cut support and ancestor weights.
-# Reject that combination until those changes have their own posterior test.
 test_that("soft PGAS rejects node scaling before any RNG draws", {
   x <- matrix(c(0.12, 0.25, 0.38, 0.56, 0.72, 0.91), ncol = 1)
   region <- matrix(c(0, 1), nrow = 1)
@@ -38,8 +35,6 @@ test_that("explicit root scaling preserves the PGAS chain and state evaluator", 
     expect_identical(explicit_root$prediction, old_default$prediction)
     expect_equal(explicit_root$posterior$state$gate_mode, 2L)
 
-    # Version 0.4 objects have a gate mode but no gate-scale metadata. The
-    # persisted numeric mode must continue to determine state evaluation.
     legacy <- old_default
     legacy$model$gate_scale <- NULL
     legacy$control$gate_scale <- NULL

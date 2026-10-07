@@ -26,8 +26,6 @@ cut_cache_run <- function(args, enabled, diagnostic = FALSE, seed = 619L) {
   list(value = value, rng = .Random.seed)
 }
 
-# Only topology and split rules enter this check; sampled rates change on
-# every retained draw and would falsely suggest that geometry changed.
 cut_cache_changed_rules <- function(states) {
   seen <- list()
   for (nodes in states) {

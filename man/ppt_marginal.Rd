@@ -16,32 +16,54 @@ ppt_marginal(
 )
 }
 \arguments{
-\item{object}{A fitted `ppt` object.}
+\item{object}{An object inheriting from class \code{ppt}, usually returned by
+\code{\link[=ppt_fit]{ppt_fit()}}, with retained posterior states or the prediction draws
+needed for the supplied \code{reference} design.}
 
-\item{variable}{One input name or one-based column index.}
+\item{variable}{A single input name or one-based integer column index in
+\verb{1, ..., d}, where \code{d} is the fitted input dimension. If the fitting data
+have no column names, use the generated names \code{"x1"}, \code{"x2"}, and so on.}
 
-\item{grid}{Optional numeric vector of values for the selected input. The
-default is an equally spaced grid over its fitted region.}
+\item{grid}{A nonempty, finite numeric vector of values for the selected
+input, all inside its fitted region. The supplied order is preserved.
+The default, \code{NULL}, creates \code{n} equally spaced values including both
+region endpoints.}
 
-\item{n}{Number of default grid values when `grid` is `NULL`.}
+\item{n}{Integer scalar of at least 2, default \code{100}, specifying the grid
+length when \code{grid = NULL}. Ignored when \code{grid} is supplied.}
 
-\item{level}{Pointwise posterior credible level.}
+\item{level}{Finite numeric scalar strictly between 0 and 1, default \code{0.95}.
+The summary contains the weighted posterior quantiles at
+\code{(1 - level) / 2} and \code{(1 + level) / 2}. This is a pointwise credible
+level, not a simultaneous-band level; it is validated but does not affect
+\code{type = "draws"}.}
 
-\item{average}{Divide by the volume of the other input dimensions. The
-default preserves the units and overall scale of the fitted intensity.}
+\item{average}{Logical scalar, default \code{TRUE}. If \code{TRUE}, divide each
+integrated intensity by the volume of all input dimensions except
+\code{variable}, preserving the fitted intensity's units. If \code{FALSE}, return
+the projected point-process intensity without this division.}
 
-\item{reference}{Optional numeric reference-design matrix with one column
-per input. When supplied, its rows approximate the uniform measure on the
-fitted region and explicitly select reference-design approximation instead
-of state-based integration.}
+\item{reference}{A finite numeric matrix with at least one row and one
+column per fitted input, in fitting-data column order and within the
+observation region. Its rows should approximate the uniform distribution
+over that region. At each grid value, its \code{variable} column is replaced
+and the resulting intensities are averaged over rows. This explicitly
+selects a reference-design approximation. The default, \code{NULL}, instead
+integrates the retained tree states using the model-specific method
+described above.}
 
-\item{type}{Return posterior summaries or the grid-by-draw matrix.}
+\item{type}{Character scalar selecting the output:
+\describe{
+\item{\code{"summary"}}{Pointwise posterior summaries; the default.}
+\item{\code{"draws"}}{The grid-by-posterior-draw intensity matrix, with
+posterior weights in its \code{weights} attribute.}
+}}
 }
 \value{
-For `type = "summary"`, a data frame containing the input value,
-  posterior mean and median, and pointwise credible limits. For
-  `type = "draws"`, a matrix with grid values in rows and posterior draws
-  in columns. Draw weights are stored in the `weights` attribute.
+For \code{type = "summary"}, a data frame containing the input value,
+posterior mean and median, and pointwise credible limits. For
+\code{type = "draws"}, a matrix with grid values in rows and posterior draws
+in columns. Draw weights are stored in the \code{weights} attribute.
 }
 \description{
 For input coordinate \eqn{x_j}, this function computes, for every posterior
@@ -55,10 +77,12 @@ stable analytic root-scaled logistic path integrals used during fitting
 (with adaptive quadrature for numerically ill-conditioned paths).
 Node-scaled logistic gates use deterministic adaptive quadrature for
 products with different node widths. Supplying
-`reference` explicitly instead uses a uniform reference-design
+\code{reference} explicitly instead uses a uniform reference-design
 approximation. Its one-coordinate substitution designs are evaluated from
-the stored posterior state draws, so `reference` need not have appeared in
-`predict_at` (rows that were pre-evaluated during fitting are reused when
-available). Set `average = FALSE` to omit the volume normalization and
+the stored posterior state draws, so \code{reference} need not have appeared in
+\code{predict_at}. Stored draws are reused when every row of the complete
+substitution design was evaluated during fitting; otherwise the full
+design is evaluated from the retained states. Set \code{average = FALSE} to
+omit the volume normalization and
 obtain the projected point-process intensity.
 }

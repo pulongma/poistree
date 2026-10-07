@@ -1,4 +1,3 @@
-// Internal regression entry points for the real PGAS cache and routing paths.
 #include "SMCtree.h"
 
 static SoftModel reuse_test_model(int exact_max, double defensive) {
@@ -66,7 +65,7 @@ Rcpp::List SPPT_forced_exact_probe(Rcpp::IntegerVector bits, double defensive) {
   smc.expand_node(root);
   smc.particles.assign(2, SoftParticleS());
   smc.particles[0].rec[1] = SoftRecord{root, -1, -1};
-  // Only the reference particle advances, isolating the no-replay path.
+
   smc.particles[1].rec[1] = SoftRecord{root, 0, -1};
   SoftRef ref;
   ref.node.resize(smc.M.n_nodes); ref.z.resize(6); ref.valid = true;

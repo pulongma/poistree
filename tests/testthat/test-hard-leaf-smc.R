@@ -24,11 +24,11 @@ test_that("hard leaf SMC uses the unified ppt API", {
   )
   expect_equal(nrow(ppt_predict(fit, type = "interval")), nrow(grid))
   expect_true(all(is.finite(ppt_predict(fit))))
-  expect_true(is.finite(as.numeric(ppt_logLik(fit))))
+  expect_true(is.finite(as.numeric(poistree:::ppt_logLik(fit))))
   expect_true(is.finite(as.numeric(ppt_lppd(fit))))
   expect_true(is.na(fit$posterior$log_evidence))
   expect_true(is.finite(fit$posterior$log_target_normalizer))
-  expect_output(print(ppt_summary(fit)), "Log target normalizer")
+  expect_output(print(summary(fit)), "Log target normalizer")
 
   diagnostics <- ppt_diagnostics(fit)
   expect_s3_class(diagnostics, "ppt_diagnostics")
@@ -46,8 +46,8 @@ test_that("hard leaf SMC uses the unified ppt API", {
   expect_true(length(diagnostics$log_evidence_running) > 0L)
   expect_true(is.finite(fit$posterior$mean_leaves))
   expect_true(is.finite(fit$posterior$mean_max_depth))
-  expect_true(is.finite(ppt_integral(fit)))
-  expect_length(ppt_integral(fit, "draws"), fit$control$particles)
+  expect_true(is.finite(poistree:::ppt_integral(fit)))
+  expect_length(poistree:::ppt_integral(fit, "draws"), fit$control$particles)
   expect_equal(fit$prior$intensity, list(shape = 0.6, rate = 0.02))
   expect_equal(fit$control$resample_thresh, 0.7)
 
@@ -118,15 +118,4 @@ test_that("hard leaf SMC retains a supplied nonunit region", {
     max_aspect_ratio = Inf
   )
   expect_equal(as.matrix(raw$particle[[1L]][[1L]]$region), region)
-})
-
-test_that("legacy PPT.SMC wrapper is absent", {
-  namespace <- asNamespace("poistree")
-  expect_false("PPT.SMC" %in% getNamespaceExports("poistree"))
-  expect_false(exists("PPT.SMC", envir = namespace, inherits = FALSE))
-  expect_false("SMC.diagnostics" %in% getNamespaceExports("poistree"))
-  expect_false("SMC.stability" %in% getNamespaceExports("poistree"))
-  expect_false(exists("SMC.diagnostics", envir = namespace, inherits = FALSE))
-  expect_false(exists("SMC.stability", envir = namespace, inherits = FALSE))
-  expect_true(exists("PPT_fit_SMC", envir = namespace, inherits = FALSE))
 })

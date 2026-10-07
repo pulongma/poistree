@@ -5,7 +5,6 @@
 #include <progress.hpp>
 #include <exception>
 
-// One instance per sequential chain: RcppProgress uses a singleton monitor.
 class PPTMCMCProgress {
  public:
   PPTMCMCProgress(unsigned long iterations, bool verbose)
@@ -14,7 +13,7 @@ class PPTMCMCProgress {
 
   ~PPTMCMCProgress() {
     if (std::uncaught_exceptions() > exceptions_) {
-      // The default Progress destructor otherwise fills an interrupted bar.
+
       Progress::monitor().abort();
       if (verbose_) REprintf("\n");
     }

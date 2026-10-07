@@ -1,8 +1,6 @@
 #ifndef POISTREE_PPT_SOFT_PCG_H
 #define POISTREE_PPT_SOFT_PCG_H
 
-// Allocation-collapsed gates: augment rates, update all log gates jointly,
-// restore every allocation, and discard the temporary rates before tree moves.
 struct PPSTPCGStats {
   arma::mat factor;
   arma::vec direction;
@@ -33,8 +31,8 @@ static void ppst_pcg_controls(bool pcg,bool informed,double target,
   if(adapt<0||adapt>burn) stop("ram_adapt must be between zero and burn");
 }
 
-// Vihola's RAM update, evaluated as a rank-one Cholesky update/downdate.
-// A failed floating-point update leaves the previous factor unchanged.
+// Apply Vihola's robust adaptive Metropolis update to the Cholesky factor.
+
 static bool ppst_ram_update(arma::mat&factor,const arma::vec&u,
     double alpha,double target,double step){
   const arma::uword p=factor.n_rows;
@@ -68,7 +66,7 @@ static bool ppst_ram_update(arma::mat&factor,const arma::vec&u,
   return true;
 }
 
-// Gamma draws on the log scale avoid underflow for a small shape parameter.
+// Draw a Gamma rate and return its logarithm.
 static double ppst_pcg_log_rate(double shape,double rate){
   double value;
   if(shape<1.0)
@@ -85,8 +83,8 @@ struct PPSTPCGEvaluation {
   arma::vec log_normalizers;
 };
 
-// Use the same family-aware basis and exposure as tree moves and prediction.
-// In particular, node-relative logistic gates need parent widths in both terms.
+// Evaluate the allocation-collapsed target with the selected gate family.
+
 static PPSTPCGEvaluation ppst_pcg_evaluate(const PPSTree&T,
     const std::vector<int>&leaves,const arma::vec&log_rate,
     const arma::mat&pts,const arma::mat&region,const arma::vec&gate,
@@ -137,7 +135,7 @@ static void ppst_pcg_restore(PPSTree&T,std::vector<int>&labels,
     double cumulative=0.0;int pick=-1;
     for(size_t k=0;k<leaves.size();k++){
       if(!std::isfinite(lw[k])) continue;
-      pick=leaves[k]; // Rounding fallback always has positive probability.
+      pick=leaves[k];
       cumulative+=std::exp(lw[k]-den);
       if(u<cumulative) break;
     }
@@ -184,13 +182,10 @@ static void ppst_pcg_block(PPSTree&T,std::vector<int>&labels,
       gate=proposal;current=std::move(proposed);stats.accepted++;
       if(cache) *cache=std::move(*proposed_cache);
     }
-    // Adapt only after label restoration and the collapsed tree moves.
+
     stats.direction=std::move(u);stats.last_alpha=alpha;stats.pending=true;
   }
-  // This exact independent conditional refresh also runs after rejection
-  // and when gate updating is disabled. Temporary rates leave scope here.
-  // The selected evaluation keeps weights paired with their normalization
-  // constants whether the gate proposal was accepted, rejected, or disabled.
+
   ppst_pcg_restore(T,labels,leaves,current);
 }
 

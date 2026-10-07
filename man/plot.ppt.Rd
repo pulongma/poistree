@@ -18,37 +18,64 @@
 )
 }
 \arguments{
-\item{x}{A fitted `ppt` object.}
+\item{x}{An object inheriting from class \code{ppt}, usually returned by
+\code{\link[=ppt_fit]{ppt_fit()}}.}
 
-\item{type}{Posterior median or mean.}
+\item{type}{Character scalar selecting the plotted intensity:
+\describe{
+\item{\code{"median"}}{Pointwise posterior median; the default.}
+\item{\code{"mean"}}{Pointwise posterior mean.}
+}}
 
-\item{dims}{One dimension for a curve or two dimensions for an intensity
-image.}
+\item{dims}{One or two distinct one-based input column indices, each in
+\verb{1, ..., d}, where \code{d} is the fitted input dimension. One index gives a
+curve; two give an intensity image. The default, \code{NULL}, selects input 1
+for a one-dimensional fit and inputs 1 and 2 otherwise. Unselected
+coordinates are fixed at their region midpoints when states are available.}
 
-\item{n}{Grid resolution per shown dimension.}
+\item{n}{Integer scalar of at least 2, default \code{60}, giving the number of
+equally spaced grid values per selected dimension. A two-dimensional
+image evaluates \code{n^2} locations. This is validated but not used when
+displaying a legacy fit without posterior states.}
 
-\item{level}{Pointwise credible level for the one-dimensional band.}
+\item{level}{Finite numeric scalar strictly between 0 and 1, default \code{0.95}.
+Sets the equal-tail pointwise credible band for a one-dimensional plot.
+With retained states it is validated for both plot types; a
+two-dimensional image does not display a band. Ignored for legacy fits
+without retained states.}
 
-\item{points}{Overlay the observed points: a rug in one dimension, white
-points on the surface in two dimensions.}
+\item{points}{Logical scalar, default \code{FALSE}. If \code{TRUE}, overlay the
+observed coordinates as a rug in one dimension or white points in two
+dimensions. Ignored for legacy fits without retained states.}
 
-\item{main, xlab, ylab}{Optional labels.}
+\item{main}{Plot title as a character string or expression, or \code{NULL} (the
+default) to construct a title from the model label and summary type,
+with a midpoint-slice label when needed.}
 
-\item{...}{Additional graphical arguments passed to [graphics::plot()] or
-[graphics::image()].}
+\item{xlab}{Horizontal-axis label as a character string or expression, or
+\code{NULL} (the default) to use the name of the first selected input.}
+
+\item{ylab}{Vertical-axis label as a character string or expression, or
+\code{NULL} (the default) to use \code{"Intensity"} for a curve or the second
+selected input name for an image.}
+
+\item{...}{Additional graphical arguments passed to \code{\link[graphics:plot.default]{graphics::plot()}} for
+curves and legacy displays, or \code{\link[graphics:image]{graphics::image()}} for intensity images.
+Do not repeat arguments already set by the method, including \code{type} and
+\code{ylim} for curves or \code{col} and \code{useRaster} for images.}
 }
 \value{
 The fitted object, invisibly.
 }
 \description{
 Plots the posterior intensity from the stored posterior state draws
-evaluated over an automatic grid (see [ppt_lambda()]), so it works for any
-fit whether or not `predict_at` was supplied. One selected dimension gives
+evaluated over an automatic grid (see \code{\link[=ppt_lambda]{ppt_lambda()}}), so it works for any
+fit whether or not \code{predict_at} was supplied. One selected dimension gives
 a curve with a shaded pointwise credible band; two selected dimensions
 give a raster image of the intensity surface. When the fit has more input
 dimensions than are shown, the remaining coordinates are fixed at the
 midpoints of their fitted ranges, so the display is a slice of the
 intensity. Fits from earlier package versions without stored state fall
-back to displaying the stored `predict_at` summaries. For
-publication-quality graphics use [ppt_lambda()] with \pkg{ggplot2}.
+back to displaying the stored \code{predict_at} summaries. For
+publication-quality graphics use \code{\link[=ppt_lambda]{ppt_lambda()}} with \pkg{ggplot2}.
 }

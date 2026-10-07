@@ -1,15 +1,6 @@
 #ifndef POISTREE_PPT_SOFT_SURROGATE_H
 #define POISTREE_PPT_SOFT_SURROGATE_H
 
-// Informed grow/prune/change proposals for PCG, scored by a hard surrogate:
-// hard-routed counts and box exposures of every candidate split of a node,
-// as in the shared-path hard SMC.  The proposal is the mixture
-//   q = (1 - eps) exp(tau * score) / sum + eps / (number of candidates),
-// and the MH ratio uses the true soft target with the exact forward and
-// reverse proposal probabilities, so the S-PPT posterior stays invariant.
-// Scores depend only on a node's box and hard-routed points, so each node is
-// scored once; the per-move cost is the two soft child exposures, as before.
-
 struct PPSTSurrogateEntry {
   std::vector<int> axis,per_axis;
   std::vector<double> cut,score;
@@ -22,7 +13,6 @@ class PPSTSurrogate {
   const double a_,b_,alpha_,eta_,tau_,eps_;
   std::unordered_map<std::string,PPSTSurrogateEntry> entries_;
 
-  // Box exposure with the hard-routing convention of the quadrature adapter.
   bool quadrature() const {
 #ifdef POISTREE_SPATIAL_QUADRATURE_H
     return qpp_active;
@@ -102,7 +92,7 @@ public:
     e.logS=ppst_logsumexp(t);
     return entries_[k]=std::move(e);
   }
-  // Index of a node's current split in its table.
+  // Return the index of the current split in its candidate table.
   int current(const PPSTNode&nd){
     const PPSTSurrogateEntry&e=entry(nd);
     for(size_t k=0;k<e.cut.size();k++)
@@ -120,14 +110,12 @@ public:
   }
 };
 
-// Mixture log probabilities.  `logW` normalizes the informed component over
-// the whole neighborhood, `n` counts its candidates for the uniform component.
+// Return a log proposal probability for the informed-uniform mixture.
+
 static inline double ppsts_log_q(double informed,double logW,long n,double eps){
   return ppsti_ladd(std::log1p(-eps)+informed-logW,std::log(eps)-std::log((double)n));
 }
 
-// Entries of a node set are looked up once per move and kept as pointers;
-// unordered_map keeps element references valid when it grows.
 struct PPSTSGrowSet {
   std::vector<int> nodes; std::vector<const PPSTSurrogateEntry*> entry;
   double logW; long n;
@@ -176,7 +164,7 @@ static double ppsts_log_change_q(const PPSTSurrogateEntry&e,int k,double tau,dou
   return ppsts_log_q(tau*e.score[k],e.logS,(long)e.cut.size(),eps);
 }
 
-// Draw a candidate index from one node's mixture.
+// Draw a candidate index from a node's proposal mixture.
 static int ppsts_draw_in_node(const PPSTSurrogateEntry&e,double tau,double eps){
   if(R::unif_rand()<eps) return ppst_runif_int((int)e.cut.size());
   std::vector<double> t(e.score.size());

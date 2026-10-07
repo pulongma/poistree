@@ -1,41 +1,87 @@
 #' Fit a point-process tree with a weighted integration rule
 #'
-#' Model intensity as a function of covariates while integrating over a physical
-#' domain using background covariates and their area or space-time exposures.
+#' Model intensity as a function of event covariates and approximate its
+#' physical-domain integral using background covariates and exposure weights.
+#' For intensity \eqn{\lambda}, background rows \eqn{u_k}, and weights
+#' \eqn{w_k}, the fitted likelihood uses
+#' \eqn{\int\lambda\approx\sum_k w_k\lambda(u_k)}.
 #'
-#' @param x Matrix of event covariates, one event per row.
-#' @param region Matrix with one row per covariate and lower/upper bounds in
-#'   its two columns. These bounds define tree splits, not physical exposure.
-#' @param background Matrix of covariates at integration locations.
-#' @param weights One finite positive physical-domain exposure per background
-#'   row. The integrated intensity is the weighted sum over these rows.
-#' @param gating Either `"soft"` (default) or `"hard"`.
-#' @param sampler `"pcg"` for soft gates or `"smc"` for hard gates.
-#' @param a,b Gamma leaf-intensity prior shape and rate. The default rate is
-#'   `a * sum(weights) / nrow(x)`.
-#' @param ... Other controls passed to [ppt_fit()], including `predict_at`,
-#'   `test`, `gate_scale`, chain settings, `seed`, and `verbose`.
-#' @param informed Logical; use hard-surrogate informed tree proposals for
-#'   soft PCG. The default `FALSE` preserves standard PCG proposals.
-#' @param proposal_temperature Informed PCG score temperature in `(0, 1]`,
-#'   default `0.5`. Used only when `informed = TRUE`.
-#' @param proposal_defensive Uniform proposal mixture weight in `[0, 1)`,
-#'   default `0.1`. Used only when `informed = TRUE`.
+#' @param x Finite numeric matrix of event covariates with at least one row
+#'   and one column. Rows are events and columns are covariates in the same
+#'   order as `region` and `background`. All rows must lie inside `region`.
+#' @param region Finite numeric matrix with one row per covariate and two
+#'   columns giving lower and strictly larger upper bounds. These bounds
+#'   define the tree's covariate domain and gate scaling; their product is
+#'   not used as the physical-domain exposure in this wrapper.
+#' @param background Finite numeric matrix of covariates at integration
+#'   locations, with at least one row and `ncol(x)` columns in the same
+#'   order as `x`. All rows must lie within `region`. Integration locations
+#'   need not coincide with events, and repeated covariate rows are allowed.
+#' @param weights Numeric vector of length `nrow(background)`, containing one
+#'   finite, strictly positive physical-domain exposure per integration row.
+#'   For example, weights may be cell areas or space-time volumes. They are
+#'   used as supplied, without normalization; `sum(weights)` is the total
+#'   exposure. Intensity is expressed per unit of this exposure.
+#' @param gating Character scalar:
+#'   \describe{
+#'     \item{`"soft"`}{Probabilistic split gates; the default.}
+#'     \item{`"hard"`}{Deterministic split gates.}
+#'   }
+#' @param sampler Character scalar determined by `gating` by default:
+#'   \describe{
+#'     \item{`"pcg"`}{Required for soft gates; partially collapsed Gibbs.}
+#'     \item{`"smc"`}{Required for hard gates; shared-engine SMC.}
+#'   }
+#'   Other gating/sampler combinations are rejected by this wrapper.
+#' @param a Positive finite scalar Gamma leaf-intensity prior shape,
+#'   default `0.5`.
+#' @param b Gamma leaf-intensity prior rate. Default `NULL` resolves to
+#'   `a * sum(weights) / nrow(x)`. Require a positive finite scalar for
+#'   soft PCG; hard SMC also accepts zero under its unnormalized prior
+#'   convention. See \link{ppt_controls} for the distinction.
+#' @param ... Named controls passed to [ppt_fit()] for the selected backend;
+#'   see \link{ppt_controls} for defaults, ranges, and usage. For soft PCG these
+#'   include `gate_family`, `gate_scale`, `gate_structure`, chain controls,
+#'   `predict_at`, and `test`. Hard SMC accepts particle controls, but its
+#'   `engine` must be `"shared"`. Prediction and test matrices contain
+#'   covariates with the same column order and domain as `x`.
+#' @param informed Logical scalar, default `FALSE`. For soft PCG, `TRUE`
+#'   enables cached hard-surrogate tree proposals with the same weighted
+#'   exposure rule. Hard SMC requires `FALSE`.
+#' @param proposal_temperature Finite numeric scalar in `(0, 1]`, default
+#'   `0.5`. With informed soft PCG, multiplies the surrogate log score before
+#'   exponentiation; smaller values flatten the informed proposal weights.
+#'   Unused unless `informed = TRUE`.
+#' @param proposal_defensive Finite numeric scalar in `[0, 1)`, default
+#'   `0.1`. With informed soft PCG, the fraction of the proposal mixture
+#'   assigned to uniform candidate selection, with the remainder assigned
+#'   to informed weights. Unused unless `informed = TRUE`.
 #'
-#' @details Soft PCG supports both root- and node-scaled gates. Informed
-#'   proposals use hard-routed counts and weighted background exposures for
-#'   proposal scores; acceptance uses the soft quadrature target and the
-#'   forward/reverse proposal probabilities. Hard SMC uses the shared engine.
-#'   Other samplers are not supported by this wrapper.
+#' @details
+#' Soft PCG supports root- and node-scaled logistic gates and node-scaled
+#' compact gates. Informed proposals use hard-routed event counts and
+#' weighted background exposures for their surrogate scores; the acceptance
+#' ratio uses the soft weighted-integration target and forward/reverse
+#' proposal probabilities. This wrapper changes the integration measure;
+#' it does not change the definition of covariate split candidates.
 #'
-#'   Fits run sequentially within one R process. The temporary integration
-#'   rule is cleared after fitting, including on errors. [ppt_integral()] and
-#'   [ppt_lppd()] use the stored weighted integrals; [ppt_lambda()] evaluates
-#'   saved tree states at new covariates. `ppt_marginal()` still integrates
-#'   over covariate-box coordinates and is not a physical-domain marginal
-#'   for these fits.
-#' @return A `ppt` fit with the integration rule in `data$quadrature` and
-#'   the selected proposal controls in `control`.
+#' Fits run sequentially within one R process. Nested weighted-integration
+#' fits are unsupported. The temporary integration rule is cleared after
+#' fitting, including on errors. Post-fit functions use the following rules:
+#' \itemize{
+#'   \item `fit$posterior$integrated_intensity_draws` and
+#'     `fit$posterior$mean_integrated_intensity` store the weighted integrals;
+#'     [ppt_lppd()] uses these integrals when scoring a test pattern.
+#'   \item [ppt_lambda()] evaluates saved tree states at new covariates.
+#'   \item [ppt_marginal()] integrates over covariate-box coordinates;
+#'     it is not a physical-domain marginal for these fits.
+#' }
+#' @return A `ppt` object with the usual fit components described in
+#'   [ppt_fit()]. In addition, `data$quadrature` contains `background`,
+#'   `weights`, and `total_exposure = sum(weights)`; `model$integration`
+#'   identifies weighted physical-domain integration. Resolved controls
+#'   are stored in `control`.
+#' @seealso [ppt_fit()], \link{ppt_controls}
 #' @md
 #' @export
 #' @examples
@@ -102,15 +148,41 @@ ppt_fit_quadrature <- function(x, region, background, weights,
 
 #' Inspect a one-split quadrature geometry
 #'
-#' @param background,weights,region Integration rule and covariate bounds, as
-#'   in [ppt_fit_quadrature()].
-#' @param axis One-based split coordinate.
-#' @param cut Split location.
-#' @param side `-1L` for the left child, `1L` for the right child.
-#' @param gate Logistic gate sharpness.
-#' @return Hard weighted exposure and soft leaf-geometry diagnostics.
+#' Compare the exposure of a hard child box with the weighted exposure of
+#' the corresponding single logistic gate over the full integration rule.
+#'
+#' @param background Finite numeric matrix of covariates at integration
+#'   locations, with at least one row. Columns correspond to rows of `region`.
+#'   Every row must lie inside `region`.
+#' @param weights Numeric vector of length `nrow(background)` containing
+#'   strictly positive, finite exposure weights. Values are not normalized.
+#' @param region Finite numeric matrix with `ncol(background)` rows and two
+#'   columns containing lower and strictly larger upper bounds.
+#' @param axis Integer scalar from `1` to `ncol(background)` identifying the
+#'   split coordinate, using R's one-based indexing.
+#' @param cut Finite numeric scalar split location, strictly inside the
+#'   interval `region[axis, ]`.
+#' @param side Integer scalar selecting the child:
+#'   \describe{
+#'     \item{`-1L`}{Left child; the default. Hard routing uses `x[axis] < cut`.}
+#'     \item{`1L`}{Right child. Hard routing uses `x[axis] >= cut`.}
+#'   }
+#' @param gate Positive finite logistic sharpness, default `10`. Supply a
+#'   scalar or a vector of length `ncol(background)`; the selected coordinate
+#'   uses `gate[axis]` after scalar recycling. The right-gate probability is
+#'   `plogis(gate[axis] * (x[axis] - cut) / diff(region[axis, ]))`.
+#'   This helper uses root-relative logistic scaling.
+#' @return A list containing:
+#'   \describe{
+#'     \item{`hard_exposure`}{Sum of weights for background rows routed to
+#'       the selected hard child. The outer upper region boundary is included.}
+#'     \item{`soft`}{A list with `phi` (selected-child membership probability
+#'       at each background row), `log_phi` (its log probability), and
+#'       `H = sum(weights * phi)` (the soft child exposure).}
+#'   }
+#' @seealso [ppt_fit_quadrature()]
 #' @md
-#' @export
+#' @keywords internal
 ppt_quadrature_geometry <- function(background, weights, region, axis, cut,
                                     side = -1L, gate = 10) {
   qpp_set_quadrature(as.matrix(background), as.numeric(weights), as.matrix(region))

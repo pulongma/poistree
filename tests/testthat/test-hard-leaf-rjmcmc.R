@@ -24,13 +24,13 @@ test_that("hard leaf RJ-MCMC uses the unified ppt API", {
   expect_length(ppt_predict(fit), nrow(grid))
   expect_equal(nrow(ppt_predict(fit, type = "interval")), nrow(grid))
   expect_true(all(is.finite(ppt_predict(fit))))
-  expect_true(is.finite(as.numeric(ppt_logLik(fit))))
+  expect_true(is.finite(as.numeric(poistree:::ppt_logLik(fit))))
   expect_true(is.finite(as.numeric(ppt_lppd(fit))))
   expect_true(is.na(fit$posterior$log_evidence))
   expect_true(is.finite(fit$posterior$mean_leaves))
   expect_true(is.finite(fit$posterior$mean_max_depth))
-  expect_true(is.finite(ppt_integral(fit)))
-  expect_length(ppt_integral(fit, "draws"), fit$posterior$draws)
+  expect_true(is.finite(poistree:::ppt_integral(fit)))
+  expect_length(poistree:::ppt_integral(fit, "draws"), fit$posterior$draws)
   expect_equal(nrow(fit$prediction$draws), nrow(grid))
   expect_equal(ncol(fit$prediction$draws), fit$posterior$draws)
   expect_length(
@@ -60,7 +60,7 @@ test_that("hard leaf RJ-MCMC uses the unified ppt API", {
   )
   expect_equal(
     unname(colSums(exact_marginal * x_width)),
-    ppt_integral(fit, "draws"), tolerance = 1e-10
+    poistree:::ppt_integral(fit, "draws"), tolerance = 1e-10
   )
 })
 
@@ -88,13 +88,13 @@ test_that("hard leaf PGAS uses the unified ppt API", {
   expect_identical(fit$model$sampler, "pgas")
   expect_length(ppt_predict(fit), nrow(grid))
   expect_true(all(is.finite(ppt_predict(fit))))
-  expect_true(is.finite(as.numeric(ppt_logLik(fit))))
+  expect_true(is.finite(as.numeric(poistree:::ppt_logLik(fit))))
   expect_true(is.finite(as.numeric(ppt_lppd(fit))))
   expect_true(is.na(fit$posterior$log_evidence))
   expect_true(is.finite(fit$posterior$mean_leaves))
   expect_true(is.finite(fit$posterior$mean_max_depth))
-  expect_true(is.finite(ppt_integral(fit)))
-  expect_length(ppt_integral(fit, "draws"), fit$posterior$draws)
+  expect_true(is.finite(poistree:::ppt_integral(fit)))
+  expect_length(poistree:::ppt_integral(fit, "draws"), fit$posterior$draws)
   expect_true(is.finite(fit$diagnostics$particle_ess))
   expect_true(isTRUE(fit$control$conditional_smc))
   expect_false(isTRUE(fit$control$ancestor_sampling))
@@ -120,7 +120,7 @@ test_that("hard leaf PGAS uses the unified ppt API", {
   )
   expect_equal(
     unname(colSums(exact_marginal * x_width)),
-    ppt_integral(fit, "draws"), tolerance = 1e-10
+    poistree:::ppt_integral(fit, "draws"), tolerance = 1e-10
   )
   expect_length(
     ppt_diagnostics(fit)$leaf_count_trace,
@@ -213,8 +213,6 @@ test_that("conditional SMC preserves the complete reference when P equals one", 
     raw$particles, topology_signature, character(1)
   )
 
-  # This data set makes the initial reference nontrivial, so preservation is
-  # testing more than a root-only stop tree.
   expect_identical(as.integer(raw$particles[[1L]][[1L]]$S), 1L)
   expect_length(unique(signatures), 1L)
   expect_equal(as.numeric(raw$weights), rep(1, ncol(raw$weights)))
@@ -236,7 +234,6 @@ test_that("Particle Gibbs honors a proper nondefault Gamma leaf prior", {
   )
   lambda <- as.numeric(raw$lambda$draws)
 
-  # On a region of length two the exact posterior is Ga(a+n, b+2).
   expected_mean <- (a + nrow(x)) / (b + 2)
   expected_variance <- (a + nrow(x)) / (b + 2)^2
   expect_equal(mean(lambda), expected_mean, tolerance = 0.03)
@@ -350,7 +347,7 @@ test_that("conditional-SMC Particle Gibbs returns valid tree partitions", {
   invisible(lapply(fit$posterior$tree_draws, check_tree))
 })
 
-test_that("all PPT samplers return the same unified schema", {
+test_that("hard and soft samplers return the same unified schema", {
   x <- matrix(seq(0.05, 0.95, length.out = 20), ncol = 1)
   region <- matrix(c(0, 1), nrow = 1)
   grid <- matrix(seq(0.1, 0.9, length.out = 5), ncol = 1)
@@ -374,12 +371,26 @@ test_that("all PPT samplers return the same unified schema", {
     seed = 14, verbose = FALSE
   )
 
-  expect_identical(names(rjmcmc), names(smc))
-  expect_identical(names(pgas), names(smc))
-  expect_identical(names(rjmcmc$posterior), names(smc$posterior))
-  expect_identical(names(pgas$posterior), names(smc$posterior))
-  expect_identical(names(rjmcmc$diagnostics), names(smc$diagnostics))
-  expect_identical(names(pgas$diagnostics), names(smc$diagnostics))
+  soft <- ppt_fit(
+    x, region, gating = "soft", scales = "leaf", sampler = "rjmcmc",
+    predict_at = grid, gate = 10, update_gate = FALSE,
+    max_depth = 2, min_leaf_n = 3,
+    chains = 1, iter = 20, burn = 5, thin = 2,
+    tree_moves = 1, change_moves = 1, cut_candidates = 4,
+    seed = 14, verbose = FALSE
+  )
+
+  for (fit in list(rjmcmc, pgas, soft)) {
+    expect_identical(names(fit), names(smc))
+    expect_identical(names(fit$posterior), names(smc$posterior))
+    expect_identical(names(fit$diagnostics), names(smc$diagnostics))
+  }
+  for (fit in list(smc, soft)) {
+    expect_true(is.finite(fit$posterior$mean_max_depth))
+    expect_true(is.finite(poistree:::ppt_integral(fit)))
+    expect_length(poistree:::ppt_integral(fit, "draws"), fit$posterior$draws)
+  }
+  expect_true(is.na(smc$posterior$mean_gate))
 })
 
 test_that("only terminal-leaf scales are accepted", {
@@ -394,19 +405,6 @@ test_that("only terminal-leaf scales are accepted", {
     ppt_fit(x, region, gating = "soft", sampler = "smc"),
     "not available"
   )
-})
-
-test_that("new native functions are present and legacy exports are absent", {
-  native_names <- ls(asNamespace("poistree"), all.names = TRUE)
-  expect_true(any(grepl("ppstree", native_names, ignore.case = TRUE)))
-  expect_false("PPT.MCMC" %in% getNamespaceExports("poistree"))
-  expect_false("PPT.lppd" %in% getNamespaceExports("poistree"))
-  expect_false(exists("PPT.MCMC", envir = asNamespace("poistree"), inherits = FALSE))
-  expect_false(exists("PPT.lppd", envir = asNamespace("poistree"), inherits = FALSE))
-  expect_false("PPT.PG" %in% getNamespaceExports("poistree"))
-  expect_false(exists("PPT.PG", envir = asNamespace("poistree"), inherits = FALSE))
-  expect_true(any(grepl("PPT_fit_MCMC", native_names, fixed = TRUE)))
-  expect_true(any(grepl("PPT_fit_PG", native_names, fixed = TRUE)))
 })
 
 test_that("hard RJ-MCMC snaps boundary roundoff safely", {

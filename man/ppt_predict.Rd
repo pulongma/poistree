@@ -15,25 +15,42 @@ ppt_predict(
 \method{predict}{ppt}(object, newdata = NULL, ...)
 }
 \arguments{
-\item{object}{A fitted `ppt` object.}
+\item{object}{An object inheriting from class \code{ppt}, usually returned by
+\code{\link[=ppt_fit]{ppt_fit()}}. Evaluation at locations not stored during fitting requires
+retained posterior states.}
 
-\item{newdata}{Optional prediction matrix.}
+\item{newdata}{A finite numeric matrix with one row per prediction location
+and one column per fitted input, in the same column order as the fitting
+data. All locations must lie in the fitted observation region. The
+default, \code{NULL}, returns summaries at the stored \code{predict_at} locations;
+it does not generate a grid. A matrix with zero rows is allowed. Supplied
+row order and repeated locations are preserved.}
 
-\item{type}{Posterior mean, median, or interval.}
+\item{type}{Character scalar selecting the returned summary:
+\describe{
+\item{\code{"median"}}{Posterior median intensity; the default.}
+\item{\code{"mean"}}{Posterior mean intensity.}
+\item{\code{"interval"}}{Posterior median and lower and upper limits of the
+pointwise 95 percent credible interval.}
+}}
 
-\item{...}{Reserved for future prediction backends.}
+\item{...}{For \code{predict()}, arguments forwarded to \code{ppt_predict()}, notably
+\code{type}. Additional arguments received directly by \code{ppt_predict()} are
+currently ignored.}
 }
 \value{
-A numeric vector for `mean` or `median`, or a data frame for
-  `interval`.
+A numeric vector for \code{mean} or \code{median}, or a data frame for
+\code{interval}.
 }
 \description{
-Rows of `newdata` that were part of `predict_at` during fitting are served
-from the stored posterior summaries. Any other rows are evaluated
-post hoc from the retained posterior state draws via the same machinery as
-[ppt_lambda()], so prediction no longer requires listing every location
-in `predict_at` before fitting. (The two paths can differ very slightly in
-the interval convention: stored summaries follow the fitting backend,
-post-hoc summaries use the weighted quantile of [ppt_lambda()].)
+When every requested row was part of \code{predict_at} during fitting, stored
+posterior summaries are returned. Otherwise the complete request is
+summarized from retained draws using \code{\link[=ppt_lambda]{ppt_lambda()}}, reusing available
+stored draws and evaluating missing locations from the posterior states.
+Prediction therefore does not require listing every location in
+\code{predict_at} before fitting. The two paths can use different quantile
+conventions: stored summaries follow the fitting backend, whereas
+post-hoc summaries use the weighted quantile of \code{\link[=ppt_lambda]{ppt_lambda()}}. Their
+medians and interval endpoints can therefore differ.
 Mean-only predictions avoid calculating posterior quantiles.
 }

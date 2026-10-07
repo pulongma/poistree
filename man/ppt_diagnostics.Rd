@@ -2,26 +2,54 @@
 % Please edit documentation in R/ppt-companions.R
 \name{ppt_diagnostics}
 \alias{ppt_diagnostics}
+\alias{print.ppt_diagnostics}
+\alias{plot.ppt_diagnostics}
 \title{Summarize sampler diagnostics}
 \usage{
 ppt_diagnostics(object, plot = FALSE)
+
+\method{print}{ppt_diagnostics}(x, ...)
+
+\method{plot}{ppt_diagnostics}(x, ...)
 }
 \arguments{
-\item{object}{A fitted `ppt` object.}
+\item{object}{An object inheriting from class \code{ppt}, usually returned by
+\code{\link[=ppt_fit]{ppt_fit()}}. Diagnostics depend on the fitted sampler; fields not
+supplied by its backend are empty or \code{NA}.}
 
-\item{plot}{Draw an acceptance-rate bar plot.}
+\item{plot}{Logical scalar, default \code{FALSE}. If \code{TRUE}, also call the
+diagnostic plot method:
+\describe{
+\item{SMC and PGAS}{Plot the available particle effective sample size
+(ESS) history. An error is raised if no positive finite ESS values
+are available.}
+\item{Other samplers}{Plot the available acceptance rates as bars.
+An error is raised if no acceptance summaries are available.}
+}}
+
+\item{x}{An object of class \code{ppt_diagnostics}, returned by
+\code{\link[=ppt_diagnostics]{ppt_diagnostics()}}.}
+
+\item{...}{For the plot method, additional graphical arguments passed to
+\code{\link[graphics:plot.default]{graphics::plot()}} for SMC/PGAS or \code{\link[graphics:barplot]{graphics::barplot()}} for other
+samplers. Arguments already supplied by the method must not be repeated:
+\code{type}, \code{xlab}, \code{ylab}, and \code{main} for ESS plots; \code{ylim}, \code{ylab}, \code{main},
+and \code{las} for acceptance plots. The print method ignores \code{...}.}
 }
 \value{
-An object of class `ppt_diagnostics`.
+\code{ppt_diagnostics()} returns a list of class \code{ppt_diagnostics}
+containing model and sampler labels, posterior draw and tree summaries,
+acceptance rates, and available scalar histories. The print and plot
+methods return their input invisibly.
 }
 \description{
 Reports the acceptance information and scalar traces exposed by the selected
 backend together with the number of retained draws.
-For SMC, the legacy `log_evidence_increment` and `log_evidence_running`
+For SMC, the legacy \code{log_evidence_increment} and \code{log_evidence_running}
 fields contain increments and cumulative sums of the log normalizer
 relative to the root score. They are not absolute model evidence.
-With `b = 0`, these use the backend's formal improper-prior leaf scores.
-For PCG, `gate_joint_acceptance` reports joint gate acceptance and `ram`
+With \code{b = 0}, these use the backend's formal improper-prior leaf scores.
+For PCG, \code{gate_joint_acceptance} reports joint gate acceptance and \code{ram}
 contains final proposal factors/covariances and adaptation counts per chain.
 The per-dimension gate acceptance entries repeat the joint acceptance rate.
 }

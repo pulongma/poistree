@@ -35,10 +35,10 @@ test_that("all fitting backends reject malformed and unsafe maximum depths", {
 })
 
 test_that("depth zero remains a valid root-only model where supported", {
-  x <- matrix(c(0.2, 0.8), ncol = 1L)
+  x <- matrix(seq(0.05, 0.95, length.out = 20L), ncol = 1L)
   region <- matrix(c(0, 1), nrow = 1L)
   for (backend in depth_test_backends()) {
-    args <- c(list(x = x, region = region, max_depth = 0L), backend)
+    args <- c(list(x = x, region = region, max_depth = 0L, a = 0.5, b = 1), backend)
     if (backend$gating == "soft" && backend$sampler == "pgas") {
       expect_error(do.call(ppt_fit, args), "max_depth")
     } else {
@@ -46,13 +46,20 @@ test_that("depth zero remains a valid root-only model where supported", {
       expect_identical(fit$control$max_depth, 0L)
       expect_true(all(fit$diagnostics$max_depth_trace == 0L))
       expect_true(all(fit$diagnostics$leaf_count_trace == 1L))
-      expect_true(is.finite(as.numeric(ppt_logLik(fit))))
+      expect_true(is.finite(as.numeric(poistree:::ppt_logLik(fit))))
+      if (backend$sampler == "smc") {
+        expected <- lgamma(0.5 + nrow(x)) - lgamma(0.5) -
+          (0.5 + nrow(x)) * log(2)
+        expect_equal(fit$posterior$log_target_normalizer, expected,
+                     tolerance = 1e-12)
+        expect_true(is.na(fit$posterior$log_evidence))
+        expect_equal(ppt_lambda(fit, at = x, type = "draws")$draws,
+                     fit$prediction$draws, tolerance = 1e-12)
+      }
     }
   }
 })
 
-# Direct internal entrypoints must reject the request before Rcpp narrows a
-# fractional/large depth to an int or the backend sizes an exponential array.
 depth_native_calls <- function() {
   x <- matrix(c(0.2, 0.8), ncol = 1L)
   region <- matrix(c(0, 1), nrow = 1L)
@@ -127,7 +134,7 @@ test_that("eager tree storage is checked before allocating particle arrays", {
     args <- c(list(x = x, region = region, max_depth = 20L), backend)
     expect_error(do.call(ppt_fit, args), "tree storage limit")
   }
-  # Check the budget boundary itself without constructing either array.
+
   expect_invisible(poistree:::.ppt_validate_tree_storage(0L, 8388606, "dense"))
   expect_error(poistree:::.ppt_validate_tree_storage(0L, 8388607, "dense"),
                "tree storage limit")

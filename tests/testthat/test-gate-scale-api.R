@@ -1,4 +1,3 @@
-# gate_structure controls parameter sharing; gate_scale controls the width.
 gate_scale_test_args <- function() {
   list(
     x = cbind(c(.08, .21, .34, .62, .79, .93),
@@ -45,8 +44,7 @@ test_that("omitting gate_scale preserves historical logistic and compact fits", 
       expect_identical(old_default$model$gate_scale, scale)
       expect_identical(old_default$prior$gate$scale, scale)
       expect_identical(old_default$control$gate_scale, scale)
-      # Serialized fits made before gate_scale was introduced have no new
-      # metadata fields. Their stored gate_mode remains authoritative.
+
       legacy <- old_default
       legacy$model$gate_scale <- legacy$prior$gate$scale <-
         legacy$control$gate_scale <- NULL
@@ -69,7 +67,7 @@ test_that("all soft MCMC samplers retain node-scale state for both structures", 
       expect_identical(fit$posterior$state$gate_mode, 3L)
       expect_true(all(is.finite(fit$prediction$draws)))
       expect_true(all(fit$prediction$draws > 0))
-      # Call the state evaluator directly so this is not the precomputed path.
+
       evaluated <- poistree:::.ppt_state_eval(fit, fit$prediction$locations)
       expect_equal(evaluated, fit$prediction$draws, tolerance = 1e-10)
       restored <- unserialize(serialize(fit, NULL))
@@ -84,8 +82,6 @@ test_that("all soft MCMC samplers retain node-scale state for both structures", 
   }
 })
 
-# A repeated split on x has parent width .8 rather than the root width 2.
-# No inference kernel is involved, so the check does not depend on visited trees.
 node_scale_known_fit <- function(mode = 3L) {
   nodes <- cbind(
     heap_id = 1:7, axis = c(0, 0, 1, -1, -1, -1, -1),

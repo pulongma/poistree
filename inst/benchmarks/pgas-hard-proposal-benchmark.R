@@ -1,7 +1,5 @@
 # Usage: Rscript pgas-hard-proposal-benchmark.R LIBRARY NEW_OUTPUT_DIRECTORY
-# One installed package; 18 fits with paired seeds and randomized method order.
-# ESS estimates from these short chains are rough mixing diagnostics, not
-# evidence of convergence, posterior accuracy, or general efficiency gains.
+
 main <- function() {
   args <- commandArgs(trailingOnly = TRUE)
   if (length(args) != 2L) {
@@ -40,7 +38,6 @@ main <- function() {
   order_seed <- 20261005L
   RNGkind("Mersenne-Twister", "Inversion", "Rejection")
 
-  # Generate all execution orders before fitting, independently of fit RNG use.
   set.seed(order_seed)
   blocks <- list()
   for (case_name in names(cases)) {

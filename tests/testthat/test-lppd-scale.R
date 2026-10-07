@@ -13,9 +13,9 @@ test_that("scaled and plug-in lppd match direct computations", {
   )
   for (fit in fits) {
     d <- ppt_lambda(fit, at = test, type = "draws")
-    lp <- colSums(log(r * d$draws)) - r * ppt_integral(fit, "draws")
+    lp <- colSums(log(r * d$draws)) - r * poistree:::ppt_integral(fit, "draws")
     posterior <- max(lp) + log(sum(d$weights * exp(lp - max(lp))))
-    plugin <- sum(log(r * ppt_lambda(fit, at = test)$mean)) - r * ppt_integral(fit)
+    plugin <- sum(log(r * ppt_lambda(fit, at = test)$mean)) - r * poistree:::ppt_integral(fit)
     expect_equal(as.numeric(ppt_lppd(fit, test)), fit$posterior$lppd, tolerance = 1e-8)
     expect_equal(as.numeric(ppt_lppd(fit, scale = r)), posterior, tolerance = 1e-8)
     expect_equal(as.numeric(ppt_lppd(fit, scale = r, type = "plugin")), plugin, tolerance = 1e-8)

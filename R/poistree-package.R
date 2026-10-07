@@ -15,9 +15,11 @@
 #'
 #' The fitted object has class `ppt`. Use [ppt_predict()] for posterior
 #' intensity summaries, [ppt_marginal()] for one-input marginal intensity
-#' curves, [plot.ppt()] for fitted intensities, [ppt_summary()]
-#' for model summaries, [ppt_logLik()] and [ppt_lppd()] for likelihood and
-#' predictive evaluation, and [ppt_diagnostics()] for sampler diagnostics.
+#' curves, [plot.ppt()] for fitted intensities, `summary()` for model
+#' summaries, [ppt_lppd()] for predictive evaluation, and [ppt_diagnostics()]
+#' for sampler diagnostics and diagnostic plots. Raw diagnostics are stored
+#' in `fit$diagnostics`; the posterior mean in-sample log likelihood
+#' is stored in `fit$posterior$mean_log_likelihood`.
 #'
 #' @section Model configurations:
 #' \tabular{lll}{
@@ -56,30 +58,26 @@
 #'   x2 = seq(0, 1, length.out = 30)
 #' ))
 #'
-#' # Hard terminal-leaf PPT fitted by SMC
 #' fit_ppt <- ppt_fit(
 #'   x, region, gating = "hard", scales = "leaf", sampler = "smc",
 #'   predict_at = grid, particles = 500
 #' )
 #'
-#' # Hard terminal-leaf PPT fitted by RJ-MCMC
 #' fit_ppt_mcmc <- ppt_fit(
 #'   x, region, gating = "hard", scales = "leaf", sampler = "rjmcmc",
 #'   predict_at = grid, chains = 2, iter = 2000, burn = 500
 #' )
 #'
-#' ppt_summary(fit_ppt_mcmc)
+#' summary(fit_ppt_mcmc)
 #' intensity <- ppt_predict(fit_ppt_mcmc, type = "interval")
 #' plot(fit_ppt_mcmc)
 #' ppt_diagnostics(fit_ppt_mcmc)
 #'
-#' # Hard terminal-leaf PPT fitted by conditional-SMC Particle Gibbs
 #' fit_ppt_pgas <- ppt_fit(
 #'   x, region, gating = "hard", scales = "leaf", sampler = "pgas",
 #'   predict_at = grid, particles = 200, iter = 500, burn = 100
 #' )
 #'
-#' # Soft terminal-leaf PPT fitted by RJ-MCMC; this is the default model.
 #' fit_sppt <- ppt_fit(
 #'   x, region, predict_at = grid,
 #'   chains = 2, iter = 2000, burn = 500
@@ -87,6 +85,7 @@
 #' }
 #'
 #' @docType package
+#' @md
 #' @name poistree
 #' @aliases poistree-package
 #' @keywords internal

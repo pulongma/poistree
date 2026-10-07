@@ -1,13 +1,6 @@
 #ifndef POISTREE_PPT_SOFT_INFORMED_H
 #define POISTREE_PPT_SOFT_INFORMED_H
 
-// Exact locally balanced MH on the collapsed augmented state (tree, labels).
-// The ordinary grow/prune and change proposal laws include Bernoulli label
-// proposals. Their spatial factors cancel from the MH ratio, leaving a ratio
-// that depends on the proposed left count, not on which observations go left.
-// Sum these balanced masses by a Poisson-binomial recursion, then sample a
-// count and a conditional Bernoulli subset. No allocation space is enumerated
-// by the fitting algorithm.
 #include <memory>
 #include <sstream>
 #include <iomanip>
@@ -34,10 +27,6 @@ static int ppsti_sample_log(const std::vector<double>&lp){
 struct PPSTICuts { std::vector<std::vector<double> > axis; bool any=false; };
 struct PPSTIRouting { std::vector<double> left,right; };
 
-// These bounded caches contain only geometry and gate-dependent basis terms.
-// Cut support survives label/gate changes; exposures/routing are cleared after
-// a gate sweep. Neighborhood masses are separately invalidated after every
-// label/gate sweep, and reused after rejected tree proposals.
 struct PPSTIContext {
   const arma::mat &pts,&region;
   const arma::vec &gate;
@@ -117,8 +106,8 @@ struct PPSTINeighborhood {
   double logZ=-std::numeric_limits<double>::infinity();
 };
 
-// Distribution of the left-label count on a specified range, in log space.
-// O(m^2) arithmetic and O(m) memory, including deterministic compact gates.
+// Return the left-label count distribution on a specified range in log space.
+
 static std::vector<double> ppsti_counts(const PPSTIAction&act,int begin,int end){
   const double neg=-std::numeric_limits<double>::infinity();
   std::vector<double> out(end-begin+1,neg); out[0]=0.0;
@@ -150,8 +139,7 @@ static PPSTINeighborhood ppsti_neighborhood(const PPSTree&T,
     if(kv.second.axis<0 && ctx.cuts(kv.second)->any) G.push_back(kv.first);
     if(ppsti_is_cherry(T,kv.first)) P.push_back(kv.first);
   }
-  // A stable action order also makes diagnostic comparisons independent of
-  // unordered_map insertion order and cache hits.
+
   std::sort(G.begin(),G.end()); std::sort(P.begin(),P.end());
   std::vector<int> nodes=kind==0 ? G : P;
   for(int id:nodes){
@@ -229,9 +217,8 @@ static PPSTINeighborhood ppsti_neighborhood(const PPSTree&T,
   return out;
 }
 
-// Draw Bernoulli allocations conditional on their total, using a binary
-// divide-and-conquer recursion. Unlike a full forward/backward table this
-// needs O(m) working memory; total arithmetic remains O(m^2).
+// Draw Bernoulli allocations conditional on their total count.
+
 static void ppsti_subset(const PPSTIAction&act,int begin,int end,int count,
     std::vector<int>&labels){
   int m=end-begin;

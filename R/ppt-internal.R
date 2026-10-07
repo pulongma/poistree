@@ -1,10 +1,8 @@
+# Build the registry key for a model and sampler combination.
 .ppt_backend_key <- function(gating, scales, sampler) {
   paste(c(gating, scales, sampler), collapse = ":")
 }
 
-# Backend names are stored as strings so this registry can be created before
-# the implementation functions are loaded. Add future models here; the public
-# `ppt_fit()` signature and fitted-object contract need not change.
 .ppt_backend_registry <- c(
   "hard:leaf:smc" = ".ppt_fit_hard_leaf_smc",
   "hard:leaf:rjmcmc" = ".ppt_fit_hard_leaf_rjmcmc",
@@ -16,17 +14,21 @@
   "soft:leaf:pgas" = ".ppt_fit_soft_leaf_pgas"
 )
 
+# Extract the nonmissing model component labels.
 .ppt_model_components <- function(model) {
   out <- unlist(model[c("gating", "scales", "sampler")], use.names = TRUE)
   out[!is.na(out)]
 }
 
+# Return the display label for the selected gating mechanism.
 .ppt_model_label <- function(gating, scales) {
   if (identical(gating, "soft")) "S-PPT" else "PPT"
 }
 
+# Use the fallback value when the first value is NULL.
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
+# Represent a hard tree by its sorted terminal-box boundaries.
 .tree_sig <- function(nodes) {
   leaves <- Filter(
     function(node) !is.null(node) && isTRUE(node$is_leaf),
@@ -39,10 +41,12 @@
   paste(sort(boxes), collapse = ";")
 }
 
+# Count distinct hard-tree boundary signatures.
 .n_unique_trees <- function(particles) {
   length(unique(vapply(particles, .tree_sig, character(1))))
 }
 
+# Count the terminal nodes in each particle tree.
 .leaves_per_particle <- function(particles) {
   vapply(particles, function(nodes) {
     sum(vapply(
@@ -53,6 +57,7 @@
   }, integer(1))
 }
 
+# Validate and convert the lower/upper domain bounds.
 .ppt_validate_region <- function(region, d) {
   region <- as.matrix(region)
   storage.mode(region) <- "double"
@@ -65,6 +70,7 @@
   region
 }
 
+# Validate an integer tree depth against the supported range.
 .ppt_validate_depth <- function(max_depth, minimum = 0L) {
   if (!is.numeric(max_depth) || is.complex(max_depth) || length(max_depth) != 1L ||
       !is.finite(max_depth) || max_depth != floor(max_depth) ||
@@ -75,6 +81,7 @@
   as.integer(max_depth)
 }
 
+# Check the depth and particle count against tree-storage limits.
 .ppt_validate_tree_storage <- function(max_depth, particles = 1,
                                        layout = c("dense", "soft")) {
   layout <- match.arg(layout)
@@ -97,6 +104,7 @@
   invisible(max_depth)
 }
 
+# Validate the maximum permitted child-box aspect ratio.
 .ppt_validate_max_aspect_ratio <- function(max_aspect_ratio) {
   if (!is.numeric(max_aspect_ratio) || length(max_aspect_ratio) != 1L ||
       is.na(max_aspect_ratio) || max_aspect_ratio < 1) {
@@ -106,6 +114,7 @@
   as.numeric(max_aspect_ratio)
 }
 
+# Expand a scalar parameter to one value per input and validate it.
 .ppt_expand_parameter <- function(x, d, name, allow_zero = FALSE) {
   x <- as.numeric(x)
   if (length(x) == 1L) x <- rep(x, d)
@@ -121,6 +130,7 @@
   x
 }
 
+# Validate a point matrix and clamp boundary-rounding errors.
 .ppt_validate_points <- function(x, d = NULL, region = NULL,
                                  name = "x", allow_empty = FALSE) {
   x <- as.matrix(x)
@@ -149,6 +159,7 @@
   x
 }
 
+# Match requested rows to stored prediction locations.
 .ppt_match_prediction_rows <- function(newdata, locations) {
   if (!nrow(newdata)) return(integer())
   if (is.null(locations) || !nrow(locations)) {
@@ -157,14 +168,15 @@
   key <- function(z) {
     columns <- lapply(seq_len(ncol(z)), function(j) {
       values <- z[, j]
-      values[values == 0] <- 0  # Match negative zero to positive zero.
-      sprintf("%.17g", values)  # Round-trip precision for every finite double.
+      values[values == 0] <- 0
+      sprintf("%.17g", values)
     })
     do.call(paste, c(columns, sep = "\r"))
   }
   match(key(newdata), key(locations))
 }
 
+# Return normalized particle weights or equal draw weights.
 .ppt_posterior_weights <- function(object, n_draws) {
   weights <- object$posterior$particle_weights
   if (length(weights) != n_draws || any(!is.finite(weights)) ||
@@ -174,6 +186,7 @@
   as.numeric(weights / sum(weights))
 }
 
+# Calculate a weighted inverse-CDF quantile.
 .ppt_weighted_quantile <- function(x, weights, probability) {
   keep <- is.finite(x) & is.finite(weights) & weights >= 0
   x <- x[keep]
@@ -185,8 +198,7 @@
   x[which(cumsum(weights) >= probability)[1L]]
 }
 
-# Return several weighted inverse-CDF quantiles using one sort per row.
-# Keep the filtering and normalization used by .ppt_weighted_quantile.
+# Calculate several weighted inverse-CDF quantiles with one sort.
 .ppt_weighted_quantiles <- function(x, weights, probabilities) {
   keep <- is.finite(x) & is.finite(weights) & weights >= 0
   x <- x[keep]
@@ -202,6 +214,7 @@
   }, numeric(1L))
 }
 
+# Integrate a hard tree over all but the selected input.
 .ppt_tree_marginal <- function(tree, grid, variable, region,
                                average = TRUE) {
   leaves <- Filter(
@@ -246,6 +259,7 @@
   out
 }
 
+# Fit hard PPT by SMC; see ?ppt_controls for backend arguments.
 .ppt_fit_hard_leaf_smc <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0, resample_thresh = 0.5,
@@ -371,11 +385,7 @@
 
   input_names <- colnames(x)
   if (is.null(input_names)) input_names <- paste0("x", seq_len(d))
-  # Native SMC accumulates a normalizer relative to the unsplit root score.
-  # Restore the normalized Gamma root factor only for a proper rate prior.
-  # Tree-prior weights are not normalized over admissible trees when some
-  # axes have no valid cuts; their normalizer is not computed here.  These
-  # quantities must therefore not be reported as absolute model evidence.
+
   log_relative_normalizer <- as.numeric(raw$logZ)
   if (length(log_relative_normalizer) != 1L ||
       !is.finite(log_relative_normalizer)) {
@@ -468,6 +478,7 @@
   )
 }
 
+# Fit hard PPT by RJ-MCMC; see ?ppt_controls for backend arguments.
 .ppt_fit_hard_leaf_rjmcmc <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0, alpha = 0.95, eta = 2,
@@ -482,6 +493,7 @@
   )
 }
 
+# Fit hard PPT by informed MH; see ?ppt_controls for backend arguments.
 .ppt_fit_hard_leaf_irjmcmc <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0, alpha = 0.95, eta = 2,
@@ -496,6 +508,7 @@
   )
 }
 
+# Run a hard MCMC backend and assemble the standard fitted object.
 .ppt_fit_hard_leaf_mcmc <- function(
     x, region, predict_at, test, a, b, alpha, eta, max_depth, min_leaf_n,
     chains, iter, burn, cut_candidates, prediction_draws, seed, verbose,
@@ -709,6 +722,7 @@
   )
 }
 
+# Fit hard PPT by Particle Gibbs; see ?ppt_controls for arguments.
 .ppt_fit_hard_leaf_pgas <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0,

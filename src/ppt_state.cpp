@@ -1,18 +1,3 @@
-// ============================================================================
-// ppt_state.cpp -- post-hoc intensity evaluation from serialized posterior
-// state draws.
-//
-// Every RJ-MCMC backend stores, for each retained draw, one matrix with a row
-// per node and columns (heap id, axis, cut, lambda, xi, m), plus the gate
-// vector of the draw for soft fits.  Given that state, the intensity
-//   lambda(s) = sum_v lambda_v phi_v(s)
-// is reproducible EXACTLY at arbitrary locations: the node boxes follow from
-// the heap topology and the cuts, hard routing uses "left iff x_j < cut", and
-// the soft bases are products of the ancestor gates (recursive logistic or
-// compact cubic), so nothing beyond this state is needed.  This is what frees
-// `ppt_predict()`, `ppt_marginal()`, and `ppt_lppd()` from the requirement
-// that every location of interest be listed in `predict_at` before fitting.
-//
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 #include <algorithm>
@@ -27,18 +12,18 @@ namespace pstate {
 
 struct SNode {
   long hid;
-  int axis;          // -1 leaf
+  int axis;
   double cut;
   double lambda;
-  arma::mat box;     // d x 2, derived from the heap topology
+  arma::mat box;
 };
 
 struct SGate {
   int axis;
   double cut;
-  int side;          // -1 left, +1 right
-  double parent_width;  // local box width at the splitting parent
-  double eff_width;     // compact: parent width / (1+depth)^gate_depth
+  int side;
+  double parent_width;
+  double eff_width;
 };
 
 static inline int heap_depth(long hid) {
@@ -47,7 +32,7 @@ static inline int heap_depth(long hid) {
   return depth;
 }
 
-// compact (cubic) gate value; h = eff_width / gate
+// Evaluate a compact-cubic gate.
 static inline double compact_value(const SGate&g, double x, double gate) {
   double h = g.eff_width / gate;
   double t = (x - (g.cut - h)) / (2.0 * h);
@@ -63,10 +48,8 @@ static std::vector<double> compact_poly_multiply(
   return out;
 }
 
-// Exact integral of the product of the compact-cubic gates on one axis.
-// Splitting at every transition endpoint makes each factor polynomial on
-// every segment, so their product can be integrated coefficient by
-// coefficient.
+// Integrate a product of compact-cubic gates along one coordinate.
+
 static double compact_axis_integral(const std::vector<SGate>&path, int axis,
                                     double dom_lo, double dom_hi,
                                     double gate) {
@@ -177,7 +160,7 @@ static double soft_axis_integral(const std::vector<SGate>&path, int axis,
   );
 }
 
-}  // namespace pstate
+}
 
 // [[Rcpp::export]]
 arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
@@ -197,7 +180,6 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
     if (M.n_cols < 4) stop("malformed state draw: need >= 4 columns");
     const int nn = M.n_rows;
 
-    // sort rows by heap id so parents precede children
     arma::uvec ord = arma::sort_index(M.col(0));
     std::vector<SNode> nd(nn);
     std::unordered_map<long, int> at;
@@ -213,7 +195,7 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
       at[z.hid] = r;
     }
     if (!at.count(1L)) stop("state draw has no root node");
-    // derive boxes from the topology
+
     for (int r = 0; r < nn; r++) {
       SNode&z = nd[r];
       if (z.hid == 1L) { z.box = region; continue; }
@@ -225,7 +207,7 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
       if (z.hid % 2 == 0) z.box(pa.axis, 1) = pa.cut;
       else                z.box(pa.axis, 0) = pa.cut;
     }
-    // gate vector of the draw (soft only)
+
     arma::vec gate;
     if (gate_mode != 0) {
       if ((int)state_gate.n_rows <= s || state_gate.n_cols != d)
@@ -234,9 +216,7 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
       if (!gate.is_finite() || arma::any(gate <= 0.0))
         stop("soft state draw has an invalid gate vector");
     }
-    // Keep leaf accumulation in ascending heap order, as in the direct
-    // evaluator.  Soft prediction shares each internal gate and its
-    // ancestor membership across all descendant leaves.
+
     std::vector<int> contrib;
     contrib.reserve(nn);
     for (int r = 0; r < nn; r++)
@@ -281,7 +261,7 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
       const arma::rowvec x = newdata.row(i);
       double val = 0.0;
       if (gate_mode == 0) {
-        // hard: route from the root and take the leaf rate
+
         long h = 1;
         for (;;) {
           const SNode&z = nd[at[h]];
@@ -290,9 +270,7 @@ arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate,
           if (!at.count(h)) stop("state draw routing reached a missing node");
         }
       } else {
-        // Heap order guarantees the parent's log membership is available.
-        // Only one scalar per active node is retained, independently of the
-        // number of prediction locations or posterior draws.
+
         const double zero_log = -std::numeric_limits<double>::infinity();
         for (const PredictionSplit&split : splits) {
           double left_log = zero_log, right_log = zero_log;

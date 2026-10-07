@@ -17,9 +17,7 @@ logistic_path_integral <- function(cuts, sides, gate,
 }
 
 test_that("deep same-axis logistic exposure agrees with adaptive integration", {
-  # This valid depth-14 recursive path is a regression case for catastrophic
-  # cancellation in the former simple-pole partial-fraction calculation.  It
-  # returned about 0.61 although its exposure is about 1.40e-5.
+
   cuts <- c(
     0.217256216173992, 0.0717259424743955,
     0.0196324874387363, 0.0322867908044393,

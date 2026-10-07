@@ -1,6 +1,5 @@
-# Run in fresh R processes against a baseline and optimized package library.
 # Usage: Rscript pgas-cut-tilt-benchmark.R LIBRARY OUTPUT_DIRECTORY
-# Short fitting-time checks; these are not convergence or ESS benchmarks.
+
 args <- commandArgs(trailingOnly = TRUE)
 stopifnot(length(args) == 2L)
 .libPaths(c(normalizePath(args[1]), .libPaths()))

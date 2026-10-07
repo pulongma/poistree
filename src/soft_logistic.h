@@ -6,7 +6,7 @@
 #include <limits>
 #include <vector>
 
-// Stable logistic right-routing probability.
+// Evaluate a stable logistic right-routing probability.
 static inline double pst_logistic_right(double z){
   if(z>=0.0){
     double e=std::exp(-z);
@@ -31,9 +31,8 @@ static inline double pst_logistic_path_product(
   return out;
 }
 
-// Stable evaluation used by the quadrature fallback.  Accumulating on the
-// log scale avoids losing a small, but still representable, path product when
-// a long path contains several gates close to zero.
+// Evaluate a product of logistic path gates stably.
+
 static inline double pst_logistic_path_product_stable(
     double x,const std::vector<double>&cuts,const std::vector<int>&sides,
     double dom_lo,double dom_hi,double gate){
@@ -47,9 +46,8 @@ static inline double pst_logistic_path_product_stable(
   return std::exp(log_out);
 }
 
-// Adaptive Simpson integration on one interval.  The caller splits at every
-// gate centre first, so steep logistic transitions occur at interval
-// boundaries rather than being hidden inside an initially coarse panel.
+// Integrate one interval using adaptive Simpson quadrature.
+
 static double pst_logistic_adaptive_simpson(
     const std::vector<double>&cuts,const std::vector<int>&sides,
     double dom_lo,double dom_hi,double gate,double left,double right,
@@ -80,10 +78,8 @@ static double pst_logistic_adaptive_simpson(
     );
 }
 
-// Deterministic fallback for ill-conditioned partial fractions, nearly
-// coincident poles, or extreme gate values.  This is deliberately adaptive:
-// the former fixed 256-panel rule was accurate for moderate gates but could
-// miss narrow transitions for large gates and deep paths.
+// Numerically integrate a logistic path as a fallback for analytic integration.
+
 static double pst_logistic_path_axis_integral_numeric(
     const std::vector<double>&cuts,const std::vector<int>&sides,
     double dom_lo,double dom_hi,double gate){
@@ -130,11 +126,8 @@ static double pst_logistic_path_axis_integral_numeric(
   return std::max(total,std::numeric_limits<double>::min());
 }
 
-// Closed-form integral for a product of complementary logistic gates sharing
-// one slope on a coordinate.  With t=(x-dom_lo)/(dom_hi-dom_lo),
-// u=exp(gate*(t-1/2)), and a_k=exp(gate*(c_k-1/2)), the integrand times dx
-// is a proper rational function of u.  Distinct tree cuts give simple poles,
-// so partial fractions reduce the exposure to a finite sum of logarithms.
+// Integrate a product of logistic gates sharing one coordinate slope.
+
 static double pst_logistic_path_axis_integral(
     const std::vector<double>&cuts,const std::vector<int>&sides,
     double dom_lo,double dom_hi,double gate){
@@ -158,7 +151,6 @@ static double pst_logistic_path_axis_integral(
     else left_constant*=a[k];
   }
 
-  // Nearly repeated poles make the simple-pole representation unstable.
   for(size_t i=0;i<m;i++) for(size_t j=i+1;j<m;j++){
     long double scale=std::max(std::abs(a[i]),std::abs(a[j]));
     if(std::abs(a[i]-a[j])<=1e-10L*std::max(1.0L,scale))
@@ -197,13 +189,6 @@ static double pst_logistic_path_axis_integral(
     sum_abs+=std::abs(term);
   }
 
-  // A finite partial-fraction sum can still be grossly inaccurate when large
-  // signed terms cancel.  Long-double arithmetic gives about 18 decimal
-  // digits on common platforms; use quadrature before cancellation can erase
-  // more than roughly five decimal digits.  This conservative threshold also
-  // covers platforms where long double has the same precision as double.
-  // This check is what protects deep paths
-  // with many splits on the same coordinate at small or moderate gates.
   long double cancellation=sum_abs/
     std::max(std::abs(sum),std::numeric_limits<long double>::min());
   if(!std::isfinite(cancellation)||cancellation>1e5L)
@@ -220,9 +205,8 @@ static double pst_logistic_path_axis_integral(
   return std::min(out,width);
 }
 
-// Node-relative gates can have different slopes on the same coordinate.
-// Their path product is integrated numerically over the full root domain;
-// the node width changes the slope, not the domain or the support of a gate.
+// Evaluate a path product with node-relative logistic slopes.
+
 static inline double pst_logistic_node_path_product(
     double x,const std::vector<double>&cuts,const std::vector<int>&sides,
     const std::vector<double>&parent_widths,double gate){
@@ -277,14 +261,12 @@ static inline double pst_logistic_node_path_axis_integral(
       return std::numeric_limits<double>::quiet_NaN();
     common_width=common_width&&parent_widths[k]==parent_widths[0];
   }
-  // Keep the established analytic implementation when slopes coincide.
+
   const double effective_gate=gate*(width/parent_widths[0]);
   if(common_width&&effective_gate>=1e-4&&effective_gate<=500.0)
     return pst_logistic_path_axis_integral(
       cuts,sides,dom_lo,dom_hi,effective_gate);
 
-  // Gate centres alone may hide very narrow transitions. Include points at
-  // several multiples of each individual bandwidth before adaptive refinement.
   std::vector<double>breaks;
   breaks.reserve(15*cuts.size()+2);
   breaks.push_back(dom_lo);

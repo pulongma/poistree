@@ -1,5 +1,3 @@
-// Rcpp entry point for the soft terminal-leaf PPT Particle Gibbs sampler
-// (conditional SMC with ancestor sampling); see SMCtree.cpp and soft_smc.h.
 #ifndef _USE_Armadillo
 #define _USE_Armadillo
 #include <RcppArmadillo.h>
@@ -81,9 +79,8 @@ Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::
                   niter, burn, thin, label_sweeps, update_gate, verbose);
 }
 
-// Internal diagnostic for the exact cut-tilt calculation.  The direct branch
-// repeats the Poisson-binomial recursion independently at every cut so tests
-// can compare the optimized scores and all count probabilities.
+// Compare exact cut-tilt scores with direct Poisson-binomial calculations.
+
 // [[Rcpp::export]]
 Rcpp::List SPPT_exact_cut_scores(Rcpp::NumericVector x,
                                 Rcpp::NumericVector cuts,
@@ -150,8 +147,8 @@ Rcpp::List SPPT_exact_cut_scores(Rcpp::NumericVector x,
                       _["log_allocation_count"] = log_allocation_count);
 }
 
-// Internal diagnostic: exercise the production coefficient count sampler and
-// lazy coordinate-level conditional-allocation table across multiple cuts.
+// Inspect shared count sampling and conditional allocation tables.
+
 // [[Rcpp::export]]
 Rcpp::List SPPT_exact_reuse_draws(Rcpp::NumericVector logits,
                                  Rcpp::NumericVector shifts,
@@ -199,8 +196,8 @@ Rcpp::List SPPT_exact_reuse_draws(Rcpp::NumericVector logits,
                       _["prefix_cells"] = prefix_cells);
 }
 
-// Internal diagnostic for replay of a fixed allocation, including allocations
-// whose nonpreferred routing probability underflows on the probability scale.
+// Evaluate the probability of a fixed allocation in log space.
+
 // [[Rcpp::export]]
 Rcpp::List SPPT_exact_allocation_logprob(Rcpp::NumericVector logits,
                                         Rcpp::IntegerVector bits) {

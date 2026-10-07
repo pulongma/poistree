@@ -1,4 +1,3 @@
-# Independent R geometry: each row is (axis, cut, side, parent width).
 node_gate_test_phi <- function(points, path, gate) {
   value <- rep(1, nrow(points))
   for (k in seq_len(nrow(path))) {
@@ -49,8 +48,7 @@ test_that("node logistic paths use local widths and full-domain integration", {
 })
 
 test_that("node logistic integration resolves very thin local transitions", {
-  # The final two gates create a narrow leaf that whole-domain quadrature
-  # can miss. Use independent Gaussian quadrature on small physical panels.
+
   path <- rbind(c(1, .5, 1, 1), c(1, .500001, -1, .5),
                 c(1, .5000005, 1, 1e-6), c(1, .5000008, -1, 5e-7))
   region <- matrix(c(0, 1), nrow = 1)
@@ -70,7 +68,7 @@ test_that("node logistic integration resolves very thin local transitions", {
   )
   expect_gt(reference, 1e-8)
   expect_lt(abs(result$H - reference) / reference, 1e-7)
-  # Equal-width, very steep gates must also resolve the transition.
+
   sharp <- poistree:::ppstree_geometry(
     1L, .2, 1, 1L, matrix(.2, ncol = 1), region, 1e10, gate_scale = 1L
   )
@@ -123,8 +121,7 @@ test_that("node logistic informed proposals obey the augmented target", {
   region <- matrix(c(0, 1), nrow = 1)
   splits <- rbind(c(1, 0, .6), c(2, 0, .25), c(3, 0, .75))
   labels <- c(4L, 5L, 6L, 7L, 5L, 6L)
-  # Reuse only the independent cut-support and tree-prior reference. Recompute
-  # every basis and integral below using the new node-relative R formula.
+
   reference <- informed_exact(x, soft = TRUE, ncand = 4L, geometry_only = TRUE)
   decode <- function(splits) {
     tree <- list()
@@ -196,7 +193,7 @@ test_that("node logistic MCMC fits reproduce retained predictions and integrals"
       expect_equal(evaluated$draws, fit$prediction$draws, tolerance = 2e-10)
       expect_true(all(is.finite(evaluated$draws)))
       expect_true(all(evaluated$draws > 0))
-      native_integrals <- as.vector(ppt_integral(fit, "draws"))
+      native_integrals <- as.vector(poistree:::ppt_integral(fit, "draws"))
       for (s in seq_len(min(3L, fit$posterior$draws))) {
         numerical <- integrate(function(t) {
           ppt_lambda(fit, at = matrix(t, ncol = 1), type = "draws")$draws[, s]

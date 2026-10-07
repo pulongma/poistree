@@ -1,6 +1,3 @@
-## S-PPT surface estimation with post-hoc intensity evaluation.
-## This demonstration deliberately does not use `predict_at` in `ppt_fit()`.
-
 needed <- c("ggplot2", "patchwork")
 missing <- needed[!vapply(needed, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing)) {
@@ -17,8 +14,6 @@ library(patchwork)
 
 set.seed(2026)
 
-## True intensity on [0,1]^2: two smooth bumps with exactly 400 expected
-## points. The normalizer accounts for Gaussian mass truncated by the region.
 bump1_mass <- diff(pnorm(c(0, 1), mean = 0.3, sd = 0.12))^2
 bump2_mass <- diff(pnorm(c(0, 1), mean = 0.75, sd = 0.10)) *
   diff(pnorm(c(0, 1), mean = 0.70, sd = 0.15))
@@ -31,7 +26,6 @@ lambda_true <- function(x) {
   ) / lambda_normalizer
 }
 
-## Simulate the inhomogeneous Poisson process by thinning.
 region <- matrix(c(0, 1, 0, 1), ncol = 2, byrow = TRUE)
 lam_max <- 400 * (
   dnorm(0, 0, 0.12)^2 +
@@ -44,8 +38,6 @@ x <- prop[keep, , drop = FALSE]
 colnames(x) <- c("x1", "x2")
 cat("simulated points:", nrow(x), "\n")
 
-## Fit S-PPT (soft-gated terminal-leaf PPT) by RJ-MCMC.
-## No `predict_at` is needed.
 fit <- ppt_fit(
   x, region,
   gating = "soft", sampler = "rjmcmc",
@@ -56,7 +48,6 @@ fit <- ppt_fit(
 )
 print(fit)
 
-## Post-hoc grid evaluation: 90 x 90 lattice and a ggplot2-ready data frame.
 surface <- ppt_lambda(fit, n = 90)
 grid <- as.matrix(surface[, c("x1", "x2")])
 surface$true <- lambda_true(grid)
@@ -90,7 +81,6 @@ p_ci <- ggplot(surface, aes(x1, x2, fill = ci_width)) +
   labs(title = "Pointwise uncertainty", x = expression(x[1]),
        y = expression(x[2]))
 
-# 1-D transect at x2 = 0.3 straight through the main bump -- again post hoc.
 transect <- cbind(seq(0, 1, length.out = 300), 0.3)
 colnames(transect) <- c("x1", "x2")
 line <- ppt_lambda(fit, at = transect)

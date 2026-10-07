@@ -4,13 +4,10 @@
 #include <string>
 #include <unordered_set>
 
-// Candidate cuts depend on hard routing and the fixed data/fit controls, not
-// on latent labels or soft gates. Keep each axis lazy so a support query still
-// stops at the first nonempty axis, exactly as the direct calculation does.
 struct PPSTCutsEntry {
   std::vector<std::vector<double> > axis;
   std::vector<unsigned char> ready;
-  int any=-1;                       // -1 unknown, 0 no supported axis, 1 supported
+  int any=-1;
   explicit PPSTCutsEntry(arma::uword d):axis(d),ready(d,0){}
 };
 
@@ -65,9 +62,8 @@ public:
     value.any=0;
     return false;
   }
-  // Retain internal nodes too: pruning or changing a split needs their cuts.
-  // Each attempt adds only proposed children; rejected/removed paths expire
-  // immediately, so memory is bounded by the current tree, not chain length.
+  // Discard cached cuts for paths outside the current tree.
+
   void trim(const PPSTree&tree){
     std::unordered_set<std::string> active;
     active.reserve(tree.size());

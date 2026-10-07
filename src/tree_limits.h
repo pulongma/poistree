@@ -1,5 +1,3 @@
-// Bounds on binary-heap indices and eager tree storage. These guards do not
-// bound data-dependent caches, prediction draws, or the complete memory use.
 #ifndef POISTREE_TREE_LIMITS_H
 #define POISTREE_TREE_LIMITS_H
 #include <Rcpp.h>
@@ -30,14 +28,14 @@ inline void ppt_check_dense_storage(int depth, double particles) {
       particles != std::floor(particles) ||
       particles > std::numeric_limits<int>::max())
     Rcpp::stop("particles must be a positive representable integer.");
-  // Two particle generations during resampling, plus reference/working trees.
+
   if ((2.0L * particles + 3.0L) * slots > 16777216.0L)
     Rcpp::stop("Dense tree storage limit exceeded; reduce max_depth or particles.");
 }
 
 inline void ppt_check_soft_storage(int depth) {
   ppt_checked_depth(depth, 1);
-  // Conservative allowance for four complete reference-node arrays.
+
   if (4.0L * (static_cast<long double>(ppt_tree_slots(depth)) + 1.0L) > 4194304.0L)
     Rcpp::stop("Soft PGAS tree storage limit exceeded; reduce max_depth to at most 19.");
 }

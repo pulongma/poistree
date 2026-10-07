@@ -1,5 +1,3 @@
-# Small, deterministic posterior states. References below use explicit leaf
-# paths and probability formulas, independently of native prediction code.
 prediction_region <- matrix(c(-2, 3, 4, 12), ncol = 2, byrow = TRUE)
 
 prediction_tree <- function(multiplier = 1) {
@@ -30,7 +28,7 @@ prediction_leaf_path <- function(nodes, leaf, region, gate_depth) {
     )
     if (right) box[axis, 1] <- parent[3] else box[axis, 2] <- parent[3]
   }
-  # The legacy evaluator sums from the terminal node towards the root.
+
   rev(path)
 }
 
@@ -83,8 +81,7 @@ prediction_fixture <- function(mode = 3L, root_only = FALSE) {
   draws <- prediction_reference(nodes, gates, locations, prediction_region, mode)
   weights <- c(0, 0.2, 0.5, 0.3)
   q <- t(apply(draws, 1, stats::quantile, probs = c(0.5, 0.025, 0.975)))
-  # Stored backend summaries deliberately follow their original type-7
-  # quantile convention, which ppt_predict on stored rows must preserve.
+
   structure(list(
     model = list(gating = "soft", scales = "leaf"),
     data = list(x = locations, dimension = 2L, region = prediction_region,

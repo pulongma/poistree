@@ -1,5 +1,3 @@
-# Independent, tiny-state reference for the hard and augmented soft RJ targets.
-# It deliberately uses neither native transition ratios nor native cut builders.
 informed_exact <- function(x, max_depth = 2L, ncand = 3L, soft = FALSE,
                            gate = rep(5, ncol(x)), family = "logistic",
                            a = .5, b = .1, alpha = .65, eta = 1, geometry_only = FALSE) {
@@ -25,7 +23,7 @@ informed_exact <- function(x, max_depth = 2L, ncand = 3L, soft = FALSE,
   }
   gate_value <- function(z, axis, cut, side, width) {
     p <- if (family == "logistic") plogis(gate[axis] * (z - cut)) else {
-      # Compact gates scale their transition band by the parent width.
+
       u <- pmax(-1, pmin(1, gate[axis] * (z - cut) / width))
       .5 + .75 * u - .25 * u^3
     }
@@ -148,7 +146,7 @@ informed_exact <- function(x, max_depth = 2L, ncand = 3L, soft = FALSE,
     }
   }
   pi <- exp(lw - max(lw)); pi <- pi/sum(pi)
-  # Hard kernel combines three equally weighted families and excludes self.
+
   Q <- (2*Qgp + Qc)/3
   diag(Q) <- 0
   balanced <- function(q) {

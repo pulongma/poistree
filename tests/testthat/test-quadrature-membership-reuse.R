@@ -14,7 +14,7 @@ membership_weighted_data <- function(kind = "matched") {
   args$weights <- seq_len(nrow(q)) / sum(seq_len(nrow(q))) * 2.7
   args$iter <- 44L
   args$burn <- 14L
-  # Deliberately distinct from both the training rows and integration rule.
+
   args$predict_at <- rbind(c(.11, .23), c(.38, .62), c(.57, .43), c(.89, .71))
   args$test <- rbind(c(.13, .28), c(.47, .52), c(.84, .81))
   args
@@ -60,8 +60,7 @@ test_that("reused event bases agree with independent gates and weighted exposure
                             c(native, list(cache_geometry = TRUE)))
           direct <- do.call(poistree:::ppstree_pcg_inspect,
                             c(native, list(cache_geometry = FALSE)))
-          # The older uncached exposure loop already differs at rounding
-          # precision; event memberships themselves remain bit-identical.
+
           expect_identical(cached$phi, direct$phi)
           expect_identical(cached$log_normalizers, direct$log_normalizers)
           expect_identical(cached$allocation_prob, direct$allocation_prob)

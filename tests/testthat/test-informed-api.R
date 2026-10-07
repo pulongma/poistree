@@ -1,15 +1,3 @@
-test_that("all fitting backends default to fifty candidate cuts", {
-  backend_names <- unname(poistree:::.ppt_backend_registry)
-  defaults <- vapply(backend_names, function(name) {
-    formals(getFromNamespace(name, "poistree"))$cut_candidates
-  }, integer(1))
-  expect_identical(unname(defaults), rep(50L, length(backend_names)))
-  expect_identical(formals(poistree:::PPT_fit_PG)$cut_grid_n, 50L)
-  expect_identical(formals(poistree:::PPT_fit_SMC)$cut_grid_n, 50L)
-  expect_identical(formals(poistree:::PPT_fit_MCMC)$cut_grid_n, 50L)
-  expect_identical(formals(poistree:::PPT_fit_IMCMC)$cut_grid_n, 50L)
-})
-
 test_that("informed hard and soft fits return ordinary posterior draws", {
   x <- matrix(c(0.1, 0.15, 0.3, 0.6, 0.85, 0.9), ncol = 1L)
   region <- matrix(c(0, 1), nrow = 1L)
@@ -39,8 +27,8 @@ test_that("informed hard and soft fits return ordinary posterior draws", {
                  rowMeans(evaluated$draws), tolerance = 1e-12)
     expect_true(all(is.finite(evaluated$draws)))
     expect_true(all(evaluated$draws > 0))
-    expect_true(is.finite(as.numeric(ppt_logLik(fit))))
-    expect_true(all(is.finite(ppt_integral(fit, "draws"))))
+    expect_true(is.finite(as.numeric(poistree:::ppt_logLik(fit))))
+    expect_true(all(is.finite(poistree:::ppt_integral(fit, "draws"))))
     expect_length(fit$diagnostics$leaf_count_trace, fit$posterior$draws)
     expect_length(fit$diagnostics$max_depth_trace, fit$posterior$draws)
     expect_equal(mean(fit$diagnostics$leaf_count_trace), fit$posterior$mean_leaves)

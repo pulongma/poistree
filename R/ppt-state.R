@@ -1,9 +1,11 @@
+# Check whether a fit retains posterior states for intensity evaluation.
 #' @keywords internal
 .ppt_has_state <- function(object) {
   identical(object$posterior$state$mode, "heap") ||
     length(object$posterior$tree_draws) > 0L
 }
 
+# Evaluate every retained intensity draw at the supplied locations.
 #' @keywords internal
 .ppt_state_eval <- function(object, at) {
   at <- .ppt_validate_points(
@@ -28,8 +30,7 @@
   )
 }
 
-# Reuse retained prediction draws; evaluate only locations missing from them.
-# .ppt_state_eval remains the independent, unconditional state evaluator.
+# Reuse stored predictions and evaluate missing locations from posterior states.
 #' @keywords internal
 .ppt_prediction_draws <- function(object, at) {
   stored <- object$prediction$draws
@@ -45,7 +46,6 @@
   if (state_draws > 0L && state_draws != ncol(stored)) {
     return(.ppt_state_eval(object, at))
   }
-  # Full-grid requests need neither row keys nor a copy of the draw matrix.
   if (identical(dim(at), dim(locations)) && all(at == locations)) return(stored)
   index <- .ppt_match_prediction_rows(at, locations)
   known <- !is.na(index)
@@ -60,11 +60,7 @@
   draws
 }
 
-# Integrate every retained heap-state intensity draw over all coordinates
-# except `variable`.  The native evaluator reconstructs node boxes and soft
-# ancestor paths from the serialized topology, then uses exact box widths,
-# piecewise-polynomial compact-gate integrals, or the stable logistic path
-# integral used by the fitting backends (adaptive for node-scaled logistic).
+# Integrate retained heap-state draws over all coordinates except `variable`.
 #' @keywords internal
 .ppt_state_marginal <- function(object, grid, variable, average = TRUE) {
   state <- object$posterior$state
@@ -87,11 +83,7 @@
   )
 }
 
-# Evaluate hard terminal-leaf tree draws at arbitrary locations by leaf-box
-# membership.  The half-open convention (lower closed, upper open, except at
-# the upper region boundary) reproduces the sampler's "left iff x < cut"
-# routing exactly, so boundary points land in the same leaf as prediction
-# during fitting.
+# Evaluate hard-tree intensity draws using terminal-leaf box membership.
 #' @keywords internal
 .ppt_eval_leafbox <- function(trees, at, region) {
   d <- nrow(region)
@@ -141,15 +133,33 @@
 #' the stored prediction draws reuse those draws. Other locations alone are
 #' evaluated from the posterior states; input order and duplicate rows are kept.
 #'
-#' @param object A fitted `ppt` object.
-#' @param at Numeric matrix of evaluation locations with one column per input.
-#'   When `NULL`, an equally spaced grid over the fitted region is built:
-#'   `n` points in one dimension, an `n` by `n` lattice in two dimensions.
-#'   Supply `at` explicitly for more than two dimensions.
-#' @param n Grid resolution per dimension used when `at` is `NULL`.
-#' @param type Return pointwise posterior summaries or the raw
-#'   locations-by-draws matrix.
-#' @param level Pointwise posterior credible level for `type = "summary"`.
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()]. Evaluation at locations not present in stored predictions
+#'   requires retained posterior states.
+#' @param at A finite numeric matrix with at least one row and one column per
+#'   fitted input, in the same column order as the fitting data. Locations
+#'   must lie in the fitted observation region; row order and duplicates are
+#'   preserved. The default, `NULL`, constructs an equally spaced grid
+#'   including the region endpoints:
+#'   \describe{
+#'     \item{One input}{`n` evaluation locations.}
+#'     \item{Two inputs}{An `n` by `n` lattice, giving `n^2` locations.}
+#'     \item{More than two inputs}{Supply `at` explicitly.}
+#'   }
+#' @param n Integer scalar of at least 2, default `50`, giving the number of
+#'   grid values per dimension when `at = NULL`. Ignored when `at` is supplied.
+#' @param type Character scalar selecting the output:
+#'   \describe{
+#'     \item{`"summary"`}{A data frame of pointwise posterior mean, median,
+#'       and equal-tail credible limits; the default.}
+#'     \item{`"draws"`}{A list containing the evaluation locations, the
+#'       locations-by-draws intensity matrix, and the posterior draw weights.}
+#'   }
+#' @param level Finite numeric scalar strictly between 0 and 1, default `0.95`.
+#'   For `type = "summary"`, lower and upper limits use weighted posterior
+#'   quantiles at `(1 - level) / 2` and `(1 + level) / 2`. The level is
+#'   pointwise, not simultaneous. It is validated but does not affect
+#'   `type = "draws"`.
 #'
 #' @return For `type = "summary"`, a data frame with the input coordinates
 #'   and columns `mean`, `median`, `lower`, and `upper` -- ready for
@@ -164,8 +174,9 @@
 #' surface <- ppt_lambda(fit, n = 80)
 #' ggplot2::ggplot(surface, ggplot2::aes(x1, x2, fill = mean)) +
 #'   ggplot2::geom_raster() +
-#'   ggplot2::scale_fill_viridis_c()
+#'   ggplot2::scale_fill_viridis_c(option = "plasma")
 #' }
+#' @md
 #' @export
 ppt_lambda <- function(object, at = NULL, n = 50L,
                        type = c("summary", "draws"), level = 0.95) {

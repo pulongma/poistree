@@ -6,55 +6,57 @@
 \alias{poistree-package}
 \title{poistree: Bayesian Poisson point-process tree models}
 \description{
-The `poistree` package estimates Poisson point-process intensity functions
-with adaptive axis-aligned trees. The unified [ppt_fit()] interface
+The \code{poistree} package estimates Poisson point-process intensity functions
+with adaptive axis-aligned trees. The unified \code{\link[=ppt_fit]{ppt_fit()}} interface
 separates modeling and computational choices:
 }
 \details{
 \itemize{
-  \item `gating`: hard partitions or soft logistic/compact gates;
-  \item `sampler`: sequential Monte Carlo, reversible-jump MCMC,
-    locally informed Metropolis--Hastings, partially collapsed Gibbs
-    with robust adaptive Metropolis gate updates, or
-    Particle Gibbs with exact conditional SMC (with ancestor sampling for
-    the soft model).
+\item \code{gating}: hard partitions or soft logistic/compact gates;
+\item \code{sampler}: sequential Monte Carlo, reversible-jump MCMC,
+locally informed Metropolis--Hastings, partially collapsed Gibbs
+with robust adaptive Metropolis gate updates, or
+Particle Gibbs with exact conditional SMC (with ancestor sampling for
+the soft model).
 }
 
-The fitted object has class `ppt`. Use [ppt_predict()] for posterior
-intensity summaries, [ppt_marginal()] for one-input marginal intensity
-curves, [plot.ppt()] for fitted intensities, [ppt_summary()]
-for model summaries, [ppt_logLik()] and [ppt_lppd()] for likelihood and
-predictive evaluation, and [ppt_diagnostics()] for sampler diagnostics.
+The fitted object has class \code{ppt}. Use \code{\link[=ppt_predict]{ppt_predict()}} for posterior
+intensity summaries, \code{\link[=ppt_marginal]{ppt_marginal()}} for one-input marginal intensity
+curves, \code{\link[=plot.ppt]{plot.ppt()}} for fitted intensities, \code{summary()} for model
+summaries, \code{\link[=ppt_lppd]{ppt_lppd()}} for predictive evaluation, and \code{\link[=ppt_diagnostics]{ppt_diagnostics()}}
+for sampler diagnostics and diagnostic plots. Raw diagnostics are stored
+in \code{fit$diagnostics}; the posterior mean in-sample log likelihood
+is stored in \code{fit$posterior$mean_log_likelihood}.
 }
 \section{Model configurations}{
 
 \tabular{lll}{
-Model \tab `gating` \tab `sampler` \cr
-PPT \tab `hard` \tab `smc` \cr
-PPT \tab `hard` \tab `rjmcmc` \cr
-PPT \tab `hard` \tab `irjmcmc` (informed MH) \cr
-PPT \tab `hard` \tab `pgas` \cr
-S-PPT \tab `soft` \tab `rjmcmc` \cr
-S-PPT \tab `soft` \tab `irjmcmc` (informed MH) \cr
-S-PPT \tab `soft` \tab `pcg` (joint adaptive gate update) \cr
-S-PPT \tab `soft` \tab `pgas` (ancestor sampling) \cr
+Model \tab \code{gating} \tab \code{sampler} \cr
+PPT \tab \code{hard} \tab \code{smc} \cr
+PPT \tab \code{hard} \tab \code{rjmcmc} \cr
+PPT \tab \code{hard} \tab \code{irjmcmc} (informed MH) \cr
+PPT \tab \code{hard} \tab \code{pgas} \cr
+S-PPT \tab \code{soft} \tab \code{rjmcmc} \cr
+S-PPT \tab \code{soft} \tab \code{irjmcmc} (informed MH) \cr
+S-PPT \tab \code{soft} \tab \code{pcg} (joint adaptive gate update) \cr
+S-PPT \tab \code{soft} \tab \code{pgas} (ancestor sampling) \cr
 }
 
-Both models use terminal-leaf intensities (`scales = "leaf"`, the only
+Both models use terminal-leaf intensities (\code{scales = "leaf"}, the only
 value). The default is S-PPT: soft gating and RJ-MCMC. Explicit
-`gating = "hard"` calls select PPT.
-All samplers default to `cut_candidates = 50`. Informed MH preserves the
+\code{gating = "hard"} calls select PPT.
+All samplers default to \code{cut_candidates = 50}. Informed MH preserves the
 corresponding RJ-MCMC target and returns ordinary posterior draws;
 rejection-free importance tempering is not used.
 }
 
 \section{Basic workflow}{
 
-Supply the observed event locations or covariate vectors as an `n` by `d`
-numeric matrix and the bounded observation window as a `d` by 2 matrix.
-The optional `predict_at` argument precomputes posterior intensities at
+Supply the observed event locations or covariate vectors as an \code{n} by \code{d}
+numeric matrix and the bounded observation window as a \code{d} by 2 matrix.
+The optional \code{predict_at} argument precomputes posterior intensities at
 selected locations. It is not required: arbitrary locations can be
-evaluated after fitting with [ppt_lambda()] or [ppt_predict()].
+evaluated after fitting with \code{\link[=ppt_lambda]{ppt_lambda()}} or \code{\link[=ppt_predict]{ppt_predict()}}.
 }
 
 \examples{
@@ -67,30 +69,26 @@ grid <- as.matrix(expand.grid(
   x2 = seq(0, 1, length.out = 30)
 ))
 
-# Hard terminal-leaf PPT fitted by SMC
 fit_ppt <- ppt_fit(
   x, region, gating = "hard", scales = "leaf", sampler = "smc",
   predict_at = grid, particles = 500
 )
 
-# Hard terminal-leaf PPT fitted by RJ-MCMC
 fit_ppt_mcmc <- ppt_fit(
   x, region, gating = "hard", scales = "leaf", sampler = "rjmcmc",
   predict_at = grid, chains = 2, iter = 2000, burn = 500
 )
 
-ppt_summary(fit_ppt_mcmc)
+summary(fit_ppt_mcmc)
 intensity <- ppt_predict(fit_ppt_mcmc, type = "interval")
 plot(fit_ppt_mcmc)
 ppt_diagnostics(fit_ppt_mcmc)
 
-# Hard terminal-leaf PPT fitted by conditional-SMC Particle Gibbs
 fit_ppt_pgas <- ppt_fit(
   x, region, gating = "hard", scales = "leaf", sampler = "pgas",
   predict_at = grid, particles = 200, iter = 500, burn = 100
 )
 
-# Soft terminal-leaf PPT fitted by RJ-MCMC; this is the default model.
 fit_sppt <- ppt_fit(
   x, region, predict_at = grid,
   chains = 2, iter = 2000, burn = 500

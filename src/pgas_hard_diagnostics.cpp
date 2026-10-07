@@ -1,4 +1,3 @@
-// Internal regression probes for hard surrogate scoring and lazy soft gates.
 #include "SMCtree.h"
 
 static SoftModel hard_probe_model(int exact_max = 0) {
@@ -14,8 +13,8 @@ static SoftModel hard_probe_model(int exact_max = 0) {
   return M;
 }
 
-// Path columns are (one-based axis, cut, side=-1/+1). All supplied points
-// are coloured to this node; soft routing permits this on every valid path.
+// Inspect a node; path columns are one-based axis, cut, and side (-1/+1).
+
 // [[Rcpp::export]]
 Rcpp::List SPPT_hard_node_probe(const arma::mat& x, const arma::mat& region,
     Rcpp::List grids, const arma::vec& gate, const arma::mat& path,
@@ -169,8 +168,7 @@ Rcpp::List SPPT_forced_hard_probe(Rcpp::IntegerVector bits,
   smc.particles[0].rec[1] = SoftRecord{root, -1, -1};
   smc.particles[1].rec[1] = SoftRecord{root, 0, -1};
   SoftRef ref; ref.node.resize(M.n_nodes); ref.z.resize(6); ref.valid = true;
-  // A noncentral cut makes the true soft exposure differ from the hard
-  // surrogate, especially for broad gates, so the weight test detects mixing.
+
   ref.node[1].S = 1; ref.node[1].J = 0; ref.node[1].L = 0.2;
   for (int i = 0; i < 6; ++i) {
     if (bits[i] != 0 && bits[i] != 1) Rcpp::stop("invalid bit");

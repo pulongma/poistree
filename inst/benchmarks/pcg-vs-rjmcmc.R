@@ -1,8 +1,5 @@
-# Reproduce the PCG/RAM versus standard RJMCMC comparison.
 # Usage: Rscript pcg-vs-rjmcmc.R output-directory [iterations] [burn] [chains]
-# Requires the installed development version of poistree and package posterior.
-# Both methods use identical data, priors, tree controls, and prediction points.
-# Elapsed time includes warm-up, retained-state storage, and predictions.
+
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args)) args[[1L]] else "pcg-benchmark"
 iterations <- if (length(args) >= 2L) as.integer(args[[2L]]) else 12000L
@@ -37,7 +34,7 @@ cases <- list(
   make_case("2d_broad_gate_prior", 2L, 200L, 7302L, 4, .4),
   make_case("4d_default_gate_prior", 4L, 240L, 7303L, 36, 3)
 )
-# A smoother two-dimensional example supplements the separated-mode examples.
+
 set.seed(7304L)
 smooth <- make_case("2d_smooth_broad_prior", 2L, 120L, 7304L, 4, .4)
 set.seed(7304L)
@@ -77,7 +74,7 @@ runs <- list()
 fits <- list()
 for (case_index in seq_along(cases)) {
   dat <- cases[[case_index]]
-  # Alternate method order to reduce a consistent timing-order effect.
+
   methods <- if (dat$run_id %% 2L) c("rjmcmc", "pcg") else c("pcg", "rjmcmc")
   for (method in methods) {
     key <- paste(dat$name, method, sep = "__")

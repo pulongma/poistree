@@ -13,35 +13,53 @@ ppt_lambda(
 )
 }
 \arguments{
-\item{object}{A fitted `ppt` object.}
+\item{object}{An object inheriting from class \code{ppt}, usually returned by
+\code{\link[=ppt_fit]{ppt_fit()}}. Evaluation at locations not present in stored predictions
+requires retained posterior states.}
 
-\item{at}{Numeric matrix of evaluation locations with one column per input.
-When `NULL`, an equally spaced grid over the fitted region is built:
-`n` points in one dimension, an `n` by `n` lattice in two dimensions.
-Supply `at` explicitly for more than two dimensions.}
+\item{at}{A finite numeric matrix with at least one row and one column per
+fitted input, in the same column order as the fitting data. Locations
+must lie in the fitted observation region; row order and duplicates are
+preserved. The default, \code{NULL}, constructs an equally spaced grid
+including the region endpoints:
+\describe{
+\item{One input}{\code{n} evaluation locations.}
+\item{Two inputs}{An \code{n} by \code{n} lattice, giving \code{n^2} locations.}
+\item{More than two inputs}{Supply \code{at} explicitly.}
+}}
 
-\item{n}{Grid resolution per dimension used when `at` is `NULL`.}
+\item{n}{Integer scalar of at least 2, default \code{50}, giving the number of
+grid values per dimension when \code{at = NULL}. Ignored when \code{at} is supplied.}
 
-\item{type}{Return pointwise posterior summaries or the raw
-locations-by-draws matrix.}
+\item{type}{Character scalar selecting the output:
+\describe{
+\item{\code{"summary"}}{A data frame of pointwise posterior mean, median,
+and equal-tail credible limits; the default.}
+\item{\code{"draws"}}{A list containing the evaluation locations, the
+locations-by-draws intensity matrix, and the posterior draw weights.}
+}}
 
-\item{level}{Pointwise posterior credible level for `type = "summary"`.}
+\item{level}{Finite numeric scalar strictly between 0 and 1, default \code{0.95}.
+For \code{type = "summary"}, lower and upper limits use weighted posterior
+quantiles at \code{(1 - level) / 2} and \code{(1 + level) / 2}. The level is
+pointwise, not simultaneous. It is validated but does not affect
+\code{type = "draws"}.}
 }
 \value{
-For `type = "summary"`, a data frame with the input coordinates
-  and columns `mean`, `median`, `lower`, and `upper` -- ready for
-  `ggplot2` plotting of the estimated intensity surface. For
-  `type = "draws"`, a list with elements `at`, `draws` (locations by
-  draws), and `weights` (posterior draw weights; uniform for MCMC,
-  particle weights for SMC).
+For \code{type = "summary"}, a data frame with the input coordinates
+and columns \code{mean}, \code{median}, \code{lower}, and \code{upper} -- ready for
+\code{ggplot2} plotting of the estimated intensity surface. For
+\code{type = "draws"}, a list with elements \code{at}, \code{draws} (locations by
+draws), and \code{weights} (posterior draw weights; uniform for MCMC,
+particle weights for SMC).
 }
 \description{
 Every fit stores compact posterior state draws (tree topology, node rates,
 and gate vectors), so the intensity \eqn{\lambda(s)} of each retained draw
 can be reproduced exactly at any location after fitting -- no location has
-to be listed in `predict_at` beforehand. This is the workhorse behind
+to be listed in \code{predict_at} beforehand. This is the workhorse behind
 plotting the estimated intensity over a grid and behind post-hoc
-[ppt_predict()] and [ppt_lppd()] evaluation. Locations already present in
+\code{\link[=ppt_predict]{ppt_predict()}} and \code{\link[=ppt_lppd]{ppt_lppd()}} evaluation. Locations already present in
 the stored prediction draws reuse those draws. Other locations alone are
 evaluated from the posterior states; input order and duplicate rows are kept.
 }
@@ -51,6 +69,6 @@ fit <- ppt_fit(x, region, chains = 2, iter = 2000, burn = 500)
 surface <- ppt_lambda(fit, n = 80)
 ggplot2::ggplot(surface, ggplot2::aes(x1, x2, fill = mean)) +
   ggplot2::geom_raster() +
-  ggplot2::scale_fill_viridis_c()
+  ggplot2::scale_fill_viridis_c(option = "plasma")
 }
 }

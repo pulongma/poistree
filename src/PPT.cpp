@@ -1,4 +1,3 @@
-
 #ifndef _USE_Armadillo
 #define _USE_Armadillo
 #include <RcppArmadillo.h>
@@ -6,7 +5,7 @@
 // [[Rcpp::plugins(cpp11)]]
 #endif
 
-#include <iomanip>       // std::setw / std::setprecision
+#include <iomanip>
 #include <sstream>
 
 #ifndef _USE_MATH_DEFINES
@@ -16,13 +15,11 @@
 
 using namespace Rcpp;
 
-
 #include "PPT.h"
-
 
 void PPT::split_node(int i, const arma::mat& pts, int axis, double cut, int min_leaf_n) {
     if (nodes[i] == nullptr || nodes[i]->is_empty) {
-        // Rcpp::Rcout << "Node is null or empty, split skipped.\n";
+
         return;
     }
 
@@ -33,8 +30,6 @@ void PPT::split_node(int i, const arma::mat& pts, int axis, double cut, int min_
     arma::mat right_region = region;
     right_region(axis, 0) = cut;
 
-    // The parent already owns these observations. Route only on the split
-    // coordinate so points on other global upper boundaries are preserved.
     arma::uvec inside_left = x.col(axis) < cut;
     arma::uvec left_idx = nodes[i]->idx.elem(arma::find(inside_left));
     arma::uvec right_idx = nodes[i]->idx.elem(arma::find(inside_left == 0));
@@ -53,8 +48,6 @@ void PPT::split_node(int i, const arma::mat& pts, int axis, double cut, int min_
     nodes[i]->L = cut;
 }
 
-
-
 bool good_shape(const arma::mat& R, double lmin, double rmax)
 {
     arma::vec side = R.col(1) - R.col(0);
@@ -68,13 +61,12 @@ bool good_shape(const arma::mat& R, double lmin, double rmax)
 std::vector<std::vector<double> > PPT::find_valid_cuts(
     const arma::mat& x,
     const arma::mat& region,
-    bool force_mid_cut) 
-{ 
-  double buffer = 1e-3; 
+    bool force_mid_cut)
+{
+  double buffer = 1e-3;
   int n = x.n_rows, d = x.n_cols;
   std::vector<std::vector<double>> valid_cuts(d);
 
-  // A one-point grid contains its starting probability, as in seq() in R.
   arma::vec quantiles(cut_grid_n);
   for (int q = 0; q < cut_grid_n; ++q)
     quantiles(q) = cut_grid_n == 1 ? 0.05 : 0.05 + 0.9 * q / (cut_grid_n - 1.0);
@@ -91,7 +83,7 @@ std::vector<std::vector<double> > PPT::find_valid_cuts(
     }
 
     if (force_mid_cut) {
-      // Only allow mid-area cut
+
       double mid_cut = 0.5 * (axis_range(0) + axis_range(1));
       if ((mid_cut > axis_range(0) + buffer) && (mid_cut < axis_range(1) - buffer)) {
         arma::uvec left_idx  = arma::find(xj < mid_cut);
@@ -149,7 +141,6 @@ std::vector<std::vector<double> > PPT::find_valid_cuts(
         }
       }
 
-      // If no valid cut, try the median
       if (out.size() == 0) {
         double med_cut = arma::median(xj);
         if ((med_cut > axis_range(0) + buffer) && (med_cut < axis_range(1) - buffer)) {
@@ -177,22 +168,18 @@ std::vector<std::vector<double> > PPT::find_valid_cuts(
   return valid_cuts;
 }
 
-
-
-
-
-// Convert a vector of pointers to TreeNode to an Rcpp::List
+// Convert tree nodes to an R list.
 Rcpp::List PPT::to_R_list() {
     int n = nodes.size();
     Rcpp::List out(n);
 
     for (int i = 0; i < n; ++i) {
         if (nodes[i] == nullptr) {
-            out[i] = R_NilValue; // missing node
+            out[i] = R_NilValue;
         } else {
             Rcpp::List node = Rcpp::List::create(
                 Rcpp::Named("region")   = nodes[i]->region,
-                Rcpp::Named("idx")      = nodes[i]->idx + 1, // convert to 1-based R indices
+                Rcpp::Named("idx")      = nodes[i]->idx + 1,
                 Rcpp::Named("depth")    = nodes[i]->depth,
                 Rcpp::Named("is_empty") = nodes[i]->is_empty,
                 Rcpp::Named("is_leaf")  = nodes[i]->is_leaf,
@@ -210,13 +197,9 @@ Rcpp::List PPT::to_R_list() {
     return out;
 }
 
+// Draw a one-step lookahead tree action and its importance increment.
 
-
-// Treed Poisson Process helper
-/**********************************************************************************/
-
-
-void PPT::PPT_one_step_ahead(double& log_inc, int i, 
+void PPT::PPT_one_step_ahead(double& log_inc, int i,
     const arma::mat& pts)
 {
     if (i < 0 || i >= (int)nodes.size() || nodes[i] == nullptr || nodes[i]->is_empty) {
@@ -232,25 +215,17 @@ void PPT::PPT_one_step_ahead(double& log_inc, int i,
     int n = idx.n_elem;
 
     arma::vec lamvec = lam * arma::ones(d);
-    // arma::vec log_axis_prior = arma::log(lamvec);
 
-    // depth-dependent split prior (Bayesian CART; Chipman et al. 1998, paper §2.2):
-    //   P(split | depth d) = rho * (1 + d)^{-eta}
-    // This regularises tree depth; with a constant split prob the tree over-grows
-    // to max_depth and the piecewise-constant intensity becomes noisy.
     double rho_d = rho * std::pow(1.0 + node->depth, -eta);
     if (rho_d < 1e-12)       rho_d = 1e-12;
     if (rho_d > 1.0 - 1e-12) rho_d = 1.0 - 1e-12;
 
-    // 1) No split marginal likelihood
     double area = arma::prod(region.col(1) - region.col(0));
-    double loglik_nosplit; //
+    double loglik_nosplit;
     loglik_nosplit = PPT_base_mloglik(n, area, a, b);
-    // loglik_parent = PPT_base_mloglik(n, area, a, b); 
-    // 2) Setup splits (use member function)
+
     std::vector<std::vector<double>> valid_cuts = find_valid_cuts(x, region, false);
 
-    // 3) Count total cuts
     int total_cuts = 0;
     for (int j = 0; j < d; ++j) total_cuts += valid_cuts[j].size();
 
@@ -263,11 +238,10 @@ void PPT::PPT_one_step_ahead(double& log_inc, int i,
         return;
     }
 
-    // 4) Compute per-axis split marginal loglikelihood
     std::vector<arma::vec> loglik_splits(d);
     for (int axis = 0; axis < d; ++axis) {
-        int K = valid_cuts[axis].size(); // # of cuts along a specific axis
-        // if(K){lamvec(axis) = 0.0;}
+        int K = valid_cuts[axis].size();
+
         arma::vec loglik_per_cut(K);
         loglik_per_cut.fill(-arma::datum::inf);
         for (int j = 0; j < K; ++j) {
@@ -282,17 +256,16 @@ void PPT::PPT_one_step_ahead(double& log_inc, int i,
             double areaR = arma::prod(regionR.col(1) - regionR.col(0));
             double mL = PPT_base_mloglik(nL, areaL, a, b);
             double mR = PPT_base_mloglik(nR, areaR, a, b);
-            // loglik_per_cut(j) = loglik_nosplit - loglik_parent + mL + mR;
+
             loglik_per_cut(j) = mL + mR;
         }
         loglik_splits[axis] = loglik_per_cut;
     }
 
     lamvec /= arma::sum(lamvec);
-    arma::vec log_axis_prior = arma::log(lamvec); 
+    arma::vec log_axis_prior = arma::log(lamvec);
 
-    // 5) Collapse to per-axis marginal loglikelihood
-    arma::vec loglik_per_axis(d); 
+    arma::vec loglik_per_axis(d);
     loglik_per_axis.fill(-arma::datum::inf);
     for (int axis = 0; axis < d; ++axis) {
         arma::vec v = loglik_splits[axis];
@@ -303,35 +276,30 @@ void PPT::PPT_one_step_ahead(double& log_inc, int i,
         loglik_per_axis(axis) = log_sum_exp(log_loc_prior + vals);
     }
 
-    // 6) Posterior for S (depth-dependent split prior rho_d)
     arma::vec log_post_axis = log_axis_prior + loglik_per_axis;
     double log_post_split = std::log(rho_d) + log_sum_exp(log_post_axis);
     double log_post_nosplit = std::log(1.0 - rho_d) + loglik_nosplit;
     arma::vec log_post(2);
     log_post(0) = log_post_nosplit;
     log_post(1) = log_post_split;
-    double Phi = log_sum_exp(log_post); // marginal likelihood
+    double Phi = log_sum_exp(log_post);
     arma::vec post_S = arma::exp(log_post - Phi);
     if (!post_S.is_finite() || arma::accu(post_S) == 0) { post_S = {1, 0}; }
 
-    // 7) Sample S
     int S = R::rbinom(1, post_S(1));
 
-    // Rcpp::Rcout<<"nonsplit="<<log_post_nosplit<<", split="<<log_post_split<<", S="<<S<<"\n";
     node->S = S;
     node->prob_split = post_S(1);
 
-    // 8) If split
     arma::uvec isf = arma::find_finite(loglik_per_axis);
     if (S == 1 && isf.n_elem > 0) {
-        // sample axis J
+
         arma::vec norm_log_post_axis = log_axis_prior + loglik_per_axis - log_sum_exp(log_post_axis);
         arma::vec post_axis = arma::exp(norm_log_post_axis);
         int J = Rcpp::sample(d, 1, false, Rcpp::NumericVector(Rcpp::wrap(post_axis)), false)[0];
         node->J = J;
         node->prob_axis = post_axis;
 
-        // sample cut point L
         arma::vec prob_J = loglik_splits[J];
         arma::uvec valid_id = arma::find_finite(prob_J);
         if (valid_id.n_elem == 0) {
@@ -342,7 +310,7 @@ void PPT::PPT_one_step_ahead(double& log_inc, int i,
             log_inc = 0.0;
             return;
         }
-        arma::vec log_loc_prior(valid_id.n_elem); 
+        arma::vec log_loc_prior(valid_id.n_elem);
         log_loc_prior.fill(-std::log(valid_id.n_elem));
         arma::vec log_post_loc = log_loc_prior + prob_J.elem(valid_id);
         double norm_post_loc = log_sum_exp(log_post_loc);
@@ -352,17 +320,14 @@ void PPT::PPT_one_step_ahead(double& log_inc, int i,
         node->L = L;
         node->prob_cut = post_loc;
 
-        // --- Compute log prior and proposal for this action ---
-        double log_prior = log(rho_d) + log_axis_prior(J) + log_loc_prior(pick_id);     // e.g., uniform = -log(#cuts)
+        double log_prior = log(rho_d) + log_axis_prior(J) + log_loc_prior(pick_id);
         double log_prop = log(node->prob_split) + log(node->prob_axis(J)) + log(node->prob_cut(pick_id));
 
         log_inc += log_prior - log_prop;
-        
 
-        // cmopute log of Bayes factor 
         double logBF =  loglik_splits[J](valid_id[pick_id]) - loglik_nosplit;
         log_inc += logBF;
-        // Use class member split_node
+
         this->split_node(i, pts, J, L, min_leaf_n);
     } else {
         node->is_leaf = true;
@@ -374,7 +339,6 @@ void PPT::PPT_one_step_ahead(double& log_inc, int i,
         log_inc = log_prior - log_prop;
     }
 }
-
 
 void PPT::PPT_force_reference_step(double& log_inc, int i,
                                    const PPT& ref_tree,
@@ -388,8 +352,6 @@ void PPT::PPT_force_reference_step(double& log_inc, int i,
     TreeNode* node =
         (i >= 0 && i < static_cast<int>(nodes.size())) ? nodes[i] : nullptr;
 
-    // An absent heap node is a deterministic no-op.  Under a valid reference
-    // prefix it must also be absent from the reference trajectory.
     if (node == nullptr || node->is_empty) {
         if (ref_node != nullptr && !ref_node->is_empty) {
             Rcpp::stop("Invalid conditional-SMC reference: incompatible node prefix");
@@ -412,8 +374,6 @@ void PPT::PPT_force_reference_step(double& log_inc, int i,
     for (int axis = 0; axis < d; ++axis)
         total_cuts += static_cast<int>(valid_cuts[axis].size());
 
-    // PPT_one_step_ahead treats a node with no valid split as a forced stop,
-    // with proposal and target increment both equal to one.
     if (total_cuts == 0) {
         if (ref_node->S == 1) {
             Rcpp::stop("Invalid conditional-SMC reference: split is no longer valid");
@@ -485,8 +445,6 @@ void PPT::PPT_force_reference_step(double& log_inc, int i,
         PPT_base_mloglik(nR, areaR, a, b) -
         PPT_base_mloglik(n, area, a, b);
 
-    // Axis selection is uniform after normalization, and cuts are uniform
-    // within the selected axis, exactly as in PPT_one_step_ahead().
     const double log_prior =
         std::log(rho_d) - std::log(static_cast<double>(d)) -
         std::log(static_cast<double>(n_valid_J));
@@ -494,50 +452,37 @@ void PPT::PPT_force_reference_step(double& log_inc, int i,
     split_node(i, pts, J, L, min_leaf_n);
 }
 
-
-
-
-
 double PPT::PPT_log_transition_prob(const TreeNode* parent_node,
                                    const TreeNode* ref_node,
                                    const arma::mat& pts)
 {
     if (!parent_node || !ref_node) return -arma::datum::inf;
 
-    // Get the same information as in your proposal step
     arma::mat region = parent_node->region;
     arma::uvec idx = parent_node->idx;
     arma::mat x = pts.rows(idx);
     int d = x.n_cols;
     int n = idx.n_elem;
 
-    // ---- Recompute the axis priors and logliks as in proposal ----
     arma::vec lamvec = lam * arma::vec(d, arma::fill::ones);
-    // Match PPT_one_step_ahead exactly.  In particular, replay must remain a
-    // probability law even if the stored scalar axis weight is not 1 / d.
+
     lamvec /= arma::sum(lamvec);
     arma::vec log_axis_prior = arma::log(lamvec);
 
-    // depth-dependent split prior, matching PPT_one_step_ahead
     double rho_d = rho * std::pow(1.0 + parent_node->depth, -eta);
     if (rho_d < 1e-12)       rho_d = 1e-12;
     if (rho_d > 1.0 - 1e-12) rho_d = 1.0 - 1e-12;
 
     double area = arma::prod(region.col(1) - region.col(0));
     double loglik_nosplit;
-    // loglik_parent = PPT_base_mloglik(n, area, a, b);
+
     loglik_nosplit = PPT_base_mloglik(n, area, a, b);
     std::vector<std::vector<double>> valid_cuts = find_valid_cuts(x, region, false);
 
-    // 3) Count total cuts
-    // int total_cuts = 0;
-    // for (int j = 0; j < d; ++j) total_cuts += valid_cuts[j].size();
-
-    // 4) Compute per-axis split marginal loglikelihood
     std::vector<arma::vec> loglik_splits(d);
     for (int axis = 0; axis < d; ++axis) {
         int K = valid_cuts[axis].size();
-        arma::vec loglik_per_cut(K); 
+        arma::vec loglik_per_cut(K);
         loglik_per_cut.fill(-arma::datum::inf);
         for (int j = 0; j < K; ++j) {
             double cut = valid_cuts[axis][j];
@@ -551,14 +496,13 @@ double PPT::PPT_log_transition_prob(const TreeNode* parent_node,
             double areaR = arma::prod(regionR.col(1) - regionR.col(0));
             double mL = PPT_base_mloglik(nL, areaL, a, b);
             double mR = PPT_base_mloglik(nR, areaR, a, b);
-            // loglik_per_cut(j) = loglik_nosplit - loglik_parent + mL + mR;
+
             loglik_per_cut(j) = mL + mR;
         }
         loglik_splits[axis] = loglik_per_cut;
     }
 
-    // 5) Collapse to per-axis marginal loglikelihood
-    arma::vec loglik_per_axis(d); 
+    arma::vec loglik_per_axis(d);
     loglik_per_axis.fill(-arma::datum::inf);
     for (int axis = 0; axis < d; ++axis) {
         arma::vec v = loglik_splits[axis];
@@ -569,77 +513,66 @@ double PPT::PPT_log_transition_prob(const TreeNode* parent_node,
         loglik_per_axis(axis) = log_sum_exp(log_loc_prior + vals);
     }
 
-    // 6) Posterior for S (depth-dependent split prior rho_d)
     arma::vec log_post_axis = log_axis_prior + loglik_per_axis;
     double log_post_split = std::log(rho_d) + log_sum_exp(log_post_axis);
     double log_post_nosplit = std::log(1.0 - rho_d) + loglik_nosplit;
     arma::vec log_post(2);
     log_post(0) = log_post_nosplit;
     log_post(1) = log_post_split;
-    double Phi = log_sum_exp(log_post);// marginal likelihood
+    double Phi = log_sum_exp(log_post);
     arma::vec post_S = arma::exp(log_post - Phi);
     if (!post_S.is_finite() || arma::accu(post_S) == 0) { post_S = {1, 0}; }
 
-    // Now: evaluate the **log-probability that S, J, L match the reference node**
     double logprob = 0.0;
     if (ref_node->S == 0) {
-        // No split: take probability for S=0
+
         logprob = log_post(0) - Phi;
     } else if (ref_node->S == 1) {
-        // Split: need axis J and cut L
+
         int J = ref_node->J;
         double L = ref_node->L;
-        // (a) log p(S=1)
+
         logprob = log_post(1) - Phi;
 
-        // (b) axis posterior (as in proposal)
         arma::vec norm_log_post_axis = log_axis_prior + loglik_per_axis - log_sum_exp(log_post_axis);
         arma::vec post_axis = arma::exp(norm_log_post_axis);
         if(J < 0 || J >= d) return -arma::datum::inf;
         logprob += std::log(post_axis[J]);
 
-        // (c) cutpoint posterior
         arma::vec prob_J = loglik_splits[J];
         arma::uvec valid_id = arma::find_finite(prob_J);
         if (valid_id.n_elem == 0) return -arma::datum::inf;
-        // Find which valid_id index matches L
+
         int match_idx = -1;
         for (unsigned int k = 0; k < valid_id.n_elem; ++k) {
             if (std::abs(valid_cuts[J][valid_id[k]] - L) < 1e-10) {
                 match_idx = k; break;
             }
         }
-        if (match_idx < 0) return -arma::datum::inf; // L not found among valid cuts
+        if (match_idx < 0) return -arma::datum::inf;
         arma::vec log_loc_prior(valid_id.n_elem);
         log_loc_prior.fill(-std::log(valid_id.n_elem));
         arma::vec log_post_loc = log_loc_prior + prob_J.elem(valid_id);
-        // Normalize the same log masses used in the numerator.  Previously
-        // the uniform 1 / K cut prior appeared only in the numerator, so the
-        // replayed conditional cut probabilities summed to 1 / K rather than
-        // one and biased the PGAS ancestor weights whenever K differed.
+
         double norm_post_loc = log_sum_exp(log_post_loc);
         arma::vec post_loc = arma::exp(log_post_loc - norm_post_loc);
 
         logprob += std::log(post_loc[match_idx]);
     } else {
-        // S is not valid
+
         return -arma::datum::inf;
     }
 
     return logprob;
 }
 
-
 void PPT::PPT_draw_lambda()
 {
 
-    // Draw from the posterior matching PPT_base_mloglik:
-    // lambda_leaf | x ~ Ga(a+n, b+area), with the b=0 branch interpreted as
-    // the historical improper-prior limit.
     double temp = 0.0;
     for (auto* node : nodes) {
         if (node && node->is_leaf && !node->is_empty) {
-            int n = node->idx.n_elem;        // number of points in this leaf
+            int n = node->idx.n_elem;
             double area = arma::prod(node->region.col(1) - node->region.col(0));
             node->lambda = R::rgamma(a + n, 1.0 / (b + area));
             temp += area * node->lambda;
@@ -657,11 +590,11 @@ arma::vec PPT::predict_lambda(const arma::mat& XX) {
 
     for (int i = 0; i < M; ++i) {
         arma::rowvec pt = XX.row(i);
-        int idx = 0; // root
+        int idx = 0;
         while (idx < (int)nodes.size() && nodes[idx] && !nodes[idx]->is_leaf) {
             int axis = nodes[idx]->J;
             double cut = nodes[idx]->L;
-            // Match candidate counts, training assignment, and saved-state evaluation.
+
             bool go_left = pt(axis) < cut;
             idx = go_left ? (2*idx + 1) : (2*idx + 2);
         }

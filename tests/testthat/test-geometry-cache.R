@@ -3,7 +3,7 @@ test_that("geometry cache control is a logical backend option", {
     args <- geometry_cache_args()
     args$sampler <- sampler
     for (invalid in list(NULL, NA, 0, 1, "TRUE", logical(), c(TRUE, FALSE))) {
-      # Preserve an explicit NULL rather than dropping the argument.
+
       args["cache_geometry"] <- list(invalid)
       expect_error(do.call(ppt_fit, args), "cache_geometry")
     }

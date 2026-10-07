@@ -1,5 +1,3 @@
-# Independent R gate and tree calculations for the membership reuse tests.
-# C++ gate families are 0: root logistic, 1: compact, 2: node logistic.
 membership_gate_logs <- function(x, axis, cut, parent_width, region, gate, family) {
   if (family == 1L) {
     h <- parent_width / gate[axis]

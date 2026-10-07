@@ -33,7 +33,7 @@ test_that("forced exact allocations route without replay or random draws", {
     expect_equal(result$right, which(bits == 0L) - 1L)
     expect_equal(result$prefix_builds, 0)
     expect_equal(result$forced_routes, 1)
-    # Root split at coordinate 1/cut 0.5 is action index 2 in C++, 3 in R.
+
     expect_equal(result$logw, result$score[3] - result$logQA - result$logq[3], tolerance = 1e-12)
     if (defensive == 0) {
       logZ <- max(result$score) + log(sum(exp(result$score - max(result$score))))

@@ -5,18 +5,15 @@
 // [[Rcpp::plugins(cpp14)]]
 #endif
 
-
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #include <cmath>
 #endif
 
-
 using namespace Rcpp;
 
 #include "PPT.h"
 #include "SMCtree.h"
-
 
 // [[Rcpp::export]]
 Rcpp::List PPT_fit_PG(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, double max_depth,
@@ -27,71 +24,50 @@ Rcpp::List PPT_fit_PG(const arma::mat& pts, const arma::mat& grid, const arma::m
   ppt_check_dense_storage(depth, P);
 	int d = pts.n_cols;
 	int n = pts.n_rows;
-	// int np = grid.n_rows; 
-	double rho = 0.5, lam=1.0/d; 
+
+	double rho = 0.5, lam=1.0/d;
 
 	bool force_mid_cut = false;
-	// PPT 
-	
 
 	PPT ref_tree;
 	ref_tree.initialize(
         region, n, depth, min_leaf_n, a, b, rho, cut_grid_n,
         2.0, max_aspect_ratio
     );
-	
 
     SMCtree smc(P, n, resample_thresh);
 	smc.init_AS(ref_tree, region, n, depth,
-		min_leaf_n, a, b, rho, cut_grid_n, max_aspect_ratio);	
-	smc.force_mid_cut = force_mid_cut; 
+		min_leaf_n, a, b, rho, cut_grid_n, max_aspect_ratio);
+	smc.force_mid_cut = force_mid_cut;
 
-	Rcpp::List PG = smc.PPT_PGAS(pts, grid, niter, 
+	Rcpp::List PG = smc.PPT_PGAS(pts, grid, niter,
                           depth, min_leaf_n,
                           a, b,
                           rho, lam, cut_grid_n, max_aspect_ratio, verbose);
-
-
 
 	return PG;
 
 }
 
+// Summarize weighted particle intensities and point-process diagnostics.
 
-// Inputs
-//------------------------------------------------------------------
-//   pp_SMC1         : the completed SMC object
-//   grid (np×d)     : prediction locations
-//   alphas (K)      : e.g. {0.025, 0.50, 0.975}
-//------------------------------------------------------------------
-// Outputs
-//------------------------------------------------------------------
-//   lam_mean (np)          posterior mean of λ
-//   qmat (K × np)          rows = requested α–quantiles
-//   post_loglik            Σ w_p  ·  log p(y | tree_p )
-//   post_lppd              Σ w_p  ·  lppd(tree_p)
-//--------------------------------------------
 void summarize_particles(SMCtree&   Tsmc,
-                             const arma::mat& grid,          // np × d
-                             const arma::vec& alphas,        // K
-                             arma::vec&      lam_mean,       // ← np
-                             arma::mat&      qmat,           // ← K × np
+                             const arma::mat& grid,
+                             const arma::vec& alphas,
+                             arma::vec&      lam_mean,
+                             arma::mat&      qmat,
                              double&         post_loglik,
                              double&         post_lppd,
                              arma::mat& lam_draws)
 {
-    int P  = Tsmc.P;           // # particles
+    int P  = Tsmc.P;
     int np = grid.n_rows;
     int K  = alphas.n_elem;
 
-    // 1) containers ----------------------------------------------------
-    // arma::mat lam_draws(np, P);                   // now location-major
     lam_mean.zeros(np);
     post_loglik = 0.0;
     post_lppd   = 0.0;
 
-
-    // 2) collect λ(p,j) and accumulate means / log-sums ---------------
     for (int p = 0; p < P; ++p)
     {
         Tsmc.particles[p].PPT_draw_lambda();
@@ -105,13 +81,12 @@ void summarize_particles(SMCtree&   Tsmc,
         post_lppd   += Tsmc.particles[p].PPT_get_lppd(lam) * Tsmc.weights[p];
     }
 
-    // 3) weighted quantiles location-wise -----------------------------
     qmat.set_size(K, np);
 	std::vector<std::pair<double,double>> vw(P);
 
     for (int j = 0; j < np; ++j)
     {
-        // fill scratch with (λ,w) for fixed location j
+
         for (int p = 0; p < P; ++p)
             vw[p] = { lam_draws(j, p), Tsmc.weights[p] };
 
@@ -123,7 +98,7 @@ void summarize_particles(SMCtree&   Tsmc,
         for (const auto& pr : vw) {
             csum += pr.second;
             while (k < K && csum >= alphas(k)) {
-                qmat(k, j) = pr.first;          // row k, col j
+                qmat(k, j) = pr.first;
                 ++k;
             }
             if (k == K) break;
@@ -134,8 +109,6 @@ void summarize_particles(SMCtree&   Tsmc,
 	return;
 }
 
-
-
 // [[Rcpp::export]]
 Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, double max_depth,
 	int P, int min_leaf_n, double resample_thresh,
@@ -145,13 +118,13 @@ Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::
   ppt_check_dense_storage(depth, P);
 	int d = pts.n_cols;
 	int n = pts.n_rows;
-	int np = grid.n_rows; 
-	double rho = 0.5, lam=1.0/d; 
+	int np = grid.n_rows;
+	double rho = 0.5, lam=1.0/d;
 
 	bool force_mid_cut = false;
-	// PPT 
+
 	SMCtree pp_SMC1(P, n, resample_thresh);
-	pp_SMC1.force_mid_cut = force_mid_cut; 
+	pp_SMC1.force_mid_cut = force_mid_cut;
 	pp_SMC1.init(
         region, n, depth, min_leaf_n, a, b, rho, cut_grid_n,
         max_aspect_ratio
@@ -160,19 +133,6 @@ Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::
         pts, depth, min_leaf_n, a, b, rho, lam, cut_grid_n,
         max_aspect_ratio
     );
-	
-	// arma::vec PPlambda_weighted(np, arma::fill::zeros);
-	// double lppd=0.0;
-	// double loglik =0.0; 
-
-	// for(int p=0; p<P; p++){
-	// 	pp_SMC1.particles[p].PPT_draw_lambda();
-	// 	arma::vec lamp = pp_SMC1.particles[p].predict_lambda(grid);
-	// 	PPlambda_weighted += pp_SMC1.weights[p] * lamp;
-	// 	 pp_SMC1.particles[p].get_TreeLoglik(); 
-	// 	loglik += pp_SMC1.particles[p].loglik * pp_SMC1.weights[p];
-	// 	lppd += pp_SMC1.particles[p].PPT_get_lppd(lamp) * pp_SMC1.weights[p]; 
-	// }
 
 	arma::vec alphas = {0.025, 0.5, 0.975};
 	arma::vec lam_mean(np, arma::fill::zeros);
@@ -184,9 +144,6 @@ Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::
                         lam_mean, qmat,
                         loglik_post, lppd_post, lam_draws);
 
-	// Serialise particles AFTER summarize_particles so each leaf carries its
-	// drawn intensity (PPT_draw_lambda runs inside summarize_particles).
-	// Previously this ran first, so returned leaf lambdas were all 0.
 	Rcpp::List PPparticle(P);
 	for (int p = 0; p < P; ++p) {
 	    PPparticle[p] = pp_SMC1.particles[p].to_R_list();
@@ -208,17 +165,16 @@ Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::
   	_["weights"] = pp_SMC1.weights,
 	_["resample_thresh"] = pp_SMC1.resample_thresh,
   	_["ESS"] = pp_SMC1.ESS_hist,
-        _["logZ"] = pp_SMC1.logZ_hat,      // scalar: log of the SMC normalizer estimate relative to the root model
-  	_["logZ_inc"] = pp_SMC1.logZ_inc,  // vector: per-step increment Delta_t (sum = logZ)
-  	_["logZ_run"] = pp_SMC1.logZ_run   // vector: running cumulative estimate (last active entry = logZ)
+        _["logZ"] = pp_SMC1.logZ_hat,
+    _["logZ_inc"] = pp_SMC1.logZ_inc,
+    _["logZ_run"] = pp_SMC1.logZ_run
 		);
 
 	return SMCout;
 
 }
 
-
-// Internal diagnostic used to verify candidate-cut constraints.
+// Inspect candidate cuts and their support constraints.
 // [[Rcpp::export]]
 Rcpp::List PPT_valid_cuts(const arma::mat& pts, const arma::mat& region,
                           int min_leaf_n, int cut_grid_n,
@@ -237,10 +193,8 @@ Rcpp::List PPT_valid_cuts(const arma::mat& pts, const arma::mat& region,
     return out;
 }
 
+// Enumerate root transition probabilities for regression checks.
 
-// Internal diagnostic: enumerate the PGAS replay law at the root.  This is
-// intentionally unexported from NAMESPACE but callable with poistree::: in
-// regression tests, like PPT_valid_cuts above.
 // [[Rcpp::export]]
 Rcpp::List PPT_transition_probabilities(
     const arma::mat& pts, const arma::mat& region,
@@ -262,9 +216,6 @@ Rcpp::List PPT_transition_probabilities(
         pts, region, false
     );
 
-    // PPT_one_step_ahead stores the forward split probability before drawing
-    // the action.  Evaluate it on a copy so the root used for replay remains
-    // unchanged.
     PPT forward = tree.deep_copy();
     double log_increment = 0.0;
     forward.PPT_one_step_ahead(log_increment, 0, pts);
@@ -318,17 +269,4 @@ Rcpp::List PPT_transition_probabilities(
         Rcpp::_["replay_split_probability"] = replay_split_probability
     );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 

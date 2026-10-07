@@ -1,5 +1,3 @@
-# Independent R evaluation on the retained tree. This deliberately traverses
-# each serialized draw directly rather than calling the C++ state evaluator.
 quadrature_cache_r_intensity <- function(fit, at) {
   evaluate_draw <- function(draw) {
     nodes <- fit$posterior$state$nodes[[draw]]
@@ -32,7 +30,7 @@ quadrature_cache_args <- function() {
   args$background <- cbind(c(0, .04, .16, .23, .31, .42, .53, .64, .76, .88, 1),
                            c(1, .12, .73, .36, .84, .28, .55, .06, .66, .42, 0))
   args$weights <- c(.01, .04, .02, .15, .07, .13, .09, .18, .11, .08, .12) * 2.7
-  # Prediction and integration use exactly the same locations in California.
+
   args$predict_at <- args$background
   args
 }

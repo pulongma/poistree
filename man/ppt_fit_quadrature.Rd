@@ -20,56 +20,101 @@ ppt_fit_quadrature(
 )
 }
 \arguments{
-\item{x}{Matrix of event covariates, one event per row.}
+\item{x}{Finite numeric matrix of event covariates with at least one row
+and one column. Rows are events and columns are covariates in the same
+order as \code{region} and \code{background}. All rows must lie inside \code{region}.}
 
-\item{region}{Matrix with one row per covariate and lower/upper bounds in
-its two columns. These bounds define tree splits, not physical exposure.}
+\item{region}{Finite numeric matrix with one row per covariate and two
+columns giving lower and strictly larger upper bounds. These bounds
+define the tree's covariate domain and gate scaling; their product is
+not used as the physical-domain exposure in this wrapper.}
 
-\item{background}{Matrix of covariates at integration locations.}
+\item{background}{Finite numeric matrix of covariates at integration
+locations, with at least one row and \code{ncol(x)} columns in the same
+order as \code{x}. All rows must lie within \code{region}. Integration locations
+need not coincide with events, and repeated covariate rows are allowed.}
 
-\item{weights}{One finite positive physical-domain exposure per background
-row. The integrated intensity is the weighted sum over these rows.}
+\item{weights}{Numeric vector of length \code{nrow(background)}, containing one
+finite, strictly positive physical-domain exposure per integration row.
+For example, weights may be cell areas or space-time volumes. They are
+used as supplied, without normalization; \code{sum(weights)} is the total
+exposure. Intensity is expressed per unit of this exposure.}
 
-\item{gating}{Either \code{"soft"} (default) or \code{"hard"}.}
+\item{gating}{Character scalar:
+\describe{
+\item{\code{"soft"}}{Probabilistic split gates; the default.}
+\item{\code{"hard"}}{Deterministic split gates.}
+}}
 
-\item{sampler}{\code{"pcg"} for soft gates or \code{"smc"} for hard gates.}
+\item{sampler}{Character scalar determined by \code{gating} by default:
+\describe{
+\item{\code{"pcg"}}{Required for soft gates; partially collapsed Gibbs.}
+\item{\code{"smc"}}{Required for hard gates; shared-engine SMC.}
+}
+Other gating/sampler combinations are rejected by this wrapper.}
 
-\item{a, b}{Gamma leaf-intensity prior shape and rate. The default rate is
-\code{a * sum(weights) / nrow(x)}.}
+\item{a}{Positive finite scalar Gamma leaf-intensity prior shape,
+default \code{0.5}.}
 
-\item{...}{Other controls passed to \code{\link[=ppt_fit]{ppt_fit()}}, including \code{predict_at},
-\code{test}, \code{gate_scale}, chain settings, \code{seed}, and \code{verbose}.}
+\item{b}{Gamma leaf-intensity prior rate. Default \code{NULL} resolves to
+\code{a * sum(weights) / nrow(x)}. Require a positive finite scalar for
+soft PCG; hard SMC also accepts zero under its unnormalized prior
+convention. See \link{ppt_controls} for the distinction.}
 
-\item{informed}{Logical; use hard-surrogate informed tree proposals for
-soft PCG. The default \code{FALSE} preserves standard PCG proposals.}
+\item{...}{Named controls passed to \code{\link[=ppt_fit]{ppt_fit()}} for the selected backend;
+see \link{ppt_controls} for defaults, ranges, and usage. For soft PCG these
+include \code{gate_family}, \code{gate_scale}, \code{gate_structure}, chain controls,
+\code{predict_at}, and \code{test}. Hard SMC accepts particle controls, but its
+\code{engine} must be \code{"shared"}. Prediction and test matrices contain
+covariates with the same column order and domain as \code{x}.}
 
-\item{proposal_temperature}{Informed PCG score temperature in \verb{(0, 1]},
-default \code{0.5}. Used only when \code{informed = TRUE}.}
+\item{informed}{Logical scalar, default \code{FALSE}. For soft PCG, \code{TRUE}
+enables cached hard-surrogate tree proposals with the same weighted
+exposure rule. Hard SMC requires \code{FALSE}.}
 
-\item{proposal_defensive}{Uniform proposal mixture weight in \verb{[0, 1)},
-default \code{0.1}. Used only when \code{informed = TRUE}.}
+\item{proposal_temperature}{Finite numeric scalar in \verb{(0, 1]}, default
+\code{0.5}. With informed soft PCG, multiplies the surrogate log score before
+exponentiation; smaller values flatten the informed proposal weights.
+Unused unless \code{informed = TRUE}.}
+
+\item{proposal_defensive}{Finite numeric scalar in \verb{[0, 1)}, default
+\code{0.1}. With informed soft PCG, the fraction of the proposal mixture
+assigned to uniform candidate selection, with the remainder assigned
+to informed weights. Unused unless \code{informed = TRUE}.}
 }
 \value{
-A \code{ppt} fit with the integration rule in \code{data$quadrature} and
-the selected proposal controls in \code{control}.
+A \code{ppt} object with the usual fit components described in
+\code{\link[=ppt_fit]{ppt_fit()}}. In addition, \code{data$quadrature} contains \code{background},
+\code{weights}, and \code{total_exposure = sum(weights)}; \code{model$integration}
+identifies weighted physical-domain integration. Resolved controls
+are stored in \code{control}.
 }
 \description{
-Model intensity as a function of covariates while integrating over a physical
-domain using background covariates and their area or space-time exposures.
+Model intensity as a function of event covariates and approximate its
+physical-domain integral using background covariates and exposure weights.
+For intensity \eqn{\lambda}, background rows \eqn{u_k}, and weights
+\eqn{w_k}, the fitted likelihood uses
+\eqn{\int\lambda\approx\sum_k w_k\lambda(u_k)}.
 }
 \details{
-Soft PCG supports both root- and node-scaled gates. Informed
-proposals use hard-routed counts and weighted background exposures for
-proposal scores; acceptance uses the soft quadrature target and the
-forward/reverse proposal probabilities. Hard SMC uses the shared engine.
-Other samplers are not supported by this wrapper.
+Soft PCG supports root- and node-scaled logistic gates and node-scaled
+compact gates. Informed proposals use hard-routed event counts and
+weighted background exposures for their surrogate scores; the acceptance
+ratio uses the soft weighted-integration target and forward/reverse
+proposal probabilities. This wrapper changes the integration measure;
+it does not change the definition of covariate split candidates.
 
-Fits run sequentially within one R process. The temporary integration
-rule is cleared after fitting, including on errors. \code{\link[=ppt_integral]{ppt_integral()}} and
-\code{\link[=ppt_lppd]{ppt_lppd()}} use the stored weighted integrals; \code{\link[=ppt_lambda]{ppt_lambda()}} evaluates
-saved tree states at new covariates. \code{ppt_marginal()} still integrates
-over covariate-box coordinates and is not a physical-domain marginal
-for these fits.
+Fits run sequentially within one R process. Nested weighted-integration
+fits are unsupported. The temporary integration rule is cleared after
+fitting, including on errors. Post-fit functions use the following rules:
+\itemize{
+\item \code{fit$posterior$integrated_intensity_draws} and
+\code{fit$posterior$mean_integrated_intensity} store the weighted integrals;
+\code{\link[=ppt_lppd]{ppt_lppd()}} uses these integrals when scoring a test pattern.
+\item \code{\link[=ppt_lambda]{ppt_lambda()}} evaluates saved tree states at new covariates.
+\item \code{\link[=ppt_marginal]{ppt_marginal()}} integrates over covariate-box coordinates;
+it is not a physical-domain marginal for these fits.
+}
 }
 \examples{
 set.seed(7)
@@ -84,4 +129,7 @@ fit <- ppt_fit_quadrature(
   max_depth = 2, cut_candidates = 3, verbose = FALSE
 )
 fit$control$informed
+}
+\seealso{
+\code{\link[=ppt_fit]{ppt_fit()}}, \link{ppt_controls}
 }

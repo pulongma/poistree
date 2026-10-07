@@ -1,4 +1,3 @@
-# Identical seeded small-data runs, in separate R processes for each library.
 args <- commandArgs(trailingOnly=TRUE)
 stopifnot(length(args)==2L)
 if(args[1]!='default') .libPaths(c(normalizePath(args[1]),.libPaths()))

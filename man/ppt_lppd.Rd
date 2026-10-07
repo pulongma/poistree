@@ -7,19 +7,31 @@
 ppt_lppd(object, test = NULL, scale = 1, type = c("posterior", "plugin"))
 }
 \arguments{
-\item{object}{A fitted `ppt` object.}
+\item{object}{An object inheriting from class \code{ppt}, usually returned by
+\code{\link[=ppt_fit]{ppt_fit()}}. Rescoring requires retained intensity-integral draws and
+either retained states or stored prediction draws at the test locations.}
 
-\item{test}{Optional numeric matrix of test points (one column per
-input). If `NULL`, the test pattern supplied at fitting time is used.}
+\item{test}{A finite numeric matrix with at least one row and one column
+per fitted input, in fitting-data column order. All test points must lie
+within the fitted observation region. The default, \code{NULL}, uses the test
+pattern supplied to \code{\link[=ppt_fit]{ppt_fit()}}; an error is raised if none is stored.}
 
-\item{scale}{Positive factor \eqn{r} multiplying the fitted intensity.}
+\item{scale}{Positive, finite numeric scalar \eqn{r} multiplying the fitted
+intensity and its integral. The default is \code{1}. For independent
+training/test thinning with training probability \eqn{p}, use
+\code{(1 - p) / p} to predict the test-process intensity.}
 
-\item{type}{`"posterior"` (joint posterior predictive density) or
-`"plugin"` (log-likelihood under the posterior mean intensity).}
+\item{type}{Character scalar selecting the log score:
+\describe{
+\item{\code{"posterior"}}{Log of the posterior average joint point-pattern
+likelihood; the default.}
+\item{\code{"plugin"}}{Point-pattern log likelihood evaluated at the
+posterior mean intensity.}
+}}
 }
 \value{
-A numeric scalar with attributes `n_test`, `joint`, `scale`,
-  and `type`.
+A numeric scalar with attributes \code{n_test}, \code{joint}, \code{scale},
+and \code{type}.
 }
 \description{
 The joint posterior log predictive density of a test point pattern over
@@ -28,19 +40,19 @@ the fitted observation region,
   = \log \sum_s w_s \exp\Big\{\sum_i \log\{r\lambda^{(s)}(t_i)\}
     - r\textstyle\int_{\mathcal D}\lambda^{(s)}\Big\},}
 with uniform draw weights for MCMC fits and particle weights for SMC.
-The factor \eqn{r} (`scale`) rescales the fitted intensity to the
+The factor \eqn{r} (\code{scale}) rescales the fitted intensity to the
 intensity of the test process, e.g. \eqn{r = (1-p)/p} when training and
 test patterns are obtained by independent \eqn{p}-thinning of one pattern.
-With `type = "plugin"` the score is the log-likelihood of the test pattern
+With \code{type = "plugin"} the score is the log-likelihood of the test pattern
 under the posterior mean intensity \eqn{\bar\lambda=\sum_s w_s\lambda^{(s)}},
 \deqn{\sum_i \log\{r\bar\lambda(t_i)\} - r\textstyle\int_{\mathcal D}\bar\lambda.}
 Both scores are log densities, so larger values are better.
 Stored prediction draws are reused at matching test locations; only
 missing locations are evaluated from the retained posterior states.
-When `test` is supplied here, the intensities \eqn{\lambda^{(s)}(t_i)}
+When \code{test} is supplied here, the intensities \eqn{\lambda^{(s)}(t_i)}
 are evaluated post hoc from the retained posterior state draws and the
 stored per-draw intensity integrals, so the test pattern does NOT have to
-be supplied at fitting time. When `test` is `NULL`, the stored value from
-`ppt_fit(..., test = )` is returned if `scale = 1` and
-`type = "posterior"`; otherwise the stored test pattern is rescored.
+be supplied at fitting time. When \code{test} is \code{NULL}, the stored value from
+\code{ppt_fit(..., test = )} is returned if \code{scale = 1} and
+\code{type = "posterior"}; otherwise the stored test pattern is rescored.
 }

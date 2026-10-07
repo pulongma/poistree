@@ -1,8 +1,6 @@
-# Exact posterior over (tree, labels) for d = 1, max_depth = 2 and a fixed grid,
-# used to check that the soft Particle-Gibbs kernel is invariant.
 soft_exact_posterior <- function(x, grid, region, a, b, gate, alpha, eta) {
   n <- nrow(x)
-  rho <- function(depth) alpha * (1 + depth)^(-eta)          # split probability
+  rho <- function(depth) alpha * (1 + depth)^(-eta)
   exposure <- function(path) {
     if (!nrow(path)) return(region[1, 2] - region[1, 1])
     poistree:::ppstree_geometry(
@@ -76,9 +74,8 @@ test_that("soft Particle Gibbs with ancestor sampling is invariant for the exact
   p_nleaf <- vapply(1:4, function(k) sum(exact$p[exact$nleaf == k]), numeric(1))
   expect_equal(sum(exact$p), 1)
 
-  tolerance <- 0.03                   # ~4 batch-means standard errors at 12k correlated draws
-  # (resampling after every node | after every level) x (exact | approximate proposal)
-  # x (sequential-imputation | auxiliary-rate allocation above exact_max)
+  tolerance <- 0.03
+
   configs <- list(
     list(TRUE, 500L, FALSE, "laplace", 0.5, 0.1),
     list(FALSE, 500L, FALSE, "laplace", 0.5, 0.1),
@@ -111,7 +108,7 @@ test_that("soft Particle Gibbs with ancestor sampling is invariant for the exact
     expect_true(all(abs(chain_cut - p_cut) < tolerance))
     expect_true(all(abs(chain_nleaf - p_nleaf) < tolerance))
     expect_gt(mean(raw$as_rate, na.rm = TRUE), 0.2)
-    # Dmax = 2: positions 1, 2, 3 and no event after the last one
+
     expect_true(all(raw$resampled <= if (resample_node) 2 else 1))
   }
 })
@@ -143,13 +140,12 @@ test_that("soft Particle Gibbs is reachable through ppt_fit and returns a usable
   expect_true(is.finite(ppt_lppd(fit)))
   expect_true(is.finite(fit$diagnostics$particle_ess))
   expect_true(is.finite(fit$diagnostics$ancestor_move_rate))
-  # shared-path store: distinct expansions per sweep never exceed the number of
-  # particle-node pairs, and at least the root is expanded
+
   expect_gte(fit$diagnostics$expanded_nodes, 1)
   expect_lte(fit$diagnostics$expanded_nodes, 6 * (2^3 - 1))
   expect_identical(fit$control$resampling_schedule, "tree_node")
   expect_lte(fit$diagnostics$resampling_events, 2^3 - 2)
-  expect_output(print(ppt_summary(fit)), "S-PPT")
+  expect_output(print(summary(fit)), "S-PPT")
   marginal <- ppt_marginal(fit, "u", grid = c(0.2, 0.8))
   expect_s3_class(marginal, "ppt_marginal")
   expect_true(all(is.finite(marginal$mean)))
@@ -166,9 +162,7 @@ test_that("soft Particle Gibbs is reachable through ppt_fit and returns a usable
 })
 
 test_that("the forward soft step reproduces the fully adapted increment", {
-  # With exact proposals and defensive = 0 the log increment is action and
-  # colouring independent, so every particle carries the same weight after the
-  # root step and the final ESS of a plain SMC sweep equals the particle count.
+
   set.seed(3)
   x <- matrix(runif(40), ncol = 2)
   region <- matrix(c(0, 1, 0, 1), ncol = 2, byrow = TRUE)
@@ -178,5 +172,5 @@ test_that("the forward soft step reproduces the fully adapted increment", {
     8L, 3L, 0L, 1L, 0L, FALSE, TRUE, 500L, 0, TRUE, 1, FALSE, FALSE
   )
   expect_true(all(abs(raw$ess - 8) < 1e-8))
-  expect_true(all(raw$resampled == 0))      # one position only: no resampling event
+  expect_true(all(raw$resampled == 0))
 })

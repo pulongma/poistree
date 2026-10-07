@@ -1,22 +1,39 @@
 #' Predict intensity from a fitted PPT
 #'
-#' Rows of `newdata` that were part of `predict_at` during fitting are served
-#' from the stored posterior summaries. Any other rows are evaluated
-#' post hoc from the retained posterior state draws via the same machinery as
-#' [ppt_lambda()], so prediction no longer requires listing every location
-#' in `predict_at` before fitting. (The two paths can differ very slightly in
-#' the interval convention: stored summaries follow the fitting backend,
-#' post-hoc summaries use the weighted quantile of [ppt_lambda()].)
+#' When every requested row was part of `predict_at` during fitting, stored
+#' posterior summaries are returned. Otherwise the complete request is
+#' summarized from retained draws using [ppt_lambda()], reusing available
+#' stored draws and evaluating missing locations from the posterior states.
+#' Prediction therefore does not require listing every location in
+#' `predict_at` before fitting. The two paths can use different quantile
+#' conventions: stored summaries follow the fitting backend, whereas
+#' post-hoc summaries use the weighted quantile of [ppt_lambda()]. Their
+#' medians and interval endpoints can therefore differ.
 #' Mean-only predictions avoid calculating posterior quantiles.
 #'
-#' @param object A fitted `ppt` object.
-#' @param newdata Optional matrix of prediction locations. If `NULL`, all
-#'   stored predictions are returned.
-#' @param type Posterior mean, median, or interval.
-#' @param ... Reserved for future prediction backends.
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()]. Evaluation at locations not stored during fitting requires
+#'   retained posterior states.
+#' @param newdata A finite numeric matrix with one row per prediction location
+#'   and one column per fitted input, in the same column order as the fitting
+#'   data. All locations must lie in the fitted observation region. The
+#'   default, `NULL`, returns summaries at the stored `predict_at` locations;
+#'   it does not generate a grid. A matrix with zero rows is allowed. Supplied
+#'   row order and repeated locations are preserved.
+#' @param type Character scalar selecting the returned summary:
+#'   \describe{
+#'     \item{`"median"`}{Posterior median intensity; the default.}
+#'     \item{`"mean"`}{Posterior mean intensity.}
+#'     \item{`"interval"`}{Posterior median and lower and upper limits of the
+#'       pointwise 95 percent credible interval.}
+#'   }
+#' @param ... For `predict()`, arguments forwarded to `ppt_predict()`, notably
+#'   `type`. Additional arguments received directly by `ppt_predict()` are
+#'   currently ignored.
 #'
 #' @return A numeric vector for `mean` or `median`, or a data frame for
 #'   `interval`.
+#' @md
 #' @export
 ppt_predict <- function(object, newdata = NULL,
                         type = c("median", "mean", "interval"), ...) {
@@ -84,28 +101,53 @@ ppt_predict <- function(object, newdata = NULL,
 #' `reference` explicitly instead uses a uniform reference-design
 #' approximation. Its one-coordinate substitution designs are evaluated from
 #' the stored posterior state draws, so `reference` need not have appeared in
-#' `predict_at` (rows that were pre-evaluated during fitting are reused when
-#' available). Set `average = FALSE` to omit the volume normalization and
+#' `predict_at`. Stored draws are reused when every row of the complete
+#' substitution design was evaluated during fitting; otherwise the full
+#' design is evaluated from the retained states. Set `average = FALSE` to
+#' omit the volume normalization and
 #' obtain the projected point-process intensity.
 #'
-#' @param object A fitted `ppt` object.
-#' @param variable One input name or one-based column index.
-#' @param grid Optional numeric vector of values for the selected input. The
-#'   default is an equally spaced grid over its fitted region.
-#' @param n Number of default grid values when `grid` is `NULL`.
-#' @param level Pointwise posterior credible level.
-#' @param average Divide by the volume of the other input dimensions. The
-#'   default preserves the units and overall scale of the fitted intensity.
-#' @param reference Optional numeric reference-design matrix with one column
-#'   per input. When supplied, its rows approximate the uniform measure on the
-#'   fitted region and explicitly select reference-design approximation instead
-#'   of state-based integration.
-#' @param type Return posterior summaries or the grid-by-draw matrix.
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()], with retained posterior states or the prediction draws
+#'   needed for the supplied `reference` design.
+#' @param variable A single input name or one-based integer column index in
+#'   `1, ..., d`, where `d` is the fitted input dimension. If the fitting data
+#'   have no column names, use the generated names `"x1"`, `"x2"`, and so on.
+#' @param grid A nonempty, finite numeric vector of values for the selected
+#'   input, all inside its fitted region. The supplied order is preserved.
+#'   The default, `NULL`, creates `n` equally spaced values including both
+#'   region endpoints.
+#' @param n Integer scalar of at least 2, default `100`, specifying the grid
+#'   length when `grid = NULL`. Ignored when `grid` is supplied.
+#' @param level Finite numeric scalar strictly between 0 and 1, default `0.95`.
+#'   The summary contains the weighted posterior quantiles at
+#'   `(1 - level) / 2` and `(1 + level) / 2`. This is a pointwise credible
+#'   level, not a simultaneous-band level; it is validated but does not affect
+#'   `type = "draws"`.
+#' @param average Logical scalar, default `TRUE`. If `TRUE`, divide each
+#'   integrated intensity by the volume of all input dimensions except
+#'   `variable`, preserving the fitted intensity's units. If `FALSE`, return
+#'   the projected point-process intensity without this division.
+#' @param reference A finite numeric matrix with at least one row and one
+#'   column per fitted input, in fitting-data column order and within the
+#'   observation region. Its rows should approximate the uniform distribution
+#'   over that region. At each grid value, its `variable` column is replaced
+#'   and the resulting intensities are averaged over rows. This explicitly
+#'   selects a reference-design approximation. The default, `NULL`, instead
+#'   integrates the retained tree states using the model-specific method
+#'   described above.
+#' @param type Character scalar selecting the output:
+#'   \describe{
+#'     \item{`"summary"`}{Pointwise posterior summaries; the default.}
+#'     \item{`"draws"`}{The grid-by-posterior-draw intensity matrix, with
+#'       posterior weights in its `weights` attribute.}
+#'   }
 #'
 #' @return For `type = "summary"`, a data frame containing the input value,
 #'   posterior mean and median, and pointwise credible limits. For
 #'   `type = "draws"`, a matrix with grid values in rows and posterior draws
 #'   in columns. Draw weights are stored in the `weights` attribute.
+#' @md
 #' @export
 ppt_marginal <- function(object, variable, grid = NULL, n = 100L,
                          level = 0.95, average = TRUE,
@@ -177,8 +219,6 @@ ppt_marginal <- function(object, variable, grid = NULL, n = 100L,
       numeric(length(grid)), grid = grid, variable = j,
       region = region, average = isTRUE(average)
     )
-    # A scalar grid makes vapply() return one value per tree as a vector.
-    # Retain every posterior draw when restoring the grid-by-draw layout.
     draws <- matrix(draws, nrow = length(grid), ncol = length(trees))
   } else if (is.null(reference) && exact_heap_state) {
     draws <- .ppt_state_marginal(
@@ -229,9 +269,6 @@ ppt_marginal <- function(object, variable, grid = NULL, n = 100L,
       rows <- (k - 1L) * n_reference + seq_len(n_reference)
       colMeans(evaluated_draws[rows, , drop = FALSE])
     }, numeric(ncol(evaluated_draws)))
-    # `vapply()` drops its matrix dimension when there is only one posterior
-    # draw. Restore the draws-by-grid layout before transposing so single-draw
-    # fits follow the same grid-by-draw contract as all other fits.
     draws <- t(matrix(
       draws, nrow = ncol(evaluated_draws), ncol = length(grid)
     ))
@@ -275,28 +312,23 @@ ppt_marginal <- function(object, variable, grid = NULL, n = 100L,
 }
 
 #' @rdname ppt_predict
-#' @param newdata Optional prediction matrix.
 #' @method predict ppt
 #' @export
 predict.ppt <- function(object, newdata = NULL, ...) {
   ppt_predict(object, newdata = newdata, ...)
 }
 
-#' Summarize a fitted PPT
+#' Assemble a fitted PPT summary
 #'
-#' SMC fits report a target normalizer rather than an absolute Bayesian
-#' evidence estimate: the tree-prior normalizing constant is not computed,
-#' so `posterior$log_evidence` is `NA`. With a proper intensity prior (`b > 0`),
-#' `posterior$log_target_normalizer` adds the root Gamma--Poisson log marginal
-#' to `posterior$log_relative_normalizer`. With the improper `b = 0` prior,
-#' only the relative normalizer is available, under the backend's formal
-#' improper-prior leaf-score convention. The summary labels these quantities
-#' separately. RJ-MCMC and Particle-Gibbs do not estimate these normalizers.
+#' Internal helper used by the public `summary()` method.
 #'
-#' @param object A fitted `ppt` object.
-#' @param ... Reserved for future methods.
-#' @return An object of class `summary.ppt`.
-#' @export
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()]. Stored posterior and diagnostic fields supply the summary.
+#' @param ... Additional arguments passed from `summary()`; currently ignored.
+#' @return A `summary.ppt` list containing model, data, posterior, and sampler
+#'   summaries. Missing backend summaries are represented by `NA`.
+#' @md
+#' @keywords internal
 ppt_summary <- function(object, ...) {
   if (!inherits(object, "ppt")) {
     stop("`object` must inherit from class \"ppt\".", call. = FALSE)
@@ -328,11 +360,39 @@ ppt_summary <- function(object, ...) {
   )
 }
 
-#' @rdname ppt_summary
+#' Summarize a fitted PPT
+#'
+#' SMC fits report a target normalizer rather than an absolute Bayesian
+#' evidence estimate: the tree-prior normalizing constant is not computed,
+#' so `posterior$log_evidence` is `NA`. With a proper intensity prior (`b > 0`),
+#' `posterior$log_target_normalizer` adds the root Gamma--Poisson log marginal
+#' to `posterior$log_relative_normalizer`. With the improper `b = 0` prior,
+#' only the relative normalizer is available, under the backend's formal
+#' improper-prior leaf-score convention. The summary labels these quantities
+#' separately. RJ-MCMC and Particle-Gibbs do not estimate these normalizers.
+#'
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()].
+#' @param ... Additional arguments accepted for compatibility with the S3
+#'   `summary()` and `print()` generics; currently ignored.
+#' @return `summary()` returns an object of class
+#'   `summary.ppt` containing model, data, posterior, and available sampler
+#'   summaries. The print method returns its input invisibly.
+#' @md
 #' @method summary ppt
 #' @export
 summary.ppt <- function(object, ...) ppt_summary(object, ...)
 
+#' Print a fitted PPT
+#'
+#' Display the model configuration, sample size, and posterior draw count.
+#'
+#' @param x An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()].
+#' @param ... Additional arguments accepted for compatibility with [print()];
+#'   currently ignored.
+#' @return `x`, invisibly.
+#' @md
 #' @method print ppt
 #' @export
 print.ppt <- function(x, ...) {
@@ -350,6 +410,9 @@ print.ppt <- function(x, ...) {
   invisible(x)
 }
 
+#' @rdname summary.ppt
+#' @param x An object of class `summary.ppt`, returned by `summary()` applied
+#'   to a `ppt` fit.
 #' @method print summary.ppt
 #' @export
 print.summary.ppt <- function(x, ...) {
@@ -397,10 +460,15 @@ print.summary.ppt <- function(x, ...) {
 #'
 #' This is the posterior mean in-sample log likelihood, not model evidence.
 #'
-#' @param object A fitted `ppt` object.
-#' @param ... Reserved for compatibility.
-#' @return An object of class `logLik`.
-#' @export
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()]. The stored posterior mean in-sample log likelihood is used;
+#'   no likelihood is reevaluated by this accessor.
+#' @param ... Additional arguments; currently ignored.
+#' @return A numeric scalar of class `logLik`, with `nobs` equal to the number
+#'   of observed points and `df = NA` because no effective parameter count is
+#'   estimated.
+#' @md
+#' @keywords internal
 ppt_logLik <- function(object, ...) {
   if (!inherits(object, "ppt")) {
     stop("`object` must inherit from class \"ppt\".", call. = FALSE)
@@ -412,11 +480,6 @@ ppt_logLik <- function(object, ...) {
     df = NA_integer_
   )
 }
-
-#' @rdname ppt_logLik
-#' @method logLik ppt
-#' @export
-logLik.ppt <- function(object, ...) ppt_logLik(object, ...)
 
 #' Test-pattern log predictive density
 #'
@@ -442,14 +505,27 @@ logLik.ppt <- function(object, ...) ppt_logLik(object, ...)
 #' `ppt_fit(..., test = )` is returned if `scale = 1` and
 #' `type = "posterior"`; otherwise the stored test pattern is rescored.
 #'
-#' @param object A fitted `ppt` object.
-#' @param test Optional numeric matrix of test points (one column per
-#'   input). If `NULL`, the test pattern supplied at fitting time is used.
-#' @param scale Positive factor \eqn{r} multiplying the fitted intensity.
-#' @param type `"posterior"` (joint posterior predictive density) or
-#'   `"plugin"` (log-likelihood under the posterior mean intensity).
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()]. Rescoring requires retained intensity-integral draws and
+#'   either retained states or stored prediction draws at the test locations.
+#' @param test A finite numeric matrix with at least one row and one column
+#'   per fitted input, in fitting-data column order. All test points must lie
+#'   within the fitted observation region. The default, `NULL`, uses the test
+#'   pattern supplied to [ppt_fit()]; an error is raised if none is stored.
+#' @param scale Positive, finite numeric scalar \eqn{r} multiplying the fitted
+#'   intensity and its integral. The default is `1`. For independent
+#'   training/test thinning with training probability \eqn{p}, use
+#'   `(1 - p) / p` to predict the test-process intensity.
+#' @param type Character scalar selecting the log score:
+#'   \describe{
+#'     \item{`"posterior"`}{Log of the posterior average joint point-pattern
+#'       likelihood; the default.}
+#'     \item{`"plugin"`}{Point-pattern log likelihood evaluated at the
+#'       posterior mean intensity.}
+#'   }
 #' @return A numeric scalar with attributes `n_test`, `joint`, `scale`,
 #'   and `type`.
+#' @md
 #' @export
 ppt_lppd <- function(object, test = NULL, scale = 1,
                      type = c("posterior", "plugin")) {
@@ -508,17 +584,27 @@ ppt_lppd <- function(object, test = NULL, scale = 1,
   out(center + log(sum(exp(log_weighted - center))), nrow(test))
 }
 
-#' Extract the exact posterior intensity integral
+#' Extract the posterior intensity integral
 #'
-#' Every posterior tree draw has an analytically evaluated total intensity 
-#' \eqn{A=\int_{\mathcal D}\lambda(x)\,dx}. The hard-tree model uses exact box
-#' volumes; no numerical grid is used by this accessor.
+#' Every posterior tree draw has a stored total intensity
+#' \eqn{A=\int_{\mathcal D}\lambda(x)\,dx}. Ordinary hard-tree fits use exact
+#' box volumes. Fits from [ppt_fit_quadrature()] instead store the weighted
+#' background sum over the physical domain. This accessor returns the stored
+#' integrals without performing additional numerical integration.
 #'
-#' @param object A fitted `ppt` object.
-#' @param type Return the posterior mean or all retained draw-specific
-#'   integrals.
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()], with stored posterior intensity integrals. Fits created
+#'   before integral storage was introduced must be refitted.
+#' @param type Character scalar selecting the returned integrals:
+#'   \describe{
+#'     \item{`"mean"`}{Stored posterior mean total intensity; the default.
+#'       SMC fits use posterior particle weights.}
+#'     \item{`"draws"`}{One total intensity per retained posterior draw, in
+#'       the same order as the fitted posterior states.}
+#'   }
 #' @return A numeric scalar for `mean` or a numeric vector for `draws`.
-#' @export
+#' @md
+#' @keywords internal
 ppt_integral <- function(object, type = c("mean", "draws")) {
   if (!inherits(object, "ppt")) {
     stop("`object` must inherit from class \"ppt\".", call. = FALSE)
@@ -549,18 +635,44 @@ ppt_integral <- function(object, type = c("mean", "draws")) {
 #' back to displaying the stored `predict_at` summaries. For
 #' publication-quality graphics use [ppt_lambda()] with \pkg{ggplot2}.
 #'
-#' @param x A fitted `ppt` object.
-#' @param type Posterior median or mean.
-#' @param dims One dimension for a curve or two dimensions for an intensity
-#'   image.
-#' @param n Grid resolution per shown dimension.
-#' @param level Pointwise credible level for the one-dimensional band.
-#' @param points Overlay the observed points: a rug in one dimension, white
-#'   points on the surface in two dimensions.
-#' @param main,xlab,ylab Optional labels.
-#' @param ... Additional graphical arguments passed to [graphics::plot()] or
-#'   [graphics::image()].
+#' @param x An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()].
+#' @param type Character scalar selecting the plotted intensity:
+#'   \describe{
+#'     \item{`"median"`}{Pointwise posterior median; the default.}
+#'     \item{`"mean"`}{Pointwise posterior mean.}
+#'   }
+#' @param dims One or two distinct one-based input column indices, each in
+#'   `1, ..., d`, where `d` is the fitted input dimension. One index gives a
+#'   curve; two give an intensity image. The default, `NULL`, selects input 1
+#'   for a one-dimensional fit and inputs 1 and 2 otherwise. Unselected
+#'   coordinates are fixed at their region midpoints when states are available.
+#' @param n Integer scalar of at least 2, default `60`, giving the number of
+#'   equally spaced grid values per selected dimension. A two-dimensional
+#'   image evaluates `n^2` locations. This is validated but not used when
+#'   displaying a legacy fit without posterior states.
+#' @param level Finite numeric scalar strictly between 0 and 1, default `0.95`.
+#'   Sets the equal-tail pointwise credible band for a one-dimensional plot.
+#'   With retained states it is validated for both plot types; a
+#'   two-dimensional image does not display a band. Ignored for legacy fits
+#'   without retained states.
+#' @param points Logical scalar, default `FALSE`. If `TRUE`, overlay the
+#'   observed coordinates as a rug in one dimension or white points in two
+#'   dimensions. Ignored for legacy fits without retained states.
+#' @param main Plot title as a character string or expression, or `NULL` (the
+#'   default) to construct a title from the model label and summary type,
+#'   with a midpoint-slice label when needed.
+#' @param xlab Horizontal-axis label as a character string or expression, or
+#'   `NULL` (the default) to use the name of the first selected input.
+#' @param ylab Vertical-axis label as a character string or expression, or
+#'   `NULL` (the default) to use `"Intensity"` for a curve or the second
+#'   selected input name for an image.
+#' @param ... Additional graphical arguments passed to [graphics::plot()] for
+#'   curves and legacy displays, or [graphics::image()] for intensity images.
+#'   Do not repeat arguments already set by the method, including `type` and
+#'   `ylim` for curves or `col` and `useRaster` for images.
 #' @return The fitted object, invisibly.
+#' @md
 #' @method plot ppt
 #' @export
 plot.ppt <- function(x, type = c("median", "mean"), dims = NULL,
@@ -639,8 +751,7 @@ plot.ppt <- function(x, type = c("median", "mean"), dims = NULL,
   invisible(x)
 }
 
-# Legacy display for fits from package versions without stored posterior
-# state: show the summaries stored at the `predict_at` locations.
+# Display stored predictions for fits without retained posterior states.
 #' @keywords internal
 .ppt_plot_stored <- function(x, type, dims, main, xlab, ylab, ...) {
   locations <- x$prediction$locations

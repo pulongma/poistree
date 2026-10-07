@@ -15,20 +15,49 @@ ppt_quadrature_geometry(
 )
 }
 \arguments{
-\item{background, weights, region}{Integration rule and covariate bounds, as
-in \code{\link[=ppt_fit_quadrature]{ppt_fit_quadrature()}}.}
+\item{background}{Finite numeric matrix of covariates at integration
+locations, with at least one row. Columns correspond to rows of \code{region}.
+Every row must lie inside \code{region}.}
 
-\item{axis}{One-based split coordinate.}
+\item{weights}{Numeric vector of length \code{nrow(background)} containing
+strictly positive, finite exposure weights. Values are not normalized.}
 
-\item{cut}{Split location.}
+\item{region}{Finite numeric matrix with \code{ncol(background)} rows and two
+columns containing lower and strictly larger upper bounds.}
 
-\item{side}{\code{-1L} for the left child, \code{1L} for the right child.}
+\item{axis}{Integer scalar from \code{1} to \code{ncol(background)} identifying the
+split coordinate, using R's one-based indexing.}
 
-\item{gate}{Logistic gate sharpness.}
+\item{cut}{Finite numeric scalar split location, strictly inside the
+interval \code{region[axis, ]}.}
+
+\item{side}{Integer scalar selecting the child:
+\describe{
+\item{\code{-1L}}{Left child; the default. Hard routing uses \code{x[axis] < cut}.}
+\item{\code{1L}}{Right child. Hard routing uses \code{x[axis] >= cut}.}
+}}
+
+\item{gate}{Positive finite logistic sharpness, default \code{10}. Supply a
+scalar or a vector of length \code{ncol(background)}; the selected coordinate
+uses \code{gate[axis]} after scalar recycling. The right-gate probability is
+\code{plogis(gate[axis] * (x[axis] - cut) / diff(region[axis, ]))}.
+This helper uses root-relative logistic scaling.}
 }
 \value{
-Hard weighted exposure and soft leaf-geometry diagnostics.
+A list containing:
+\describe{
+\item{\code{hard_exposure}}{Sum of weights for background rows routed to
+the selected hard child. The outer upper region boundary is included.}
+\item{\code{soft}}{A list with \code{phi} (selected-child membership probability
+at each background row), \code{log_phi} (its log probability), and
+\code{H = sum(weights * phi)} (the soft child exposure).}
+}
 }
 \description{
-Inspect a one-split quadrature geometry
+Compare the exposure of a hard child box with the weighted exposure of
+the corresponding single logistic gate over the full integration rule.
 }
+\seealso{
+\code{\link[=ppt_fit_quadrature]{ppt_fit_quadrature()}}
+}
+\keyword{internal}

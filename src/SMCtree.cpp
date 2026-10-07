@@ -5,7 +5,6 @@
 // [[Rcpp::plugins(cpp11)]]
 #endif
 
-
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #include <cmath>
@@ -18,42 +17,34 @@
 
 #ifndef _USE_ProgressBar
 #define _USE_ProgressBar
-#include <R_ext/Utils.h>   // interrupt the Gibbs sampler from R
+#include <R_ext/Utils.h>
 #include <iostream>
 // [[Rcpp::depends(RcppProgress)]]
 #include <progress.hpp>
 #include <progress_bar.hpp>
 #endif
 
-
 using namespace Rcpp;
 
 #include "PPT.h"
 #include "SMCtree.h"
 
+// Run SMC for a hard Poisson process tree.
 
-/************************************************************************/
-/************************************************************************/
-// SMC for treed PP
-
-void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth, 
-  int min_leaf_n, 
+void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
+  int min_leaf_n,
   double a, double b,
   double rho, double lam, int cut_grid_n,
   double max_aspect_ratio,
   bool verbose)
 {
-  // if(verbose){
-  //   Rcpp::Rcout<<"\n***********************************************\n";
-  //   Rcpp::Rcout<<" cSMC starts ......\n";    
-  // }
 
   int n = pts.n_rows;
   int d = pts.n_cols;
-  // arma::vec lamvec = lam * arma::vec(d, arma::fill::ones);
+
   lam = 1.0 / d;
   ppt_check_dense_storage(max_depth, P);
-  int max_nodes = ppt_tree_steps(max_depth); // number of nodes up to the finest level
+  int max_nodes = ppt_tree_steps(max_depth);
   arma::mat region_root;
   if (!this->particles.empty() && !this->particles[0].nodes.empty() &&
       this->particles[0].nodes[0] != nullptr) {
@@ -62,65 +53,53 @@ void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
       region_root = arma::mat(d, 2, arma::fill::zeros);
       region_root.col(1).fill(1.0);
   }
-  
-  // --- Particle and ancestry storage ---
+
   this->particles.resize(P);
-  this->weights = arma::vec(P, arma::fill::ones) / P; // initial weights = 1/P
-                                                      // (was 1.0/ones == all 1s)
+  this->weights = arma::vec(P, arma::fill::ones) / P;
 
   arma::vec logw(P, arma::fill::zeros);
   arma::vec ESS_hist(max_nodes, arma::fill::zeros);
-  arma::vec logZ_inc(max_nodes, arma::fill::zeros);   // per-step log relative-normalizer increment Delta_t
-  arma::vec logZ_run(max_nodes, arma::fill::zeros);   // running log relative-normalizer estimate
-  double logZ = 0.0;   // log relative normalizer estimate; exp(logZ), not logZ, is unbiased
+  arma::vec logZ_inc(max_nodes, arma::fill::zeros);
+  arma::vec logZ_run(max_nodes, arma::fill::zeros);
+  double logZ = 0.0;
 
-
-  // Initialize particles
   for (int p = 0; p < P; ++p) {
       particles[p].clear();
       particles[p].initialize(
         region_root, n, max_depth, min_leaf_n, a, b, rho, cut_grid_n,
         2.0, max_aspect_ratio
       );
-      // Initialize lambda (you may have a helper for this)
+
       const double root_area = arma::prod(
           region_root.col(1) - region_root.col(0)
       );
       particles[p].nodes[0]->lambda = R::rgamma(
           particles[p].a + n, 1.0 / (particles[p].b + root_area)
       );
-      // this->particles[p] = tree->deep_copy();
+
   }
 
-  arma::uvec idx = arma::linspace<arma::uvec>(0, P-1, P); // For resampling
-  
+  arma::uvec idx = arma::linspace<arma::uvec>(0, P-1, P);
+
   for (int id = 0; id < max_nodes; ++id){
-    double lse_before = log_sum_exp(logw);   // for the marginal-likelihood estimate
+    double lse_before = log_sum_exp(logw);
     for (int p = 0; p < P; ++p) {
       auto& tree = this->particles[p];
       if (id >= (int)tree.size() || tree[id] == nullptr || tree[id]->is_empty) continue;
       if (tree[id]->depth > max_depth) continue;
       if (tree[id]->idx.n_elem < (unsigned int)min_leaf_n) continue;
-      // Advance particle by one node
+
       double log_inc;
       tree.PPT_one_step_ahead(log_inc, id, pts);
-      // Replace nodes
+
       logw[p] += log_inc;
     }
-    // Log of the relative SMC normalizer estimate (adaptive resampling):
-    //   logZ += lse(logw_after) - lse(logw_before).  After a resample logw is reset
-    //   to 0 so lse(logw_before) = log(P) on the next step, which is correct.
-    double dlogZ = log_sum_exp(logw) - lse_before;   // per-step log relative-normalizer increment Delta_t
+
+    double dlogZ = log_sum_exp(logw) - lse_before;
     logZ += dlogZ;
-    logZ_inc(id) = dlogZ;                    // per-step increment (sum -> logZ_hat)
-    logZ_run(id) = logZ;                     // running log relative normalizer (last active entry -> logZ_hat)
+    logZ_inc(id) = dlogZ;
+    logZ_run(id) = logZ;
 
-    // // draw lambda at leaf
-    // for (int p = 0; p < P; ++p) {
-    //     particles[p].PPT_draw_lambda();
-    // }
-
-    // --- Normalize weights (with NaN/negative guard) ---
     double maxw = logw.max();
     this->weights = arma::exp(logw - maxw);
     for (arma::uword i = 0; i < this->weights.n_elem; ++i)
@@ -132,19 +111,16 @@ void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
     double ESS = 1.0 / arma::sum(arma::square(this->weights));
     ESS_hist(id) = ESS;
     idx = arma::linspace<arma::uvec>(0, P-1, P);
-    // Rcpp::Rcout<<" ESS "<<ESS<<", ";
 
     if (ESS < resample_thresh * P) {
-    // Rcpp::Rcout<<" Resampling"<<"\n";
 
-      // Multinomial resampling
       IntegerVector sampled = Rcpp::sample(P, P, true, NumericVector(this->weights.begin(), this->weights.end()), false);
-      // Propagate children via idx
+
       std::vector< PPT > new_particles(P);
       for (int j = 0; j < P; ++j) {
         new_particles[j] = this->particles[sampled[j]].deep_copy();
       }
-      // free memory before reassigning 
+
       for(int p=0; p<P; ++p){
         this->particles[p].clear();
       }
@@ -152,41 +128,26 @@ void SMCtree::PPT_SMC(const arma::mat& pts,int max_depth,
       for(int p=0; p<P; ++p){
         new_particles[p].clear();
       }
-      logw.fill(0.0); 
+      logw.fill(0.0);
       this->weights.fill(1.0/P);
     }
-    // Rcpp::Rcout<<"\n";
 
   }
 
   this->ESS_hist = ESS_hist;
-  this->logZ_hat = logZ;                // SMC log-normalizer estimate, relative to root (= last active logZ_run)
-  this->logZ_inc = logZ_inc;      // per-step increments, aligned step-for-step with ESS_hist
-  this->logZ_run = logZ_run;      // running log relative normalizer (cumsum of logZ_inc)
-
+  this->logZ_hat = logZ;
+  this->logZ_inc = logZ_inc;
+  this->logZ_run = logZ_run;
 
   return;
 }
 
-// Conditional SMC for an exact Particle Gibbs update.
-//
-// The first particle is a prefix of ref_tree.  Its action at every scheduled
-// heap node is forced, while the remaining particles use the ordinary
-// one-step-ahead proposal.  Resampling is performed at fixed tree-level
-// boundaries, which keeps the schedule independent of the random particle
-// system.  The reference particle is retained during every conditional
-// resampling step, and the returned trajectory is sampled from the final
-// normalized weights.
-//
-// This is deliberately Particle Gibbs without ancestor sampling.  A valid
-// ancestor sampler for this non-Markovian tree construction requires the full
-// suffix target ratio, not merely the probability of the next reference
-// action.  The previous local replay approximation did not define a PGAS
-// kernel and has therefore been removed.
+// Run conditional SMC with a retained reference tree.
+
 void SMCtree::PPT_cSMC(
-  PPT* ref_tree, const arma::mat& pts,int max_depth, 
-  int min_leaf_n, 
-  double a, double b, 
+  PPT* ref_tree, const arma::mat& pts,int max_depth,
+  int min_leaf_n,
+  double a, double b,
   double rho, double lam, int cut_grid_n,
   double max_aspect_ratio,
   bool verbose)
@@ -196,7 +157,7 @@ void SMCtree::PPT_cSMC(
   int d = pts.n_cols;
   lam = 1.0 / d;
   ppt_check_dense_storage(max_depth, P);
-  int max_nodes = ppt_tree_steps(max_depth); // number of nodes up to the finest level
+  int max_nodes = ppt_tree_steps(max_depth);
   if (ref_tree == nullptr || ref_tree->nodes.empty() ||
       ref_tree->nodes[0] == nullptr) {
       Rcpp::stop("conditional SMC requires a nonempty reference tree");
@@ -209,10 +170,6 @@ void SMCtree::PPT_cSMC(
 
   if (P < 1) Rcpp::stop("conditional SMC requires at least one particle");
 
-  // Every particle starts from the root-only state.  In particular, do not
-  // copy the complete reference tree into particle zero: doing so exposes
-  // future decisions before their SMC time and allows the ordinary proposal
-  // to overwrite the purportedly conditioned trajectory.
   for (auto& tree : this->particles) tree.clear();
   this->particles.clear();
   this->particles.resize(P);
@@ -242,12 +199,10 @@ void SMCtree::PPT_cSMC(
         logw[p] += log_inc;
       }
 
-      // --- Normalize weights ---
       double maxw = logw.max();
       if (std::isfinite(maxw)) this->weights = arma::exp(logw - maxw);
       else                     this->weights.zeros(P);
 
-      // Remove NaNs and negative values, and re-normalize
       for (arma::uword i = 0; i < this->weights.n_elem; ++i) {
           if (!std::isfinite(this->weights[i]) || this->weights[i] < 0)
               this->weights[i] = 0.0;
@@ -262,9 +217,6 @@ void SMCtree::PPT_cSMC(
       const double ESS = 1.0 / arma::sum(arma::square(this->weights));
       this->ESS_hist(id) = ESS;
 
-      // Fixed resampling at the end of every completed heap level.  End-of-
-      // level indices are 0, 2, 6, 14, ... (id + 2 is a power of two).  Do not
-      // resample after the terminal SMC step; its weights select the output.
       const unsigned int level_marker = static_cast<unsigned int>(id + 2);
       const bool end_of_level =
           (level_marker & (level_marker - 1U)) == 0U;
@@ -290,9 +242,6 @@ void SMCtree::PPT_cSMC(
       }
   }
 
-  // Select the terminal trajectory by its final importance weight.  Each
-  // particle already contains its complete genealogy because resampling uses
-  // deep copies; following an ancestor matrix a second time is incorrect.
   const int selected = Rcpp::sample(
       P, 1, false,
       Rcpp::NumericVector(this->weights.begin(), this->weights.end()),
@@ -303,14 +252,11 @@ void SMCtree::PPT_cSMC(
   *ref_tree = ref_traj.deep_copy();
 }
 
+// Run Particle Gibbs for a hard Poisson process tree.
 
-// Particle Gibbs for treed PP, using the exact conditional-SMC kernel above.
-// The historical C++ entry-point name is retained for API compatibility, but
-// ancestor sampling is intentionally disabled until an exact full-suffix
-// backward weight is available for this tree construction.
 Rcpp::List SMCtree::PPT_PGAS(
-  const arma::mat& pts, const arma::mat& grid, int niter, int max_depth, 
-  int min_leaf_n, 
+  const arma::mat& pts, const arma::mat& grid, int niter, int max_depth,
+  int min_leaf_n,
   double a, double b,
   double rho, double lam, int cut_grid_n,
   double max_aspect_ratio,
@@ -323,20 +269,17 @@ Rcpp::List SMCtree::PPT_PGAS(
     }
     ppt_check_dense_storage(max_depth, P);
     max_nodes = ppt_tree_steps(max_depth);
-    // if (Rcpp::NumericVector::is_na(lam)) lam = 1.0 / d;
+
     lam = 1.0 / d;
-    // --- Initialization: run ordinary SMC and sample its weighted output ---
-    
+
     this->particles.resize(P);
     this->ESS_hist = arma::vec(max_nodes, arma::fill::zeros);
-    this->weights = arma::vec(P, arma::fill::ones); // dummy initial weights
+    this->weights = arma::vec(P, arma::fill::ones);
 
-    // Initial SMC initializes all particles internally.
     PPT_SMC(
       pts, max_depth, min_leaf_n, a, b, rho, lam, cut_grid_n,
       max_aspect_ratio, false
     );
-    // Particles and weights now updated in-place
 
     int initial_index = Rcpp::sample(
         P, 1, false,
@@ -344,56 +287,40 @@ Rcpp::List SMCtree::PPT_PGAS(
         false
     )[0];
     PPT* ref_tree = new PPT(particles[initial_index].deep_copy());
-    // Prepare storage for reference trajectories
+
     std::vector<Rcpp::List> ref_traj_list(niter);
     int np = grid.n_rows;
-    arma::mat lambda_sample(np, niter, arma::fill::zeros); 
+    arma::mat lambda_sample(np, niter, arma::fill::zeros);
     arma::vec loglik(niter, arma::fill::zeros);
     arma::mat weight_samp(P, niter, arma::fill::zeros);
     arma::vec lppd(niter, arma::fill::zeros);
 
-    // Rcpp::Rcout<<" Start PGAS: \n";
     Progress prog(niter, verbose);
-    // --- Particle Gibbs main loop ---
+
     for (int iter = 0; iter < niter; ++iter) {
         if(Progress::check_abort()){
           return R_NilValue;
         }
 
-        // cSMC sweep conditioned on current reference trajectory
         PPT_cSMC(
           ref_tree, pts, max_depth, min_leaf_n, a, b, rho, lam,
           cut_grid_n, max_aspect_ratio, false
         );
-        // ref_tree is updated in place
-        // sample the lambda 
+
         ref_tree->PPT_draw_lambda();
         ref_tree->get_TreeLoglik();
         loglik(iter) = ref_tree->loglik;
 
-        // compute lambda based on reference tree 
-        // draw lambda over leaf nodes 
-        // ref_tree.draw_lambda_at_leaf(); already done in the above 
-        // assign lambda over the prediction locations (grid / XX) and evaluate
-        // the predictive log-density there (lppd over the prediction points).
         lambda_sample.col(iter) = ref_tree->predict_lambda(grid);
         lppd(iter) = ref_tree->PPT_get_lppd(lambda_sample.col(iter));
 
-        // // free all non-reference particles 
-        // for(int p=1; p<P; ++p){
-        //   particles[p].clear();
-        // }
-
-        // Store reference tree as Rcpp::List
         ref_traj_list[iter] = ref_tree->to_R_list();
         weight_samp.col(iter) = this->weights;
         prog.increment();
     }
-    
-    
-    // compute posterior summary of lambda 
-    arma::vec lambda_mean = arma::mean(lambda_sample, 1); // row-wise mean
-    arma::vec lambda_median = arma::median(lambda_sample, 1); // row-wise median
+
+    arma::vec lambda_mean = arma::mean(lambda_sample, 1);
+    arma::vec lambda_median = arma::median(lambda_sample, 1);
     arma::vec lambda_lower = arma::quantile(lambda_sample, arma::vec({0.025}), 1);
     arma::vec lambda_upper = arma::quantile(lambda_sample, arma::vec({0.975}), 1);
 
@@ -403,14 +330,13 @@ Rcpp::List SMCtree::PPT_PGAS(
                         Rcpp::_["lower95"]=lambda_lower,
                         Rcpp::_["upper95"]=lambda_upper,
                         Rcpp::_["draws"]=lambda_sample
-                        ); 
+                        );
 
     Rcpp::List out = Rcpp::List::create(
         Rcpp::_["loglik"] = loglik,
         Rcpp::_["lppd"] = lppd,
         Rcpp::_["lambda"] = Rlam,
-        // Rcpp::_["Plambda"] = Plam,
-        // Rcpp::_["ESS"] = ESS_hist,
+
         Rcpp::_["weights"] = weight_samp,
         Rcpp::_["particles"] = ref_traj_list
 
@@ -421,21 +347,8 @@ Rcpp::List SMCtree::PPT_PGAS(
     return out;
 }
 
-/************************************************************************/
-/************************************************************************/
+// Return a cached one-dimensional path log integral.
 
-
-/************************************************************************/
-/************************************************************************/
-// Soft terminal-leaf PPT: shared-path SMC, conditional SMC with ancestor
-// sampling, and Particle Gibbs.  See soft_smc.h for the model and notation and
-// CLAUDE/shared_path_smc.tex for the algorithm.  Particles hold handles into
-// `store`; the expansion of a coloured path node is computed once per distinct
-// node (Phase 1), draws are made per particle in heap order (Phase 2), and
-// resampling moves or copies record maps (Phase 3).
-
-// Cache one-dimensional geometry, preserving the exact ordered path and the
-// original integral routine. No quadrature approximation or RNG change is made.
 double SoftSMCtree::cached_axis_log_integral(const arma::vec& gate,
     const std::vector<SoftGateStep>& path, int j,
     double extra_cut, int extra_side) {
@@ -456,7 +369,7 @@ double SoftSMCtree::cached_axis_log_integral(const arma::vec& gate,
   const auto found = cache.find(key);
   if (found != cache.end()) return found->second;
   const double value = soft_axis_log_integral(M, gate, path, j, extra_cut, extra_side);
-  // Bound memory even for a fixed gate and a long chain. Eviction only affects speed.
+
   if (cache.size() >= 8192) cache.clear();
   cache.emplace(std::move(key), value);
   return value;
@@ -535,8 +448,8 @@ int SoftSMCtree::make_root() {
   return (int)store.size() - 1;
 }
 
-// Child of store node `parent` for candidate `cand` on the given side, with the
-// coloured points `pts`.  The exposure uses the parent's per-axis integrals.
+// Create or reuse a child with the supplied observation labels.
+
 int SoftSMCtree::make_child(int parent, int cand, int side, std::vector<int>&& pts) {
   const SoftPathNode& par = store[parent];
   SoftPathNode c;
@@ -552,8 +465,8 @@ int SoftSMCtree::make_child(int parent, int cand, int side, std::vector<int>&& p
   return (int)store.size() - 1;
 }
 
-// Return the shared reference for a cut, or a direct candidate reference when
-// extreme scaled logits make the common shift unusable. The fallback is local.
+// Return the shared exact-count reference for a candidate cut.
+
 std::shared_ptr<SoftExactAxis> SoftSMCtree::exact_cut_axis(SoftPathNode& A,
     int c, double& delta) {
   const int j = G.cand_axis[c], m = A.pts.size();
@@ -580,17 +493,15 @@ void SoftSMCtree::initialize_hard_bins() {
       [&](int x, int y) { return M.grid[j][x] < M.grid[j][y]; });
     for (int q : hard_order[j]) hard_cuts[j].push_back(M.grid[j][q]);
     for (int i = 0; i < M.n(); ++i)
-      // x == cut belongs to the right side: cumulative bins use x < cut.
+
       hard_bins[(size_t)i * d + j] = std::upper_bound(
         hard_cuts[j].begin(), hard_cuts[j].end(), M.X(i, j)) - hard_cuts[j].begin();
   }
   ++hard_bin_builds;
 }
 
-// Integrate a parent path over a cut interval without changing its physical
-// logistic slope. The existing primitive scales by its integration width,
-// hence the adjusted gate. Its numerical fallback is an exposure calculation,
-// not an approximation to the allocation-count score.
+// Integrate a logistic parent path over an interval at its original slope.
+
 static double soft_hard_interval(const std::vector<double>& cuts,
     const std::vector<int>& sides, double domlo, double domhi, double gate,
     double left, double right) {
@@ -601,8 +512,7 @@ static double soft_hard_interval(const std::vector<double>& cuts,
     const double mass = pst_logistic_path_axis_integral(cuts, sides, left, right, adjusted);
     if (std::isfinite(mass) && mass >= 0.0) return mass;
   }
-  // Extremely narrow intervals can underflow the adjusted gate. Evaluate
-  // the same existing Simpson integrator with the original domain scale.
+
   std::vector<double> breaks{left, right};
   for (double cut : cuts) if (cut > left && cut < right) breaks.push_back(cut);
   std::sort(breaks.begin(), breaks.end());
@@ -659,8 +569,7 @@ std::shared_ptr<SoftSMCtree::HardAxisExposure> SoftSMCtree::hard_axis_exposures(
     suffix += mass[q + 1];
     out->logR[hard_order[j][q]] = std::log(suffix);
   }
-  // Bound vector payloads as well as path count (about 512 KiB per axis,
-  // apart from one potentially larger grid payload and map overhead).
+
   const size_t max_paths = std::max<size_t>(1,
     std::min<size_t>(256, 65536 / std::max<size_t>(1, 2 * (size_t)count)));
   if (cache.size() >= max_paths) cache.clear();
@@ -682,8 +591,8 @@ void SoftSMCtree::ensure_true_exposure(int v, int c) {
   ++true_exposure_builds;
 }
 
-// Additive hard counts and hard-truncated parent exposures are a proposal
-// surrogate only. True soft child exposures are materialized after selection.
+// Score candidate actions using hard counts and parent-path exposures.
+
 void SoftSMCtree::expand_hard_node(int v) {
   initialize_hard_bins();
   SoftPathNode& A = store[v];
@@ -756,8 +665,8 @@ void SoftSMCtree::expand_hard_node(int v) {
   ++n_expanded;
 }
 
-// Phase 1: compute each coordinate once, retaining count coefficients for
-// allocation draws. Root payloads survive sweeps; all other nodes are local.
+// Expand a path node and prepare its candidate proposal probabilities.
+
 void SoftSMCtree::expand_node(int v) {
   SoftPathNode& A = store[v];
   if (A.expanded) return;
@@ -867,9 +776,8 @@ static inline unsigned long long soft_hash_bits(int cand, const std::vector<char
   return h;
 }
 
-// Phase 2 at heap position t: every particle with an undecided record at t
-// draws (or, for particle 0 of a conditional SMC, is forced to) its action
-// and colouring, creates or reuses the children, and updates its weight.
+// Sample or replay particle actions and allocations at a heap position.
+
 bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
   bool advanced = false;
   for (int p = 0; p < P; ++p) {
@@ -908,8 +816,7 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
     double logq_bits = 0.0;
     if (exact) {
       if (forced) {
-        // q(B | cut) cancels from the exact importance ratio. Reference bits
-        // only need routing; no count proposal, prefix table, or replay.
+
         ++exact_forced_routes;
       } else {
         double delta;
@@ -920,10 +827,7 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
         if (soft_exact_draw_bits(*axis, k, B)) ++exact_prefix_builds;
       }
     } else if (alloc_rates) {
-      // auxiliary child rates (rate_explicit_smc_soft_ppt.tex, eq. for w_t):
-      // lambda ~ q_lambda (Gamma posteriors at the expected allocation), then
-      // independent Bernoulli allocations; the weight carries
-      // q_lambda(lambda) prod Bernoulli / pi~(lambda | allocation).
+
       double Nbar = 0.0, Nref = 0.0;
       for (int s = 0; s < mA; ++s) { Nbar += G.r(A.pts[s], c); Nref += B[s]; }
       const double shL = M.a + (forced ? Nref : Nbar), shR = M.a + mA - (forced ? Nref : Nbar);
@@ -960,8 +864,7 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
       if (!exact) lgate += B[s] ? G.left(i, c) : G.right(i, c);
     }
     if (exact) {
-      // p0(c) Phi(c) / {Q(parent) q(c)}; with no defensive mixture all
-      // actions have the same increment, avoiding cancellation roundoff.
+
       par.logw += M.defensive == 0.0 ? A.log_inc : A.score[act] - A.logQA - A.logq[act];
     } else {
       const int mL = left.size(), mR = right.size();
@@ -969,7 +872,6 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
       par.logw += log_target - A.logq[act] - logq_bits;
     }
 
-    // children: reuse an identical coloured pair if some particle created it
     const unsigned long long key = soft_hash_bits(c, B);
     int lid = -1, rid = -1;
     auto range = A.children.equal_range(key);
@@ -980,7 +882,7 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
       rid = make_child(v, c, +1, std::move(right));
       store[v].children.emplace(key, std::make_pair(lid, rid));
     }
-    SoftRecord& R2 = par.rec[t];           // `A`/`R` may be invalidated by store growth
+    SoftRecord& R2 = par.rec[t];
     R2.S = 1; R2.act = c;
     par.rec[2 * t] = SoftRecord{lid, -1, -1};
     par.rec[2 * t + 1] = SoftRecord{rid, -1, -1};
@@ -988,13 +890,8 @@ bool SoftSMCtree::sample_position(int t, SoftRef* ref) {
   return advanced;
 }
 
-// Phase 3: conditional multinomial resampling of the record maps (first
-// offspring by move, further ones by copy); with a reference and ancestor
-// sampling, particle 0's ancestor is drawn from the ancestor weights.  The
-// event takes place iff ESS <= ess_threshold * P: always with the default
-// threshold 1, adaptively below it (e.g. 0.999 skips equal-weight events).
-// The rule is a function of the weights, so the law of the sweep stays well
-// defined and the Particle Gibbs argument is unchanged (shared_path_smc.tex).
+// Resample particle records, optionally retaining a reference trajectory.
+
 void SoftSMCtree::resample(SoftRef* ref) {
   std::vector<double> lw(P);
   for (int p = 0; p < P; ++p) lw[p] = particles[p].logw;
@@ -1033,7 +930,7 @@ void SoftSMCtree::resample(SoftRef* ref) {
   particles.swap(next);
 }
 
-// Dense export of a particle (decisions, labels) as a reference trajectory.
+// Export particle decisions and labels as a reference trajectory.
 void SoftSMCtree::export_particle(const SoftParticleS& p, SoftRef& out) {
   out.node.assign(M.n_nodes, SoftNodeP());
   out.z.assign(M.n(), 1);
@@ -1048,7 +945,7 @@ void SoftSMCtree::export_particle(const SoftParticleS& p, SoftRef& out) {
   }
 }
 
-// Reference decision at heap node h; an inactive node is a prior draw.
+// Return the reference decision, drawing an inactive decision from its prior.
 const SoftNodeP& SoftSMCtree::ref_decision(SoftRef& ref, int h) {
   SoftNodeP& R = ref.node[h];
   if (R.S == -1) {
@@ -1063,8 +960,8 @@ const SoftNodeP& SoftSMCtree::ref_decision(SoftRef& ref, int h) {
   return R;
 }
 
-// Reference bit of point i at node h: implied by the reference label when h is
-// on the route of i, otherwise an inactive bit drawn from Bern(left gate).
+// Return an active reference allocation or draw its inactive Bernoulli bit.
+
 int SoftSMCtree::ref_bit(SoftRef& ref, int i, int h) {
   int node = ref.z[i];
   while (node > h) {
@@ -1080,8 +977,8 @@ int SoftSMCtree::ref_bit(SoftRef& ref, int i, int h) {
   return bit;
 }
 
-// Sum of log Q over the glued leaves below node h when `pts` are routed
-// through the reference suffix.
+// Sum collapsed leaf log marginals after attaching the reference suffix.
+
 double SoftSMCtree::glued_logQ(SoftRef& ref, int h, const std::vector<int>& pts,
                                const std::vector<SoftGateStep>& path) {
   const SoftNodeP& R = ref_decision(ref, h);
@@ -1093,11 +990,8 @@ double SoftSMCtree::glued_logQ(SoftRef& ref, int h, const std::vector<int>& pts,
   return glued_logQ(ref, 2 * h, left, pL) + glued_logQ(ref, 2 * h + 1, right, pR);
 }
 
-// Ancestor-sampling log weight; the glued quantity of a frontier node depends
-// on the immutable coloured path node, gate, and reference only.  Cache it for
-// the whole fixed-reference sweep.  Inactive reference decisions/bits are
-// materialized lazily once and never changed during that sweep; evaluating a
-// glued subtree materializes every reference value needed by that result.
+// Compute the ancestor-sampling log weight.
+
 double SoftSMCtree::as_log_weight(const SoftParticleS& p, SoftRef& ref) {
   double lw = p.logw;
   for (const auto& kv : p.rec) {
@@ -1113,14 +1007,13 @@ double SoftSMCtree::as_log_weight(const SoftParticleS& p, SoftRef& ref) {
   return lw;
 }
 
-// One SMC sweep (ref_in == nullptr) or one conditional SMC sweep with the
-// reference in particle 0.
+// Run one SMC or conditional SMC sweep.
+
 void SoftSMCtree::sweep(SoftRef* ref_in, const arma::vec& gate, SoftRef& ref_out) {
   cur_gate = gate;
   build_gate_table(gate);
   store.clear();
-  // New path store and fixed reference: invalidate once per sweep, not at
-  // every resampling event.  Avoid integer overflow in very long runs.
+
   as_stamp = (as_stamp == std::numeric_limits<int>::max()) ? 0 : as_stamp + 1;
   n_expanded = 0;
   as_moved = 0;
@@ -1129,15 +1022,10 @@ void SoftSMCtree::sweep(SoftRef* ref_in, const arma::vec& gate, SoftRef& ref_out
   particles.assign(P, SoftParticleS());
   for (int p = 0; p < P; ++p) particles[p].rec[1] = SoftRecord{root, -1, -1};
 
-  // candidate resampling events: after every heap position at which some
-  // particle advanced (resample_node) or after every level; never after the
-  // last position, whose weights select the output trajectory
   for (int level = 0; level < M.Dmax; ++level) {
     expand_level(level);
     const int lo = 1 << level, hi = 2 * lo;
-    // A split creates only next-level children; resampling only copies current
-    // particles.  Thus no new current-level position can appear after this
-    // union is collected.  Retain heap order to preserve the random stream.
+
     std::vector<int> active_positions;
     for (const SoftParticleS& p : particles)
       for (auto it = p.rec.lower_bound(lo); it != p.rec.end() && it->first < hi; ++it)
@@ -1146,12 +1034,12 @@ void SoftSMCtree::sweep(SoftRef* ref_in, const arma::vec& gate, SoftRef& ref_out
     active_positions.erase(std::unique(active_positions.begin(), active_positions.end()),
                            active_positions.end());
     for (int t : active_positions) {
-      // A prior resampling may have removed this position from all particles.
+
       const bool advanced = sample_position(t, ref_in);
       const bool final_position = level == M.Dmax - 1 && t == hi - 1;
       if (resample_node && advanced && !final_position) resample(ref_in);
     }
-    // Preserve the original level-boundary events even for an empty level.
+
     if (!resample_node && level < M.Dmax - 1) resample(ref_in);
   }
 
@@ -1164,7 +1052,7 @@ void SoftSMCtree::sweep(SoftRef* ref_in, const arma::vec& gate, SoftRef& ref_out
   export_particle(particles[soft_sample_log(lw)], ref_out);
 }
 
-// Gibbs sweep over the labels given the tree and the gate.
+// Update labels conditional on the tree and gate parameters.
 void SoftSMCtree::label_sweep(SoftRef& ref, const arma::vec& gate) {
   std::vector<int> leaves;
   for (int h = 1; h < M.n_nodes; ++h) if (ref.node[h].active && ref.node[h].S == 0) leaves.push_back(h);
@@ -1203,9 +1091,8 @@ double SoftSMCtree::log_target_gate(const SoftRef& ref, const arma::vec& gate,
   return out;
 }
 
-// Log-random-walk Metropolis update of the gate (shared or per axis).
-// One Metropolis proposal per coordinate (systematic scan), or a single
-// proposal for a shared gate; returns the number of accepted proposals.
+// Update gate parameters by log-random-walk Metropolis; return accepted count.
+
 int SoftSMCtree::gate_update(SoftRef& ref, arma::vec& gate, const arma::vec& a_gate,
                              const arma::vec& b_gate, const arma::vec& sd_gate,
                              const arma::vec& gate_min, bool shared) {
@@ -1225,10 +1112,8 @@ int SoftSMCtree::gate_update(SoftRef& ref, arma::vec& gate, const arma::vec& a_g
   return accepted;
 }
 
-// Particle Gibbs with ancestor sampling for S-PPT.  Gibbs cycle: conditional
-// SMC over (tree, labels) | gate; label sweeps; gate update; rates drawn
-// conjugately for output.  Rows of each state matrix: (heap id, axis, cut,
-// lambda, NA, m) as consumed by ppt_eval_state().
+// Run Particle Gibbs with ancestor sampling for S-PPT.
+
 Rcpp::List SoftSMCtree::PGAS(const arma::mat& grid, const arma::mat& xtest,
                              arma::vec gate, const arma::vec& a_gate, const arma::vec& b_gate,
                              const arma::vec& sd_gate, const arma::vec& gate_min, bool gate_shared,

@@ -1,37 +1,6 @@
-// ============================================================================
-// PPSTree.cpp -- Soft Poisson Process Tree (terminal-leaf PPT) using
-// RcppArmadillo and reversible-jump MCMC.
-//
-// Only terminal leaves carry intensities,
-//
-//   lambda(x) = sum_{ell in leaves(T)} lambda_ell phi_ell(x),
-//
-// where the default recursive logistic gates give nonnegative C-infinity leaf
-// bases satisfying sum_ell phi_ell(x)=1.  At a split c on coordinate j,
-//
-//   G_c(x)=logit^{-1}{gate_j (x_j-c)/(b_j-a_j)},
-//   phi_left=phi_parent*(1-G_c), phi_right=phi_parent*G_c.
-//
-// Thus children sum exactly to their parent.  With one shared slope per
-// dimension, the leaf exposure H_ell=int phi_ell is a product of analytic
-// one-dimensional rational integrals.  Optional node-relative logistic gates
-// instead use each split parent's width, with adaptive one-dimensional
-// integration for varying slopes along a path.  The former compact-cubic gate remains
-// available as an opt-in compatibility family.  With lambda_ell~Gamma(a,b),
-// latent leaf labels give
-//
-//   lambda_ell | ... ~ Gamma(a+m_ell, b+H_ell).
-//
-// Grow/prune/change-cut moves propose affected labels from q_left:q_right.
-// Their spatial factors cancel the corresponding label proposal probability,
-// leaving Gamma-Poisson block, CART-prior, and move-count ratios.
-// The wrapper defaults to one shared gate.  Optionally each dimension has its
-// own gate_j, with a (possibly lower-truncated) Gamma(shape,rate) prior and a
-// coordinate-wise log-RW MH update.
-//
 // [[Rcpp::depends(RcppArmadillo, RcppProgress)]]
 // [[Rcpp::plugins(cpp17)]]
-// ============================================================================
+
 #include <RcppArmadillo.h>
 #include "tree_limits.h"
 #include "mcmc_progress.h"
@@ -49,17 +18,17 @@ struct PPSTGate {
   int axis;
   double cut;
   double parent_width;
-  int side;                         // -1 left, +1 right
+  int side;
 };
 
 struct PPSTNode {
   arma::mat box;
-  arma::uvec idx;                   // hard routing indices, used for cut support
-  std::vector<PPSTGate> path;       // recursive soft path
+  arma::uvec idx;
+  std::vector<PPSTGate> path;
   double cut;
   int axis;
   int depth;
-  int m;                            // soft leaf-label count
+  int m;
 };
 typedef std::unordered_map<int,PPSTNode> PPSTree;
 
@@ -93,7 +62,7 @@ static inline double ppst_logsumexp(const std::vector<double>&x){
   double s=0.0; for(double z:x) s+=std::exp(z-mx);
   return mx+std::log(s);
 }
-// ---- candidate cuts and CART support ---------------------------------------
+// Return a type-1 sample quantile.
 static inline double ppst_qtype1(const arma::vec&s,double p){
   int n=s.n_elem; double h=(n-1)*p+1.0;
   int i=std::max(1,(int)std::floor(h)); return s(i-1);
@@ -214,7 +183,7 @@ static PPSTNode ppst_child(const PPSTNode&parent,const arma::uvec&idx,int axis,
   return ch;
 }
 
-// ---- recursive logistic gate and analytic exposure -------------------------
+// Evaluate the log membership under recursive logistic gates.
 static double ppst_log_phi_logistic(const PPSTNode&nd,const arma::rowvec&x,
     const arma::mat&region,const arma::vec&gate,bool node_gate=false){
   double ans=0.0;
@@ -244,9 +213,8 @@ static double ppst_exposure_logistic(const PPSTNode&nd,
   return std::max(H,1e-300);
 }
 
-// A node-relative gate has the same dimension-specific parameter but a
-// different physical slope at every split. Integrate over the full root
-// domain: logistic leaf bases extend outside their hard-routing boxes.
+// Integrate the leaf basis for node-relative logistic gates.
+
 static double ppst_exposure_logistic_node(const PPSTNode&nd,
     const arma::mat&region,const arma::vec&gate){
   double H=1.0;
@@ -265,7 +233,7 @@ static double ppst_exposure_logistic_node(const PPSTNode&nd,
   return std::max(H,1e-300);
 }
 
-// ---- opt-in compact-cubic gate and exact exposure --------------------------
+// Evaluate an optional compact-cubic gate.
 static inline double ppst_compact_gate_value(
     const PPSTGate&g,double x,double gate){
   double h=g.parent_width/gate;
@@ -402,7 +370,7 @@ List ppstree_geometry(IntegerVector axis,NumericVector cut,
                       _["H"]=ppst_exposure(nd,region,gate,family));
 }
 
-// ---- leaf labels and gate update -------------------------------------------
+// Update leaf labels conditional on the tree and gates.
 static void ppst_label_sweep(PPSTree&T,std::vector<int>&labels,
     const arma::mat&pts,const arma::mat&region,double a,double b,
     const arma::vec&gate,int gate_family,PPSTGeometryCache*cache=nullptr){
@@ -459,7 +427,7 @@ static int ppst_gate_update(const PPSTree&T,const std::vector<int>&labels,
     arma::vec&gate,const arma::vec&a_gate,const arma::vec&b_gate,
     const arma::vec&sd_gate,const arma::vec&gate_min,bool gate_shared,
     int gate_family,int&which,PPSTGeometryCache*cache=nullptr){
-  // `which` is the coordinate updated (ignored for a shared gate)
+
   if(gate_shared) which=0;
   arma::vec prop=gate;
   double cur=gate[which];
@@ -480,7 +448,7 @@ static int ppst_gate_update(const PPSTree&T,const std::vector<int>&labels,
 
 #include "ppt_soft_pcg.h"
 
-// ---- reversible tree moves -------------------------------------------------
+// Evaluate left and right child log memberships.
 static void ppst_child_log_memberships(const PPSTGate&split,double x,
     double parent_log_phi,const arma::mat&region,const arma::vec&gate,
     int gate_family,double&ll,double&lr){
@@ -518,8 +486,7 @@ static int ppst_draw_side(const PPSTNode&left,const PPSTNode&right,
     ll=ppst_log_phi(left,pts.row(i),region,gate,gate_family);
     lr=ppst_log_phi(right,pts.row(i),region,gate,gate_family);
   }
-  // Keep the parent terms and the original probability arithmetic: cancelling
-  // their common factor changes floating-point rounding for extreme gates.
+
   const double p_left=ppst_side_probability(ll,lr);
   return R::unif_rand()<p_left ? -1 : 1;
 }
@@ -547,7 +514,7 @@ static int ppst_grow_prune(PPSTree&T,std::vector<int>&labels,
     int mL=0,mR=0;
     const arma::vec*parent_log_phi=nullptr;
     for(size_t i=0;i<labels.size();i++) if(labels[i]==v){
-      // Do not populate a training basis for a proposal with no affected labels.
+
       if(cache&&!parent_log_phi) parent_log_phi=&cache->training(old);
       int dest=ppst_draw_side(
         nl,nr,pts,i,region,gate,gate_family,parent_log_phi
@@ -651,7 +618,7 @@ static int ppst_change_cut(PPSTree&T,std::vector<int>&labels,
 #include "ppt_soft_informed.h"
 #include "ppt_soft_surrogate.h"
 
-// ---- posterior draws and chain ---------------------------------------------
+// Evaluate tree intensity at a point.
 static double ppst_eval_intensity(const PPSTree&T,
     const std::unordered_map<int,double>&lam,const arma::rowvec&x,
     const arma::mat&region,const arma::vec&gate,int gate_family){
@@ -678,8 +645,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
     bool pcg,double ram_target,double ram_decay,int ram_adapt,PPSTPCGStats&pcg_stats,
     bool cache_geometry,bool cache_cuts,double tau,double eps){
   int n=pts.n_rows,si=0; double nls=0.0,mds=0.0;
-  // informed=TRUE means the exact neighborhood sampler for RJ-MCMC and the
-  // hard-surrogate proposals for PCG.
+
   const bool exact_informed=informed&&!pcg,surrogate_informed=informed&&pcg;
   arma::vec gate=gate0,gs(gate0.n_elem,arma::fill::zeros);
   if(pcg) pcg_stats.initialize(sd_gate,gate_shared);
@@ -706,8 +672,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
     }else{
     ppst_label_sweep(T,labels,pts,region,a,b,gate,gate_family,cache);
     if(update_gate){
-      // one Metropolis proposal per coordinate (systematic scan), or one
-      // proposal for a shared gate
+
       int nup=gate_shared?1:(int)gate.n_elem;
       for(int which=0;which<nup;which++){
         int accepted=ppst_gate_update(T,labels,pts,region,a,b,gate,a_gate,b_gate,
@@ -792,9 +757,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
       }
       int md=0;
       for(const auto&kv:T) if(kv.second.depth>md) md=kv.second.depth;
-      // serialize the generative state of this retained draw: one row per
-      // node, columns (heap id, axis, cut, lambda, xi, m).  Internal nodes
-      // carry no rate in the terminal-leaf model (lambda = 0).
+
       {
         arma::mat st(T.size(),6);
         int rr=0;
@@ -1012,8 +975,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
     }else{
     ppst_label_sweep(T,labels,X,region,a,b,gate,gate_family,cache);
     if(update_gate){
-      // Match the fitting backend: one proposal per dimension, or one
-      // proposal for a shared gate.
+
       int nup=gate_shared?1:(int)gate.n_elem;
       for(int which=0;which<nup;which++){
         int accepted=ppst_gate_update(T,labels,X,region,a,b,gate,a_gate,b_gate,
@@ -1119,9 +1081,8 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   return out;
 }
 
-// Internal exact-transition inspector for small labeled states. The fitting
-// backend never enumerates labels; this diagnostic deliberately does so to
-// check its Poisson-binomial action masses against independent finite targets.
+// Enumerate informed transitions for small labeled states.
+
 // [[Rcpp::export]]
 List ppstree_informed_transition(arma::mat X,arma::mat region,
     arma::mat splits,IntegerVector labels,arma::vec gate,double a,double b,
@@ -1204,8 +1165,8 @@ List ppstree_informed_transition(arma::mat X,arma::mat region,
   return List::create(_["log_normalizer"]=neighborhood.logZ,_["neighbors"]=result);
 }
 
-// Internal deterministic checks for the RAM equation and allocation-collapsed
-// target. These helpers are exported to the package namespace, not its API.
+// Inspect the robust adaptive Metropolis factor update.
+
 // [[Rcpp::export]]
 List ppstree_ram_inspect(arma::mat factor,arma::vec direction,
     double accept_prob,double target=0.234,double decay=0.7,int iteration=1){
@@ -1286,7 +1247,7 @@ List ppstree_pcg_inspect(arma::mat X,arma::mat region,arma::mat splits,
     _["leaf_ids"]=leaves);
 }
 
-// Internal test/diagnostic helper: report ordinary cut support without sampling.
+// Report ordinary candidate-cut support without sampling.
 // [[Rcpp::export]]
 List ppstree_cuts_inspect(arma::mat X,arma::mat region,arma::mat splits,
     double Dmax,int nmin,int cut_mode,int ncand,bool cache_cuts=true){
@@ -1323,7 +1284,7 @@ List ppstree_cuts_inspect(arma::mat X,arma::mat region,arma::mat splits,
   PPSTCutsCache cuts(X,nmin,cut_mode,ncand);
   PPSTCutsCache*cache=cache_cuts?&cuts:nullptr;
   List out_cuts(ids.size());LogicalVector can_split(ids.size());
-  // Repeat identical queries to exercise cache hits as well as cold values.
+
   for(int pass=0;pass<2;pass++) for(size_t k=0;k<ids.size();k++){
     const PPSTNode&node=tree.at(ids[k]);
     can_split[k]=ppst_can_split(node,X,depth,nmin,cut_mode,ncand,cache);
@@ -1337,8 +1298,8 @@ List ppstree_cuts_inspect(arma::mat X,arma::mat region,arma::mat splits,
     _["can_split"]=can_split,_["cache_entries"]=(double)cuts.size());
 }
 
-// Internal deterministic check for proposal labels, including zero support.
-// parent_path columns are zero-based axis, cut, parent width, and side (-1/+1).
+// Inspect proposal label probabilities; path columns are axis, cut, width, side.
+
 // [[Rcpp::export]]
 List ppstree_side_inspect(arma::mat X,arma::mat region,arma::mat parent_path,
     int axis,double cut,double parent_width,arma::vec gate,int gate_family,
@@ -1381,7 +1342,7 @@ List ppstree_side_inspect(arma::mat X,arma::mat region,arma::mat parent_path,
   return List::create(_["log_children"]=logs,_["p_left"]=probability);
 }
 
-// Internal exact-row-map check for the quadrature adapter. Core has no map.
+// Inspect the training-to-background row map for quadrature fits.
 // [[Rcpp::export]]
 IntegerVector ppstree_training_background_inspect(arma::mat X,arma::mat region,
     arma::vec gate,int gate_family){

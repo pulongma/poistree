@@ -39,8 +39,7 @@ double qpp_box_exposure(const arma::mat& box) {
   for (arma::uword i = 0; i < qpp_weights.n_elem; ++i) {
     bool inside = true;
     for (arma::uword j = 0; j < box.n_rows; ++j) {
-      // Use the same left-if-x<cut rule as hard-tree routing. Include the
-      // outer upper boundary, which belongs to the final interval only.
+
       const bool last = box(j, 1) == qpp_region(j, 1);
       const double x = qpp_background(i, j);
       if (x < box(j, 0) || (last ? x > box(j, 1) : x >= box(j, 1))) {

@@ -1,5 +1,3 @@
-# Independent enumeration oracle: sum over all 2^m allocations, without a
-# Poisson-binomial recurrence or an exponential-tilting identity.
 cut_tilt_lse <- function(x) {
   if (!length(x) || all(x == -Inf)) return(-Inf)
   anchor <- max(x)
@@ -31,8 +29,7 @@ cut_tilt_enumerate <- function(x, cut, gate, width, H_left, H_right, a, b) {
 test_that("exact cut tilting agrees with independently enumerated allocations", {
   set.seed(3107)
   cuts <- c(1.8, -1.1, 0.35, 2.6, -0.2)
-  # Deliberately unequal exposures and a nonunit domain width test both the
-  # gate scaling and the collapsed marginal factors rather than symmetry.
+
   H_left <- c(0.01, 0.3, 1.9, 0.65, 0.02)
   H_right <- c(2.3, 0.06, 0.1, 0.9, 0.001)
   for (m in c(0L, 1L, 4L, 8L)) {
