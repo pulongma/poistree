@@ -9,6 +9,9 @@
 // the split parent's width, so a node-relative gate cannot reuse a value from
 // a former ancestor geometry.  Counts and intensities are deliberately absent
 // from this cache: changing allocations does not change a leaf basis.
+// Training values are log memberships.  Background (quadrature) values of
+// logistic gates are stored on the linear scale, phi_child = phi_parent *
+// sigmoid, so exposure is a plain weighted sum; compact gates stay in logs.
 struct PPSTGeometryEntry {
   arma::vec training,background;
   bool training_ready=false,background_ready=false,exposure_ready=false;
@@ -86,7 +89,8 @@ class PPSTGeometryCache {
     if(ready(entry,background)) return values(entry,background);
     const arma::mat&points=background?*background_:*training_;
     if(path.empty()){
-      values(entry,background).zeros(points.n_rows);
+      if(background&&family_!=1) values(entry,background).ones(points.n_rows);
+      else values(entry,background).zeros(points.n_rows);
       ready(entry,background)=true;
       return values(entry,background);
     }
@@ -97,7 +101,23 @@ class PPSTGeometryCache {
     arma::vec&left=values(split.side<0?entry:other,background);
     arma::vec&right=values(split.side>0?entry:other,background);
     left.set_size(points.n_rows);right.set_size(points.n_rows);
-    const PPSTBackgroundRows*rows=!background&&background_rows_&&
+    if(background&&family_!=1){
+      const arma::vec&parent_phi=basis(parent,true);
+      const double width=family_==2?split.parent_width:
+        (*region_)(split.axis,1)-(*region_)(split.axis,0);
+      const double*coordinate=points.colptr(split.axis);
+      const double g=gate_[split.axis];
+      for(arma::uword i=0;i<points.n_rows;i++){
+        const double z=g*(coordinate[i]-split.cut)/width;
+        const double e=std::exp(-std::abs(z)),big=1.0/(1.0+e),small=e*big;
+        left[i]=parent_phi[i]*(z>0.0?small:big);
+        right[i]=parent_phi[i]*(z>0.0?big:small);
+      }
+      ready(entry,true)=true;ready(other,true)=true;
+      return values(entry,true);
+    }
+    // Logistic background values are linear, so only compact gates reuse them.
+    const PPSTBackgroundRows*rows=family_==1&&!background&&background_rows_&&
       background_rows_->matched?background_rows_.get():nullptr;
     if(rows){
       // Background paths are needed for exposure anyway.  Repeated event rows
@@ -180,8 +200,9 @@ public:
       const arma::vec&lp=basis(node.path,true);
       H=0.0;
       // Keep the scalar quadrature summation and underflow convention intact.
-      for(arma::uword i=0;i<weights_->n_elem;i++)
+      if(family_==1) for(arma::uword i=0;i<weights_->n_elem;i++)
         H+=(*weights_)[i]*(lp[i]<-745.0?0.0:std::exp(lp[i]));
+      else for(arma::uword i=0;i<weights_->n_elem;i++) H+=(*weights_)[i]*lp[i];
     }else H=ppst_exposure(node,*region_,gate_,family_);
     entry.exposure=H;entry.exposure_ready=true;
     return H;
@@ -209,7 +230,8 @@ public:
     // lambda's iteration order is also used by ppst_eval_intensity().
     for(const auto&item:lambda){
       const arma::vec&lp=basis(tree.at(item.first).path,role==1);
-      for(arma::uword i=0;i<points.n_rows;i++)
+      if(role==1&&family_!=1) for(arma::uword i=0;i<points.n_rows;i++) out[i]+=item.second*lp[i];
+      else for(arma::uword i=0;i<points.n_rows;i++)
         out[i]+=item.second*(lp[i]<-745.0?0.0:std::exp(lp[i]));
     }
     for(arma::uword i=0;i<out.n_elem;i++) out[i]=std::max(out[i],1e-300);

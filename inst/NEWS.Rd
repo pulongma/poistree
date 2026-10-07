@@ -1,6 +1,18 @@
 \name{NEWS}
 \title{News for Package \pkg{poistree}}
 
+\section{Changes in poistree version 0.5.5 (2026-10-06)}{
+  \itemize{
+    \item Soft gates with a quadrature background (private adapter): background
+      memberships of logistic gates are now stored on the linear scale,
+      \eqn{\phi_{child} = \phi_{parent}\,\sigma(z)}, so each proposed gate costs
+      one \code{exp} per point and split and the exposure is a weighted sum.
+      Training memberships stay in logs. Results agree with 0.5.4 to rounding
+      (gates to about 1e-9); they are not bit-identical. Compact gates and the
+      analytic (no-quadrature) exposure are unchanged.
+  }
+}
+
 \section{Changes in poistree version 0.5.0 (2026-10-06)}{
   \itemize{
     \item Added optional \code{gate_scale = "node"} for logistic soft gates
