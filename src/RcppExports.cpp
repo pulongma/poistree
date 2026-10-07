@@ -11,6 +11,7 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// PPT_fit_MCMC
 Rcpp::List PPT_fit_MCMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int niter, int burnin, double max_depth, int min_leaf_n, int cut_grid_n, double a, double b, double alpha, double eta, int n_pred, bool verbose);
 RcppExport SEXP _poistree_PPT_fit_MCMC(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP niterSEXP, SEXP burninSEXP, SEXP max_depthSEXP, SEXP min_leaf_nSEXP, SEXP cut_grid_nSEXP, SEXP aSEXP, SEXP bSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP n_predSEXP, SEXP verboseSEXP) {
 BEGIN_RCPP
@@ -34,7 +35,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// PPT_fit_IMCMC
 Rcpp::List PPT_fit_IMCMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, int niter, int burnin, double max_depth, int min_leaf_n, int cut_grid_n, double a, double b, double alpha, double eta, int n_pred, bool verbose);
 RcppExport SEXP _poistree_PPT_fit_IMCMC(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP niterSEXP, SEXP burninSEXP, SEXP max_depthSEXP, SEXP min_leaf_nSEXP, SEXP cut_grid_nSEXP, SEXP aSEXP, SEXP bSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP n_predSEXP, SEXP verboseSEXP) {
 BEGIN_RCPP
@@ -58,7 +59,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// PPT_IMCMC_transition
 Rcpp::List PPT_IMCMC_transition(const arma::mat& pts, const arma::mat& region, const arma::mat& splits, double max_depth, int min_leaf_n, int cut_grid_n, double a, double b, double alpha, double eta);
 RcppExport SEXP _poistree_PPT_IMCMC_transition(SEXP ptsSEXP, SEXP regionSEXP, SEXP splitsSEXP, SEXP max_depthSEXP, SEXP min_leaf_nSEXP, SEXP cut_grid_nSEXP, SEXP aSEXP, SEXP bSEXP, SEXP alphaSEXP, SEXP etaSEXP) {
 BEGIN_RCPP
@@ -78,7 +79,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// PPT_fit_PG
 Rcpp::List PPT_fit_PG(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, double max_depth, int niter, int P, int min_leaf_n, double resample_thresh, double a, double b, bool verbose, double max_aspect_ratio, int cut_grid_n);
 RcppExport SEXP _poistree_PPT_fit_PG(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP max_depthSEXP, SEXP niterSEXP, SEXP PSEXP, SEXP min_leaf_nSEXP, SEXP resample_threshSEXP, SEXP aSEXP, SEXP bSEXP, SEXP verboseSEXP, SEXP max_aspect_ratioSEXP, SEXP cut_grid_nSEXP) {
 BEGIN_RCPP
@@ -101,7 +102,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// PPT_fit_SMC
 Rcpp::List PPT_fit_SMC(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, double max_depth, int P, int min_leaf_n, double resample_thresh, double a, double b, double max_aspect_ratio, int cut_grid_n);
 RcppExport SEXP _poistree_PPT_fit_SMC(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP min_leaf_nSEXP, SEXP resample_threshSEXP, SEXP aSEXP, SEXP bSEXP, SEXP max_aspect_ratioSEXP, SEXP cut_grid_nSEXP) {
 BEGIN_RCPP
@@ -122,7 +123,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// PPT_valid_cuts
 Rcpp::List PPT_valid_cuts(const arma::mat& pts, const arma::mat& region, int min_leaf_n, int cut_grid_n, double max_aspect_ratio, bool force_mid_cut);
 RcppExport SEXP _poistree_PPT_valid_cuts(SEXP ptsSEXP, SEXP regionSEXP, SEXP min_leaf_nSEXP, SEXP cut_grid_nSEXP, SEXP max_aspect_ratioSEXP, SEXP force_mid_cutSEXP) {
 BEGIN_RCPP
@@ -138,7 +139,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// PPT_transition_probabilities
 Rcpp::List PPT_transition_probabilities(const arma::mat& pts, const arma::mat& region, int min_leaf_n, int cut_grid_n, double max_aspect_ratio);
 RcppExport SEXP _poistree_PPT_transition_probabilities(SEXP ptsSEXP, SEXP regionSEXP, SEXP min_leaf_nSEXP, SEXP cut_grid_nSEXP, SEXP max_aspect_ratioSEXP) {
 BEGIN_RCPP
@@ -153,7 +154,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_fit_PGAS
 Rcpp::List SPPT_fit_PGAS(const arma::mat& X, const arma::mat& grid, const arma::mat& Xtest, const arma::mat& region, Rcpp::List cut_grid, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, bool gate_shared, double rho, double eta, double max_depth, int P, int niter, int burn, int thin, int label_sweeps, bool update_gate, bool ancestor_sampling, int exact_max, double defensive, bool resample_node, double ess_threshold, bool allocation_rates, bool verbose, std::string proposal_score, double proposal_temperature, double proposal_defensive);
 RcppExport SEXP _poistree_SPPT_fit_PGAS(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP cut_gridSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP rhoSEXP, SEXP etaSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP niterSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP label_sweepsSEXP, SEXP update_gateSEXP, SEXP ancestor_samplingSEXP, SEXP exact_maxSEXP, SEXP defensiveSEXP, SEXP resample_nodeSEXP, SEXP ess_thresholdSEXP, SEXP allocation_ratesSEXP, SEXP verboseSEXP, SEXP proposal_scoreSEXP, SEXP proposal_temperatureSEXP, SEXP proposal_defensiveSEXP) {
 BEGIN_RCPP
@@ -195,7 +196,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_exact_cut_scores
 Rcpp::List SPPT_exact_cut_scores(Rcpp::NumericVector x, Rcpp::NumericVector cuts, double gate, double width, Rcpp::NumericVector H_left, Rcpp::NumericVector H_right, double a, double b);
 RcppExport SEXP _poistree_SPPT_exact_cut_scores(SEXP xSEXP, SEXP cutsSEXP, SEXP gateSEXP, SEXP widthSEXP, SEXP H_leftSEXP, SEXP H_rightSEXP, SEXP aSEXP, SEXP bSEXP) {
 BEGIN_RCPP
@@ -213,7 +214,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_exact_reuse_draws
 Rcpp::List SPPT_exact_reuse_draws(Rcpp::NumericVector logits, Rcpp::NumericVector shifts, Rcpp::NumericVector H_left, Rcpp::NumericVector H_right, double a, double b, int draws, int fixed_count);
 RcppExport SEXP _poistree_SPPT_exact_reuse_draws(SEXP logitsSEXP, SEXP shiftsSEXP, SEXP H_leftSEXP, SEXP H_rightSEXP, SEXP aSEXP, SEXP bSEXP, SEXP drawsSEXP, SEXP fixed_countSEXP) {
 BEGIN_RCPP
@@ -231,7 +232,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_exact_allocation_logprob
 Rcpp::List SPPT_exact_allocation_logprob(Rcpp::NumericVector logits, Rcpp::IntegerVector bits);
 RcppExport SEXP _poistree_SPPT_exact_allocation_logprob(SEXP logitsSEXP, SEXP bitsSEXP) {
 BEGIN_RCPP
@@ -243,7 +244,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// PPT_fit_SMC_shared
 Rcpp::List PPT_fit_SMC_shared(const arma::mat& pts, const arma::mat& grid, const arma::mat& region, double max_depth, int P, int min_leaf_n, double resample_thresh, double a, double b, double max_aspect_ratio, int cut_grid_n);
 RcppExport SEXP _poistree_PPT_fit_SMC_shared(SEXP ptsSEXP, SEXP gridSEXP, SEXP regionSEXP, SEXP max_depthSEXP, SEXP PSEXP, SEXP min_leaf_nSEXP, SEXP resample_threshSEXP, SEXP aSEXP, SEXP bSEXP, SEXP max_aspect_ratioSEXP, SEXP cut_grid_nSEXP) {
 BEGIN_RCPP
@@ -264,7 +265,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_hard_node_probe
 Rcpp::List SPPT_hard_node_probe(const arma::mat& x, const arma::mat& region, Rcpp::List grids, const arma::vec& gate, const arma::mat& path, double temperature, double defensive, int selected);
 RcppExport SEXP _poistree_SPPT_hard_node_probe(SEXP xSEXP, SEXP regionSEXP, SEXP gridsSEXP, SEXP gateSEXP, SEXP pathSEXP, SEXP temperatureSEXP, SEXP defensiveSEXP, SEXP selectedSEXP) {
 BEGIN_RCPP
@@ -282,7 +283,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_hard_cache_probe
 Rcpp::List SPPT_hard_cache_probe(const arma::mat& gates, Rcpp::NumericVector temperature, Rcpp::NumericVector defensive, Rcpp::LogicalVector hard, bool cached);
 RcppExport SEXP _poistree_SPPT_hard_cache_probe(SEXP gatesSEXP, SEXP temperatureSEXP, SEXP defensiveSEXP, SEXP hardSEXP, SEXP cachedSEXP) {
 BEGIN_RCPP
@@ -297,7 +298,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_hard_gate_probe
 Rcpp::List SPPT_hard_gate_probe(const arma::mat& gates, Rcpp::List requests, bool lazy, int capacity);
 RcppExport SEXP _poistree_SPPT_hard_gate_probe(SEXP gatesSEXP, SEXP requestsSEXP, SEXP lazySEXP, SEXP capacitySEXP) {
 BEGIN_RCPP
@@ -311,7 +312,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_hard_gate_chain
 Rcpp::List SPPT_hard_gate_chain(bool hard, int exact_max, bool update_gate, bool shared, bool lazy);
 RcppExport SEXP _poistree_SPPT_hard_gate_chain(SEXP hardSEXP, SEXP exact_maxSEXP, SEXP update_gateSEXP, SEXP sharedSEXP, SEXP lazySEXP) {
 BEGIN_RCPP
@@ -326,7 +327,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_forced_hard_probe
 Rcpp::List SPPT_forced_hard_probe(Rcpp::IntegerVector bits, const arma::vec& gate, double temperature, double defensive);
 RcppExport SEXP _poistree_SPPT_forced_hard_probe(SEXP bitsSEXP, SEXP gateSEXP, SEXP temperatureSEXP, SEXP defensiveSEXP) {
 BEGIN_RCPP
@@ -340,7 +341,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_root_reuse_probe
 Rcpp::List SPPT_root_reuse_probe(const arma::mat& gates, int exact_max, bool cached);
 RcppExport SEXP _poistree_SPPT_root_reuse_probe(SEXP gatesSEXP, SEXP exact_maxSEXP, SEXP cachedSEXP) {
 BEGIN_RCPP
@@ -353,7 +354,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_root_reuse_chain
 Rcpp::List SPPT_root_reuse_chain(bool cached, bool update_gate, bool shared, int exact_max);
 RcppExport SEXP _poistree_SPPT_root_reuse_chain(SEXP cachedSEXP, SEXP update_gateSEXP, SEXP sharedSEXP, SEXP exact_maxSEXP) {
 BEGIN_RCPP
@@ -367,7 +368,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// SPPT_forced_exact_probe
 Rcpp::List SPPT_forced_exact_probe(Rcpp::IntegerVector bits, double defensive);
 RcppExport SEXP _poistree_SPPT_forced_exact_probe(SEXP bitsSEXP, SEXP defensiveSEXP) {
 BEGIN_RCPP
@@ -379,7 +380,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppstree_geometry
 List ppstree_geometry(IntegerVector axis, NumericVector cut, NumericVector parent_width, IntegerVector side, arma::mat points, arma::mat region, arma::vec gate, int gate_scale);
 RcppExport SEXP _poistree_ppstree_geometry(SEXP axisSEXP, SEXP cutSEXP, SEXP parent_widthSEXP, SEXP sideSEXP, SEXP pointsSEXP, SEXP regionSEXP, SEXP gateSEXP, SEXP gate_scaleSEXP) {
 BEGIN_RCPP
@@ -397,7 +398,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppstree_multi
 List ppstree_multi(arma::mat X, arma::mat grid, arma::mat Xtest, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, int chains, int verbose, bool informed, bool pcg, double ram_target, double ram_decay, int ram_adapt, bool cache_geometry, bool cache_cuts, double proposal_temperature, double proposal_defensive);
 RcppExport SEXP _poistree_ppstree_multi(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP chainsSEXP, SEXP verboseSEXP, SEXP informedSEXP, SEXP pcgSEXP, SEXP ram_targetSEXP, SEXP ram_decaySEXP, SEXP ram_adaptSEXP, SEXP cache_geometrySEXP, SEXP cache_cutsSEXP, SEXP proposal_temperatureSEXP, SEXP proposal_defensiveSEXP) {
 BEGIN_RCPP
@@ -443,7 +444,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppstree_diag
 List ppstree_diag(arma::mat X, arma::mat mon, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, bool informed, bool verbose, bool pcg, double ram_target, double ram_decay, int ram_adapt, bool cache_geometry, bool cache_cuts, double proposal_temperature, double proposal_defensive);
 RcppExport SEXP _poistree_ppstree_diag(SEXP XSEXP, SEXP monSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP informedSEXP, SEXP verboseSEXP, SEXP pcgSEXP, SEXP ram_targetSEXP, SEXP ram_decaySEXP, SEXP ram_adaptSEXP, SEXP cache_geometrySEXP, SEXP cache_cutsSEXP, SEXP proposal_temperatureSEXP, SEXP proposal_defensiveSEXP) {
 BEGIN_RCPP
@@ -487,7 +488,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppstree_informed_transition
 List ppstree_informed_transition(arma::mat X, arma::mat region, arma::mat splits, IntegerVector labels, arma::vec gate, double a, double b, double alpha, double eta, double Dmax, int nmin, int cut_mode, int ncand, int gate_family, int kind);
 RcppExport SEXP _poistree_ppstree_informed_transition(SEXP XSEXP, SEXP regionSEXP, SEXP splitsSEXP, SEXP labelsSEXP, SEXP gateSEXP, SEXP aSEXP, SEXP bSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP gate_familySEXP, SEXP kindSEXP) {
 BEGIN_RCPP
@@ -512,7 +513,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppstree_ram_inspect
 List ppstree_ram_inspect(arma::mat factor, arma::vec direction, double accept_prob, double target, double decay, int iteration);
 RcppExport SEXP _poistree_ppstree_ram_inspect(SEXP factorSEXP, SEXP directionSEXP, SEXP accept_probSEXP, SEXP targetSEXP, SEXP decaySEXP, SEXP iterationSEXP) {
 BEGIN_RCPP
@@ -528,7 +529,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppstree_pcg_inspect
 List ppstree_pcg_inspect(arma::mat X, arma::mat region, arma::mat splits, arma::vec gate, arma::vec lambda, arma::vec a_gate, arma::vec b_gate, arma::vec gate_min, int gate_shared, int gate_family, bool cache_geometry);
 RcppExport SEXP _poistree_ppstree_pcg_inspect(SEXP XSEXP, SEXP regionSEXP, SEXP splitsSEXP, SEXP gateSEXP, SEXP lambdaSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP gate_familySEXP, SEXP cache_geometrySEXP) {
 BEGIN_RCPP
@@ -549,7 +550,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppstree_cuts_inspect
 List ppstree_cuts_inspect(arma::mat X, arma::mat region, arma::mat splits, double Dmax, int nmin, int cut_mode, int ncand, bool cache_cuts);
 RcppExport SEXP _poistree_ppstree_cuts_inspect(SEXP XSEXP, SEXP regionSEXP, SEXP splitsSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP cache_cutsSEXP) {
 BEGIN_RCPP
@@ -567,7 +568,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppstree_side_inspect
 List ppstree_side_inspect(arma::mat X, arma::mat region, arma::mat parent_path, int axis, double cut, double parent_width, arma::vec gate, int gate_family, bool cache_geometry);
 RcppExport SEXP _poistree_ppstree_side_inspect(SEXP XSEXP, SEXP regionSEXP, SEXP parent_pathSEXP, SEXP axisSEXP, SEXP cutSEXP, SEXP parent_widthSEXP, SEXP gateSEXP, SEXP gate_familySEXP, SEXP cache_geometrySEXP) {
 BEGIN_RCPP
@@ -586,7 +587,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppstree_training_background_inspect
 IntegerVector ppstree_training_background_inspect(arma::mat X, arma::mat region, arma::vec gate, int gate_family);
 RcppExport SEXP _poistree_ppstree_training_background_inspect(SEXP XSEXP, SEXP regionSEXP, SEXP gateSEXP, SEXP gate_familySEXP) {
 BEGIN_RCPP
@@ -600,7 +601,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppt_eval_state
 arma::mat ppt_eval_state(List state_nodes, arma::mat state_gate, arma::mat region, arma::mat newdata, int gate_mode, double gate_depth);
 RcppExport SEXP _poistree_ppt_eval_state(SEXP state_nodesSEXP, SEXP state_gateSEXP, SEXP regionSEXP, SEXP newdataSEXP, SEXP gate_modeSEXP, SEXP gate_depthSEXP) {
 BEGIN_RCPP
@@ -616,7 +617,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// ppt_marginal_state
 arma::mat ppt_marginal_state(List state_nodes, arma::mat state_gate, arma::mat region, arma::vec grid, int variable, int gate_mode, double gate_depth, bool average);
 RcppExport SEXP _poistree_ppt_marginal_state(SEXP state_nodesSEXP, SEXP state_gateSEXP, SEXP regionSEXP, SEXP gridSEXP, SEXP variableSEXP, SEXP gate_modeSEXP, SEXP gate_depthSEXP, SEXP averageSEXP) {
 BEGIN_RCPP
@@ -634,7 +635,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// qpp_set_quadrature
 void qpp_set_quadrature(const arma::mat& background, const arma::vec& weights, const arma::mat& region);
 RcppExport SEXP _poistree_qpp_set_quadrature(SEXP backgroundSEXP, SEXP weightsSEXP, SEXP regionSEXP) {
 BEGIN_RCPP
@@ -646,7 +647,7 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
-
+// qpp_clear_quadrature
 void qpp_clear_quadrature();
 RcppExport SEXP _poistree_qpp_clear_quadrature() {
 BEGIN_RCPP
@@ -655,7 +656,7 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
-
+// qpp_box_exposure_r
 double qpp_box_exposure_r(const arma::mat& box);
 RcppExport SEXP _poistree_qpp_box_exposure_r(SEXP boxSEXP) {
 BEGIN_RCPP
@@ -666,7 +667,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// base_mloglik
 double base_mloglik(int n, double area, double a, double b);
 RcppExport SEXP _poistree_base_mloglik(SEXP nSEXP, SEXP areaSEXP, SEXP aSEXP, SEXP bSEXP) {
 BEGIN_RCPP
@@ -680,7 +681,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// split_mloglik
 double split_mloglik(int nL, int nR, double areaL, double areaR, double a, double b, double w0, double u0);
 RcppExport SEXP _poistree_split_mloglik(SEXP nLSEXP, SEXP nRSEXP, SEXP areaLSEXP, SEXP areaRSEXP, SEXP aSEXP, SEXP bSEXP, SEXP w0SEXP, SEXP u0SEXP) {
 BEGIN_RCPP
@@ -698,7 +699,7 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-
+// log_sum_exp_two
 double log_sum_exp_two(double x, double y);
 RcppExport SEXP _poistree_log_sum_exp_two(SEXP xSEXP, SEXP ySEXP) {
 BEGIN_RCPP

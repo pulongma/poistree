@@ -11,11 +11,7 @@ Authors@R: person(
     comment = c("Personal email" = "mpulong@gmail.com")
     )
 Maintainer: Pulong Ma <plma@iastate.edu>
-Description: Bayesian Poisson process trees for intensity estimation on
-    high-dimensional covariate space. The extensible unified interface
-    separates the gating mechanism from the posterior sampler. Implemented
-    models are the hard-gated Poisson process tree (PPT) and the soft-gated
-    Poisson process tree (S-PPT), both with terminal-leaf intensities.
+Description: Bayesian Poisson process trees for intensity estimation on high-dimensional covariate space. The extensible unified interface separates the gating mechanism from the posterior sampler. Implemented models are the hard-gated Poisson process tree (PPT) and the soft-gated Poisson process tree (S-PPT), both with terminal-leaf intensities. The model is specified hierarchically through a tree-generating process and a intensity function model that is represented as a piecewise smooth (or constant) functions over tree partitions. PPT is inferred via a sequential Monte Carlo algorithm (SMC) while S-PPT is inferred via a collapsed Gibbs sampler. 
 License: GPL (>= 2)
 Encoding: UTF-8
 Imports:

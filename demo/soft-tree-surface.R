@@ -40,10 +40,10 @@ cat("simulated points:", nrow(x), "\n")
 
 fit <- ppt_fit(
   x, region,
-  gating = "soft", sampler = "rjmcmc",
+  gating = "soft", sampler = "pcg",
   max_depth = 6, min_leaf_n = 1,
   chains = 4, iter = 3000, burn = 1000, thin = 4,
-  cut_candidates = 15, gate = 15, update_gate = TRUE,
+  cut_candidates = 15, gate = 15, 
   verbose = FALSE
 )
 print(fit)
