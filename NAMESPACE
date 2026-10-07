@@ -1,19 +1,15 @@
 useDynLib(poistree, .registration=TRUE)
 
 importFrom(Rcpp, evalCpp)
-importFrom(stats, logLik)
 
 export(ppt_diagnostics)
-export(ppt_evidence)
 export(ppt_fit)
-export(ppt_integral)
-export(ppt_logLik)
+export(ppt_lambda)
 export(ppt_lppd)
+export(ppt_marginal)
 export(ppt_predict)
 export(ppt_sim)
-export(ppt_summary)
 
-S3method(logLik, ppt)
 S3method(plot, ppt)
 S3method(plot, ppt_diagnostics)
 S3method(predict, ppt)
@@ -21,3 +17,5 @@ S3method(print, ppt)
 S3method(print, ppt_diagnostics)
 S3method(print, summary.ppt)
 S3method(summary, ppt)
+
+export(ppt_fit_quadrature)

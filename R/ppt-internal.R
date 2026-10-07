@@ -1,28 +1,34 @@
-.ppt_backend_key <- function(gating, scales, sampler, scale_prior) {
-  components <- c(gating, scales)
-  if (identical(scales, "multiscale")) {
-    components <- c(components, scale_prior)
-  }
-  paste(c(components, sampler), collapse = ":")
+# Build the registry key for a model and sampler combination.
+.ppt_backend_key <- function(gating, scales, sampler) {
+  paste(c(gating, scales, sampler), collapse = ":")
 }
 
-# Backend names are stored as strings so this registry can be created before
-# the implementation functions are loaded. Add future models here; the public
-# `ppt_fit()` signature and fitted-object contract need not change.
 .ppt_backend_registry <- c(
   "hard:leaf:smc" = ".ppt_fit_hard_leaf_smc",
   "hard:leaf:rjmcmc" = ".ppt_fit_hard_leaf_rjmcmc",
-  "hard:leaf:pgas" = ".ppt_fit_hard_leaf_pgas"
+  "hard:leaf:irjmcmc" = ".ppt_fit_hard_leaf_irjmcmc",
+  "hard:leaf:pgas" = ".ppt_fit_hard_leaf_pgas",
+  "soft:leaf:rjmcmc" = ".ppt_fit_soft_leaf_rjmcmc",
+  "soft:leaf:irjmcmc" = ".ppt_fit_soft_leaf_irjmcmc",
+  "soft:leaf:pcg" = ".ppt_fit_soft_leaf_pcg",
+  "soft:leaf:pgas" = ".ppt_fit_soft_leaf_pgas"
 )
 
+# Extract the nonmissing model component labels.
 .ppt_model_components <- function(model) {
-  out <- unlist(model[c("gating", "scales", "scale_prior", "sampler")],
-                use.names = TRUE)
+  out <- unlist(model[c("gating", "scales", "sampler")], use.names = TRUE)
   out[!is.na(out)]
 }
 
+# Return the display label for the selected gating mechanism.
+.ppt_model_label <- function(gating, scales) {
+  if (identical(gating, "soft")) "S-PPT" else "PPT"
+}
+
+# Use the fallback value when the first value is NULL.
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
+# Represent a hard tree by its sorted terminal-box boundaries.
 .tree_sig <- function(nodes) {
   leaves <- Filter(
     function(node) !is.null(node) && isTRUE(node$is_leaf),
@@ -35,10 +41,12 @@
   paste(sort(boxes), collapse = ";")
 }
 
+# Count distinct hard-tree boundary signatures.
 .n_unique_trees <- function(particles) {
   length(unique(vapply(particles, .tree_sig, character(1))))
 }
 
+# Count the terminal nodes in each particle tree.
 .leaves_per_particle <- function(particles) {
   vapply(particles, function(nodes) {
     sum(vapply(
@@ -49,6 +57,7 @@
   }, integer(1))
 }
 
+# Validate and convert the lower/upper domain bounds.
 .ppt_validate_region <- function(region, d) {
   region <- as.matrix(region)
   storage.mode(region) <- "double"
@@ -61,6 +70,67 @@
   region
 }
 
+# Validate an integer tree depth against the supported range.
+.ppt_validate_depth <- function(max_depth, minimum = 0L) {
+  if (!is.numeric(max_depth) || is.complex(max_depth) || length(max_depth) != 1L ||
+      !is.finite(max_depth) || max_depth != floor(max_depth) ||
+      max_depth < minimum || max_depth > 20L) {
+    stop("`max_depth` must be a finite numeric scalar integer between ",
+         minimum, " and 20.", call. = FALSE)
+  }
+  as.integer(max_depth)
+}
+
+# Check the depth and particle count against tree-storage limits.
+.ppt_validate_tree_storage <- function(max_depth, particles = 1,
+                                       layout = c("dense", "soft")) {
+  layout <- match.arg(layout)
+  max_depth <- .ppt_validate_depth(max_depth, if (layout == "soft") 1L else 0L)
+  slots <- 2^(max_depth + 1) - 1
+  if (identical(layout, "dense")) {
+    if (!is.numeric(particles) || length(particles) != 1L ||
+        !is.finite(particles) || particles < 1 ||
+        particles != floor(particles) || particles > .Machine$integer.max) {
+      stop("`particles` must be a positive representable integer.", call. = FALSE)
+    }
+    if ((2 * particles + 3) * slots > 2^24) {
+      stop("Dense tree storage limit exceeded; reduce max_depth or particles.",
+           call. = FALSE)
+    }
+  } else if (4 * (slots + 1) > 2^22) {
+    stop("Soft PGAS tree storage limit exceeded; reduce max_depth to at most 19.",
+         call. = FALSE)
+  }
+  invisible(max_depth)
+}
+
+# Validate the maximum permitted child-box aspect ratio.
+.ppt_validate_max_aspect_ratio <- function(max_aspect_ratio) {
+  if (!is.numeric(max_aspect_ratio) || length(max_aspect_ratio) != 1L ||
+      is.na(max_aspect_ratio) || max_aspect_ratio < 1) {
+    stop("`max_aspect_ratio` must be a scalar in [1, Inf].",
+         call. = FALSE)
+  }
+  as.numeric(max_aspect_ratio)
+}
+
+# Expand a scalar parameter to one value per input and validate it.
+.ppt_expand_parameter <- function(x, d, name, allow_zero = FALSE) {
+  x <- as.numeric(x)
+  if (length(x) == 1L) x <- rep(x, d)
+  bad <- length(x) != d || any(!is.finite(x)) ||
+    if (allow_zero) any(x < 0) else any(x <= 0)
+  if (bad) {
+    stop(
+      "`", name, "` must have length one or d and be ",
+      if (allow_zero) "nonnegative." else "positive.",
+      call. = FALSE
+    )
+  }
+  x
+}
+
+# Validate a point matrix and clamp boundary-rounding errors.
 .ppt_validate_points <- function(x, d = NULL, region = NULL,
                                  name = "x", allow_empty = FALSE) {
   x <- as.matrix(x)
@@ -89,19 +159,114 @@
   x
 }
 
+# Match requested rows to stored prediction locations.
 .ppt_match_prediction_rows <- function(newdata, locations) {
+  if (!nrow(newdata)) return(integer())
+  if (is.null(locations) || !nrow(locations)) {
+    return(rep.int(NA_integer_, nrow(newdata)))
+  }
   key <- function(z) {
-    apply(z, 1L, function(row)
-      paste(format(row, digits = 17L, scientific = TRUE), collapse = "\r"))
+    columns <- lapply(seq_len(ncol(z)), function(j) {
+      values <- z[, j]
+      values[values == 0] <- 0
+      sprintf("%.17g", values)
+    })
+    do.call(paste, c(columns, sep = "\r"))
   }
   match(key(newdata), key(locations))
 }
 
+# Return normalized particle weights or equal draw weights.
+.ppt_posterior_weights <- function(object, n_draws) {
+  weights <- object$posterior$particle_weights
+  if (length(weights) != n_draws || any(!is.finite(weights)) ||
+      any(weights < 0) || sum(weights) <= 0) {
+    return(rep(1 / n_draws, n_draws))
+  }
+  as.numeric(weights / sum(weights))
+}
+
+# Calculate a weighted inverse-CDF quantile.
+.ppt_weighted_quantile <- function(x, weights, probability) {
+  keep <- is.finite(x) & is.finite(weights) & weights >= 0
+  x <- x[keep]
+  weights <- weights[keep]
+  if (!length(x) || sum(weights) <= 0) return(NA_real_)
+  ord <- order(x)
+  x <- x[ord]
+  weights <- weights[ord] / sum(weights)
+  x[which(cumsum(weights) >= probability)[1L]]
+}
+
+# Calculate several weighted inverse-CDF quantiles with one sort.
+.ppt_weighted_quantiles <- function(x, weights, probabilities) {
+  keep <- is.finite(x) & is.finite(weights) & weights >= 0
+  x <- x[keep]
+  weights <- weights[keep]
+  if (!length(x) || sum(weights) <= 0) {
+    return(rep(NA_real_, length(probabilities)))
+  }
+  ord <- order(x)
+  x <- x[ord]
+  cumulative <- cumsum(weights[ord] / sum(weights))
+  vapply(probabilities, function(probability) {
+    x[which(cumulative >= probability)[1L]]
+  }, numeric(1L))
+}
+
+# Integrate a hard tree over all but the selected input.
+.ppt_tree_marginal <- function(tree, grid, variable, region,
+                               average = TRUE) {
+  leaves <- Filter(
+    function(node) !is.null(node) && isTRUE(node$is_leaf), tree
+  )
+  if (!length(leaves)) {
+    stop("A posterior tree draw contains no terminal nodes.",
+         call. = FALSE)
+  }
+  d <- nrow(region)
+  out <- numeric(length(grid))
+  upper <- region[variable, 2L]
+  tolerance <- sqrt(.Machine$double.eps) * max(1, abs(upper))
+  other_axes <- setdiff(seq_len(d), variable)
+
+  for (leaf in leaves) {
+    box <- as.matrix(leaf$region)
+    lambda <- as.numeric(leaf$lambda)
+    if (!identical(dim(box), c(d, 2L)) || length(lambda) != 1L ||
+        !is.finite(lambda) || lambda < 0) {
+      stop("A posterior tree draw contains an invalid leaf.",
+           call. = FALSE)
+    }
+    is_last <- abs(box[variable, 2L] - upper) <= tolerance
+    active <- grid >= box[variable, 1L] &
+      (grid < box[variable, 2L] |
+       (is_last & grid <= box[variable, 2L] + tolerance))
+    other_volume <- if (length(other_axes)) {
+      prod(box[other_axes, 2L] - box[other_axes, 1L])
+    } else {
+      1
+    }
+    out[active] <- out[active] + lambda * other_volume
+  }
+
+  if (isTRUE(average) && length(other_axes)) {
+    domain_volume <- prod(
+      region[other_axes, 2L] - region[other_axes, 1L]
+    )
+    out <- out / domain_volume
+  }
+  out
+}
+
+# Fit hard PPT by SMC; see ?ppt_controls for backend arguments.
 .ppt_fit_hard_leaf_smc <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0, resample_thresh = 0.5,
-    max_depth = 8L, min_leaf_n = 5L,
-    particles = 1000L, seed = 1L) {
+    max_depth = 8L, min_leaf_n = 1L,
+    max_aspect_ratio = Inf, cut_candidates = 50L,
+    particles = 1000L, engine = c("shared", "dense"), seed = 1L) {
+  engine <- match.arg(engine)
   x <- .ppt_validate_points(x, name = "x")
   d <- ncol(x)
   region <- .ppt_validate_region(region, d)
@@ -117,9 +282,10 @@
     )
   }
 
-  controls <- c(max_depth, min_leaf_n, particles)
+  max_depth <- .ppt_validate_depth(max_depth)
+  controls <- c(max_depth, min_leaf_n, particles, cut_candidates)
   if (any(!is.finite(controls)) ||
-      max_depth < 0 || min_leaf_n < 1 || particles < 2 ||
+      max_depth < 0 || min_leaf_n < 1 || particles < 2 || cut_candidates < 1 ||
       any(controls != floor(controls))) {
     stop("Invalid SMC or tree controls.", call. = FALSE)
   }
@@ -131,18 +297,33 @@
       resample_thresh <= 0 || resample_thresh > 1) {
     stop("resample_thresh must lie in (0, 1].", call. = FALSE)
   }
+  if (identical(engine, "dense")) {
+    .ppt_validate_tree_storage(max_depth, particles, "dense")
+  }
+  max_aspect_ratio <- .ppt_validate_max_aspect_ratio(max_aspect_ratio)
   max_depth <- as.integer(max_depth)
   min_leaf_n <- as.integer(min_leaf_n)
   particles <- as.integer(particles)
 
   evaluation_locations <- rbind(predict_at, test)
   set.seed(seed)
-  raw <- PPT_fit_SMC(
-    pts = x, grid = evaluation_locations, region = region,
-    max_depth = max_depth, P = particles,
-    min_leaf_n = min_leaf_n, resample_thresh = resample_thresh,
-    a = a, b = b
-  )
+  raw <- if (identical(engine, "shared")) {
+    PPT_fit_SMC_shared(
+      pts = x, grid = evaluation_locations, region = region,
+      max_depth = max_depth, P = particles,
+      min_leaf_n = min_leaf_n, resample_thresh = resample_thresh,
+      a = a, b = b, max_aspect_ratio = max_aspect_ratio,
+      cut_grid_n = as.integer(cut_candidates)
+    )
+  } else {
+    PPT_fit_SMC(
+      pts = x, grid = evaluation_locations, region = region,
+      max_depth = max_depth, P = particles,
+      min_leaf_n = min_leaf_n, resample_thresh = resample_thresh,
+      a = a, b = b, max_aspect_ratio = max_aspect_ratio,
+      cut_grid_n = as.integer(cut_candidates)
+    )
+  }
 
   weights <- as.numeric(raw$weights)
   if (length(weights) != length(raw$particle) ||
@@ -186,7 +367,7 @@
     )
     sum(vapply(leaves, function(node) {
       box <- as.matrix(node$region)
-      as.numeric(node$lambda) * prod(box[, 2L] - box[, 1L])
+      as.numeric(node$lambda) * (node$exposure %||% prod(box[, 2L] - box[, 1L]))
     }, numeric(1)))
   }, numeric(1))
   lppd <- NA_real_
@@ -204,9 +385,18 @@
 
   input_names <- colnames(x)
   if (is.null(input_names)) input_names <- paste0("x", seq_len(d))
-  log_evidence <- as.numeric(raw$logZ)
-  if (length(log_evidence) != 1L || !is.finite(log_evidence)) {
-    log_evidence <- NA_real_
+
+  log_relative_normalizer <- as.numeric(raw$logZ)
+  if (length(log_relative_normalizer) != 1L ||
+      !is.finite(log_relative_normalizer)) {
+    log_relative_normalizer <- NA_real_
+  }
+  log_target_normalizer <- NA_real_
+  if (b > 0 && is.finite(log_relative_normalizer)) {
+    root_volume <- qpp_box_exposure_r(region)
+    log_root <- lgamma(nrow(x) + a) - lgamma(a) + a * log(b) -
+      (nrow(x) + a) * log(b + root_volume)
+    log_target_normalizer <- log_relative_normalizer + log_root
   }
 
   structure(
@@ -216,7 +406,6 @@
         gating = "hard",
         gate_family = NA_character_,
         scales = "leaf",
-        scale_prior = NA_character_,
         sampler = "smc",
         label = "PPT"
       ),
@@ -233,13 +422,12 @@
         median = as.numeric(raw$lambda$median)[prediction_rows],
         lower = as.numeric(raw$lambda$lower95)[prediction_rows],
         upper = as.numeric(raw$lambda$upper95)[prediction_rows],
-        level = 0.95
+        level = 0.95,
+        draws = lambda_draws[prediction_rows, , drop = FALSE]
       ),
       posterior = list(
         mean_leaves = as.numeric(mean_leaves),
         mean_max_depth = as.numeric(mean_max_depth),
-        kappa = NA_real_,
-        tau = NA_real_,
         mean_gate = NA_real_,
         gate_by_dimension = stats::setNames(
           rep(NA_real_, d), input_names
@@ -248,9 +436,13 @@
         mean_integrated_intensity = sum(weights * integrated_intensity),
         integrated_intensity_draws = as.numeric(integrated_intensity),
         lppd = as.numeric(lppd),
-        log_evidence = log_evidence,
+        log_evidence = NA_real_,
+        log_target_normalizer = log_target_normalizer,
+        log_relative_normalizer = log_relative_normalizer,
         draws = length(weights),
-        particle_weights = weights
+        particle_weights = weights,
+        tree_draws = raw$particle,
+        state = list(mode = "leafbox", chain = NULL)
       ),
       diagnostics = list(
         acceptance = numeric(),
@@ -258,7 +450,13 @@
         gate_acceptance = numeric(),
         particle_ess = as.numeric(particle_ess),
         ess_history = as.numeric(raw$ESS),
-        unique_trees = .n_unique_trees(raw$particle)
+        unique_trees = .n_unique_trees(raw$particle),
+        leaf_count_trace = as.numeric(leaf_counts),
+        max_depth_trace = as.numeric(max_depths),
+        log_evidence_increment = as.numeric(raw$logZ_inc),
+        log_evidence_running = as.numeric(raw$logZ_run),
+        expanded_nodes = if (is.null(raw$expanded)) NA_real_ else as.numeric(raw$expanded),
+        resampling_events = if (is.null(raw$resampled)) NA_real_ else as.numeric(raw$resampled)
       ),
       prior = list(
         intensity = list(shape = a, rate = b),
@@ -269,21 +467,52 @@
         min_leaf_n = min_leaf_n,
         particles = particles,
         resample_thresh = resample_thresh,
+        max_aspect_ratio = max_aspect_ratio,
+        cut_candidates = as.integer(cut_candidates),
+        engine = engine,
         seed = seed
       ),
-      backend = "PPT_fit_SMC"
+      backend = if (identical(engine, "shared")) "PPT_fit_SMC_shared" else "PPT_fit_SMC"
     ),
     class = "ppt"
   )
 }
 
+# Fit hard PPT by RJ-MCMC; see ?ppt_controls for backend arguments.
 .ppt_fit_hard_leaf_rjmcmc <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0, alpha = 0.95, eta = 2,
-    max_depth = 8L, min_leaf_n = 5L,
+    max_depth = 8L, min_leaf_n = 1L,
     chains = 4L, iter = 4000L, burn = 1000L,
-    cut_candidates = 30L, prediction_draws = 300L,
+    cut_candidates = 50L, prediction_draws = 300L,
     seed = 1L, verbose = TRUE) {
+  .ppt_fit_hard_leaf_mcmc(
+    x, region, predict_at, test, a, b, alpha, eta, max_depth, min_leaf_n,
+    chains, iter, burn, cut_candidates, prediction_draws, seed, verbose,
+    informed = FALSE
+  )
+}
+
+# Fit hard PPT by informed MH; see ?ppt_controls for backend arguments.
+.ppt_fit_hard_leaf_irjmcmc <- function(
+    x, region, predict_at = x, test = NULL,
+    a = 0.5, b = 0, alpha = 0.95, eta = 2,
+    max_depth = 8L, min_leaf_n = 1L,
+    chains = 4L, iter = 4000L, burn = 1000L,
+    cut_candidates = 50L, prediction_draws = 300L,
+    seed = 1L, verbose = TRUE) {
+  .ppt_fit_hard_leaf_mcmc(
+    x, region, predict_at, test, a, b, alpha, eta, max_depth, min_leaf_n,
+    chains, iter, burn, cut_candidates, prediction_draws, seed, verbose,
+    informed = TRUE
+  )
+}
+
+# Run a hard MCMC backend and assemble the standard fitted object.
+.ppt_fit_hard_leaf_mcmc <- function(
+    x, region, predict_at, test, a, b, alpha, eta, max_depth, min_leaf_n,
+    chains, iter, burn, cut_candidates, prediction_draws, seed, verbose,
+    informed) {
   x <- .ppt_validate_points(x, name = "x")
   d <- ncol(x)
   region <- .ppt_validate_region(region, d)
@@ -309,6 +538,7 @@
     stop("Require `0 < alpha < 1` and `eta >= 0`.", call. = FALSE)
   }
 
+  max_depth <- .ppt_validate_depth(max_depth)
   controls <- c(
     max_depth, min_leaf_n, chains, iter, burn,
     cut_candidates, prediction_draws
@@ -331,18 +561,24 @@
   evaluation_locations <- rbind(predict_at, test)
   set.seed(seed)
   raw_chains <- vector("list", chains)
+  fit_native <- if (informed) PPT_fit_IMCMC else PPT_fit_MCMC
   for (chain in seq_len(chains)) {
-    raw_chains[[chain]] <- PPT_fit_MCMC(
+    if (isTRUE(verbose)) {
+      message("PPT [", if (informed) "Informed MH" else "RJ-MCMC",
+              "] chain ", chain, "/", chains)
+    }
+    raw_chains[[chain]] <- fit_native(
       x, evaluation_locations, region,
       niter = kept, burnin = burn,
       max_depth = max_depth, min_leaf_n = min_leaf_n,
       cut_grid_n = cut_candidates,
       a = a, b = b, alpha = alpha, eta = eta,
-      n_pred = min(prediction_draws, kept)
+      n_pred = min(prediction_draws, kept), verbose = isTRUE(verbose)
     )
     if (isTRUE(verbose)) {
       message(
-        "PPT [RJ-MCMC] chain ", chain, "/", chains,
+        "PPT [", if (informed) "Informed MH" else "RJ-MCMC",
+        "] chain ", chain, "/", chains,
         " completed; mean leaves = ",
         format(mean(raw_chains[[chain]]$nleaves), digits = 5L)
       )
@@ -351,6 +587,9 @@
 
   lambda_draws <- do.call(
     cbind, lapply(raw_chains, function(z) as.matrix(z$lambda$draws))
+  )
+  tree_draws <- unlist(
+    lapply(raw_chains, `[[`, "tree_draws"), recursive = FALSE
   )
   integrated_intensity <- unlist(
     lapply(raw_chains, `[[`, "integrated_intensity"), use.names = FALSE
@@ -404,8 +643,8 @@
         gating = "hard",
         gate_family = NA_character_,
         scales = "leaf",
-        scale_prior = NA_character_,
-        sampler = "rjmcmc",
+        sampler = if (informed) "irjmcmc" else "rjmcmc",
+        algorithm = if (informed) "Informed MH" else "RJ-MCMC",
         label = "PPT"
       ),
       data = list(
@@ -421,13 +660,12 @@
         median = summarize(0.5),
         lower = summarize(0.025),
         upper = summarize(0.975),
-        level = 0.95
+        level = 0.95,
+        draws = prediction_matrix
       ),
       posterior = list(
         mean_leaves = mean(leaf_trace),
         mean_max_depth = mean(depth_trace),
-        kappa = NA_real_,
-        tau = NA_real_,
         mean_gate = NA_real_,
         gate_by_dimension = stats::setNames(
           rep(NA_real_, d), input_names
@@ -437,8 +675,18 @@
         integrated_intensity_draws = integrated_intensity,
         lppd = as.numeric(lppd),
         log_evidence = NA_real_,
+        log_target_normalizer = NA_real_,
+        log_relative_normalizer = NA_real_,
         draws = ncol(lambda_draws),
-        particle_weights = numeric()
+        particle_weights = numeric(),
+        tree_draws = tree_draws,
+        state = list(
+          mode = "leafbox",
+          chain = rep(
+            seq_along(raw_chains),
+            vapply(raw_chains, function(z) length(z$tree_draws), integer(1))
+          )
+        )
       ),
       diagnostics = list(
         acceptance = acceptance,
@@ -446,7 +694,13 @@
         gate_acceptance = numeric(),
         particle_ess = NA_real_,
         ess_history = numeric(),
-        unique_trees = NA_integer_
+        unique_trees = .n_unique_trees(tree_draws),
+        leaf_count_trace = as.numeric(leaf_trace),
+        max_depth_trace = as.numeric(depth_trace),
+        log_evidence_increment = numeric(),
+        log_evidence_running = numeric(),
+        expanded_nodes = NA_real_,
+        resampling_events = NA_real_
       ),
       prior = list(
         intensity = list(shape = a, rate = b),
@@ -462,16 +716,18 @@
         prediction_draws = prediction_draws,
         seed = seed
       ),
-      backend = "PPT_fit_MCMC"
+      backend = if (informed) "PPT_fit_IMCMC" else "PPT_fit_MCMC"
     ),
     class = "ppt"
   )
 }
 
+# Fit hard PPT by Particle Gibbs; see ?ppt_controls for arguments.
 .ppt_fit_hard_leaf_pgas <- function(
     x, region, predict_at = x, test = NULL,
     a = 0.5, b = 0,
-    max_depth = 8L, min_leaf_n = 5L,
+    max_depth = 8L, min_leaf_n = 1L,
+    max_aspect_ratio = Inf, cut_candidates = 50L,
     particles = 500L, chains = 1L,
     iter = 500L, burn = 100L,
     seed = 1L, verbose = TRUE) {
@@ -494,31 +750,39 @@
       !is.finite(a) || !is.finite(b) || a <= 0 || b < 0) {
     stop("Require scalar `a > 0` and `b >= 0`.", call. = FALSE)
   }
+  max_depth <- .ppt_validate_depth(max_depth)
   controls <- c(
-    max_depth, min_leaf_n, particles, chains, iter, burn
+    max_depth, min_leaf_n, particles, chains, iter, burn, cut_candidates
   )
   if (any(!is.finite(controls)) || any(controls != floor(controls)) ||
       max_depth < 0 || min_leaf_n < 1 || particles < 2 ||
-      chains < 1 || iter <= burn || burn < 0) {
-    stop("Invalid PGAS or tree controls.", call. = FALSE)
+      chains < 1 || iter <= burn || burn < 0 || cut_candidates < 1) {
+    stop("Invalid Particle-Gibbs or tree controls.", call. = FALSE)
   }
+  .ppt_validate_tree_storage(max_depth, particles, "dense")
+  max_aspect_ratio <- .ppt_validate_max_aspect_ratio(max_aspect_ratio)
   max_depth <- as.integer(max_depth)
   min_leaf_n <- as.integer(min_leaf_n)
   particles <- as.integer(particles)
   chains <- as.integer(chains)
   iter <- as.integer(iter)
   burn <- as.integer(burn)
+  cut_candidates <- as.integer(cut_candidates)
   retained <- seq.int(burn + 1L, iter)
 
   evaluation_locations <- rbind(predict_at, test)
   set.seed(seed)
   raw_chains <- vector("list", chains)
   for (chain in seq_len(chains)) {
+    if (isTRUE(verbose)) {
+      message("PPT [Particle Gibbs] chain ", chain, "/", chains)
+    }
     raw_chains[[chain]] <- PPT_fit_PG(
       x, evaluation_locations, region,
       max_depth = max_depth, niter = iter, P = particles,
       min_leaf_n = min_leaf_n, resample_thresh = 0.5,
-      a = a, b = b, verbose = verbose
+      a = a, b = b, verbose = verbose,
+      max_aspect_ratio = max_aspect_ratio, cut_grid_n = cut_candidates
     )
   }
 
@@ -549,7 +813,7 @@
     )
     sum(vapply(leaves, function(node) {
       box <- as.matrix(node$region)
-      as.numeric(node$lambda) * prod(box[, 2L] - box[, 1L])
+      as.numeric(node$lambda) * (node$exposure %||% prod(box[, 2L] - box[, 1L]))
     }, numeric(1)))
   }, numeric(1))
   pgas_ess <- apply(conditional_weights, 2L, function(weights) {
@@ -594,7 +858,6 @@
         gating = "hard",
         gate_family = NA_character_,
         scales = "leaf",
-        scale_prior = NA_character_,
         sampler = "pgas",
         label = "PPT"
       ),
@@ -611,13 +874,12 @@
         median = summarize(0.5),
         lower = summarize(0.025),
         upper = summarize(0.975),
-        level = 0.95
+        level = 0.95,
+        draws = prediction_matrix
       ),
       posterior = list(
         mean_leaves = mean(leaf_counts),
         mean_max_depth = mean(max_depths),
-        kappa = NA_real_,
-        tau = NA_real_,
         mean_gate = NA_real_,
         gate_by_dimension = stats::setNames(
           rep(NA_real_, d), input_names
@@ -627,8 +889,15 @@
         integrated_intensity_draws = integrated_intensity,
         lppd = as.numeric(lppd),
         log_evidence = NA_real_,
+        log_target_normalizer = NA_real_,
+        log_relative_normalizer = NA_real_,
         draws = ncol(lambda_draws),
-        particle_weights = numeric()
+        particle_weights = numeric(),
+        tree_draws = tree_draws,
+        state = list(
+          mode = "leafbox",
+          chain = rep(seq_len(chains), each = length(retained))
+        )
       ),
       diagnostics = list(
         acceptance = numeric(),
@@ -636,7 +905,13 @@
         gate_acceptance = numeric(),
         particle_ess = mean(pgas_ess, na.rm = TRUE),
         ess_history = as.numeric(pgas_ess),
-        unique_trees = .n_unique_trees(tree_draws)
+        unique_trees = .n_unique_trees(tree_draws),
+        leaf_count_trace = as.numeric(leaf_counts),
+        max_depth_trace = as.numeric(max_depths),
+        log_evidence_increment = numeric(),
+        log_evidence_running = numeric(),
+        expanded_nodes = NA_real_,
+        resampling_events = NA_real_
       ),
       prior = list(
         intensity = list(shape = a, rate = b),
@@ -649,6 +924,11 @@
         chains = chains,
         iter = iter,
         burn = burn,
+        conditional_smc = TRUE,
+        ancestor_sampling = FALSE,
+        resampling_schedule = "tree_level",
+        max_aspect_ratio = max_aspect_ratio,
+        cut_candidates = cut_candidates,
         seed = seed
       ),
       backend = "PPT_fit_PG"

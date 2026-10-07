@@ -5,35 +5,48 @@
 #' separates modeling and computational choices:
 #'
 #' \itemize{
-#'   \item `gating`: the partition mechanism; hard partitions are currently
-#'     implemented and other gates are reserved for future backends;
-#'   \item `scales`: the intensity representation; terminal-leaf intensities
-#'     are currently implemented and multiscale intensities are reserved for
-#'     future backends;
-#'   \item `sampler`: sequential Monte Carlo, reversible-jump MCMC, or Particle
-#'     Gibbs with ancestor sampling.
+#'   \item `gating`: hard partitions or soft logistic/compact gates;
+#'   \item `sampler`: sequential Monte Carlo, reversible-jump MCMC,
+#'     locally informed Metropolis--Hastings, partially collapsed Gibbs
+#'     with robust adaptive Metropolis gate updates, or
+#'     Particle Gibbs with exact conditional SMC (with ancestor sampling for
+#'     the soft model).
 #' }
 #'
 #' The fitted object has class `ppt`. Use [ppt_predict()] for posterior
-#' intensity summaries, [plot.ppt()] for fitted intensities, [ppt_summary()]
-#' for model summaries, [ppt_logLik()] and [ppt_lppd()] for likelihood and
-#' predictive evaluation, and [ppt_diagnostics()] for sampler diagnostics.
+#' intensity summaries, [ppt_marginal()] for one-input marginal intensity
+#' curves, [plot.ppt()] for fitted intensities, `summary()` for model
+#' summaries, [ppt_lppd()] for predictive evaluation, and [ppt_diagnostics()]
+#' for sampler diagnostics and diagnostic plots. Raw diagnostics are stored
+#' in `fit$diagnostics`; the posterior mean in-sample log likelihood
+#' is stored in `fit$posterior$mean_log_likelihood`.
 #'
 #' @section Model configurations:
-#' \tabular{llll}{
-#' Model \tab `gating` \tab `scales` / prior \tab `sampler` \cr
-#' PPT \tab `hard` \tab `leaf` \tab `smc` \cr
-#' PPT \tab `hard` \tab `leaf` \tab `rjmcmc` \cr
-#' PPT \tab `hard` \tab `leaf` \tab `pgas` \cr
+#' \tabular{lll}{
+#' Model \tab `gating` \tab `sampler` \cr
+#' PPT \tab `hard` \tab `smc` \cr
+#' PPT \tab `hard` \tab `rjmcmc` \cr
+#' PPT \tab `hard` \tab `irjmcmc` (informed MH) \cr
+#' PPT \tab `hard` \tab `pgas` \cr
+#' S-PPT \tab `soft` \tab `rjmcmc` \cr
+#' S-PPT \tab `soft` \tab `irjmcmc` (informed MH) \cr
+#' S-PPT \tab `soft` \tab `pcg` (joint adaptive gate update) \cr
+#' S-PPT \tab `soft` \tab `pgas` (ancestor sampling) \cr
 #' }
 #'
-#' The component-based wrapper is intentionally retained. Future backends can
-#' be registered internally without changing calls to [ppt_fit()].
+#' Both models use terminal-leaf intensities (`scales = "leaf"`, the only
+#' value). The default is S-PPT: soft gating and RJ-MCMC. Explicit
+#' `gating = "hard"` calls select PPT.
+#' All samplers default to `cut_candidates = 50`. Informed MH preserves the
+#' corresponding RJ-MCMC target and returns ordinary posterior draws;
+#' rejection-free importance tempering is not used.
 #'
 #' @section Basic workflow:
 #' Supply the observed event locations or covariate vectors as an `n` by `d`
 #' numeric matrix and the bounded observation window as a `d` by 2 matrix.
-#' Prediction locations are passed through `predict_at`.
+#' The optional `predict_at` argument precomputes posterior intensities at
+#' selected locations. It is not required: arbitrary locations can be
+#' evaluated after fitting with [ppt_lambda()] or [ppt_predict()].
 #'
 #' @examples
 #' \dontrun{
@@ -45,31 +58,34 @@
 #'   x2 = seq(0, 1, length.out = 30)
 #' ))
 #'
-#' # Hard terminal-leaf PPT fitted by SMC
 #' fit_ppt <- ppt_fit(
 #'   x, region, gating = "hard", scales = "leaf", sampler = "smc",
 #'   predict_at = grid, particles = 500
 #' )
 #'
-#' # Hard terminal-leaf PPT fitted by RJ-MCMC
 #' fit_ppt_mcmc <- ppt_fit(
 #'   x, region, gating = "hard", scales = "leaf", sampler = "rjmcmc",
 #'   predict_at = grid, chains = 2, iter = 2000, burn = 500
 #' )
 #'
-#' ppt_summary(fit_ppt_mcmc)
+#' summary(fit_ppt_mcmc)
 #' intensity <- ppt_predict(fit_ppt_mcmc, type = "interval")
 #' plot(fit_ppt_mcmc)
 #' ppt_diagnostics(fit_ppt_mcmc)
 #'
-#' # Hard terminal-leaf PPT fitted by PGAS
 #' fit_ppt_pgas <- ppt_fit(
 #'   x, region, gating = "hard", scales = "leaf", sampler = "pgas",
 #'   predict_at = grid, particles = 200, iter = 500, burn = 100
 #' )
+#'
+#' fit_sppt <- ppt_fit(
+#'   x, region, predict_at = grid,
+#'   chains = 2, iter = 2000, burn = 500
+#' )
 #' }
 #'
 #' @docType package
+#' @md
 #' @name poistree
 #' @aliases poistree-package
 #' @keywords internal

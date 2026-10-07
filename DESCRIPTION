@@ -1,16 +1,17 @@
 Package: poistree
 Type: Package
 Title: Bayesian Poisson Point Process Tree Models
-Version: 0.1.1
-Date: 2026-08-10
-Authors@R: c(person("Pulong", "Ma", role=c("aut", "cre"), email="plma@iastate.edu"))
-Maintainer: Pulong Ma <mpulong@gmail.com>
-Description: Bayesian Poisson process trees for intensity estimation on
-    possibly high-dimensional input spaces. The extensible unified interface
-    separates the gating mechanism, intensity structure, scale prior, and
-    posterior sampler. The implemented model is a hard-gated terminal-leaf
-    Poisson process tree fitted by sequential Monte Carlo, reversible-jump
-    Markov chain Monte Carlo, or Particle Gibbs with ancestor sampling.
+Version: 0.5.8
+Date: 2026-10-07
+Authors@R: person(
+    given = "Pulong",
+    family = "Ma",
+    role = c("aut", "cre"),
+    email = "plma@iastate.edu",
+    comment = c("Personal email" = "mpulong@gmail.com")
+    )
+Maintainer: Pulong Ma <plma@iastate.edu>
+Description: Bayesian Poisson process trees for intensity estimation on high-dimensional covariate space. The extensible unified interface separates the gating mechanism from the posterior sampler. Implemented models are the hard-gated Poisson process tree (PPT) and the soft-gated Poisson process tree (S-PPT), both with terminal-leaf intensities. The model is specified hierarchically through a tree-generating process and a intensity function model that is represented as a piecewise smooth (or constant) functions over tree partitions. PPT is inferred via a sequential Monte Carlo algorithm (SMC) while S-PPT is inferred via a collapsed Gibbs sampler. 
 License: GPL (>= 2)
 Encoding: UTF-8
 Imports:
@@ -21,6 +22,9 @@ Imports:
 LinkingTo: Rcpp, RcppArmadillo, RcppProgress
 NeedsCompilation: yes
 RoxygenNote: 7.3.3
+Roxygen: list(markdown = TRUE)
 Suggests:
+    ggplot2,
+    patchwork,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

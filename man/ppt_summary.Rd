@@ -2,21 +2,21 @@
 % Please edit documentation in R/ppt-methods.R
 \name{ppt_summary}
 \alias{ppt_summary}
-\alias{summary.ppt}
-\title{Summarize a fitted PPT}
+\title{Assemble a fitted PPT summary}
 \usage{
 ppt_summary(object, ...)
-
-\method{summary}{ppt}(object, ...)
 }
 \arguments{
-\item{object}{A fitted `ppt` object.}
+\item{object}{An object inheriting from class \code{ppt}, usually returned by
+\code{\link[=ppt_fit]{ppt_fit()}}. Stored posterior and diagnostic fields supply the summary.}
 
-\item{...}{Reserved for future methods.}
+\item{...}{Additional arguments passed from \code{summary()}; currently ignored.}
 }
 \value{
-An object of class `summary.ppt`.
+A \code{summary.ppt} list containing model, data, posterior, and sampler
+summaries. Missing backend summaries are represented by \code{NA}.
 }
 \description{
-Summarize a fitted PPT
+Internal helper used by the public \code{summary()} method.
 }
+\keyword{internal}

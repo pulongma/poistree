@@ -2,21 +2,23 @@
 % Please edit documentation in R/ppt-methods.R
 \name{ppt_logLik}
 \alias{ppt_logLik}
-\alias{logLik.ppt}
 \title{Extract the posterior mean point-process log likelihood}
 \usage{
 ppt_logLik(object, ...)
-
-\method{logLik}{ppt}(object, ...)
 }
 \arguments{
-\item{object}{A fitted `ppt` object.}
+\item{object}{An object inheriting from class \code{ppt}, usually returned by
+\code{\link[=ppt_fit]{ppt_fit()}}. The stored posterior mean in-sample log likelihood is used;
+no likelihood is reevaluated by this accessor.}
 
-\item{...}{Reserved for compatibility.}
+\item{...}{Additional arguments; currently ignored.}
 }
 \value{
-An object of class `logLik`.
+A numeric scalar of class \code{logLik}, with \code{nobs} equal to the number
+of observed points and \code{df = NA} because no effective parameter count is
+estimated.
 }
 \description{
 This is the posterior mean in-sample log likelihood, not model evidence.
 }
+\keyword{internal}

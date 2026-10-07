@@ -1,12 +1,32 @@
 #' Summarize sampler diagnostics
 #'
-#' Reports the acceptance information exposed by the selected backend together
-#' with the number of retained draws. Full scalar traces will be added when the
-#' backends retain them in fitted objects.
+#' Reports the acceptance information and scalar traces exposed by the selected
+#' backend together with the number of retained draws.
+#' For SMC, the legacy `log_evidence_increment` and `log_evidence_running`
+#' fields contain increments and cumulative sums of the log normalizer
+#' relative to the root score. They are not absolute model evidence.
+#' With `b = 0`, these use the backend's formal improper-prior leaf scores.
+#' For PCG, `gate_joint_acceptance` reports joint gate acceptance and `ram`
+#' contains final proposal factors/covariances and adaptation counts per chain.
+#' The per-dimension gate acceptance entries repeat the joint acceptance rate.
 #'
-#' @param object A fitted `ppt` object.
-#' @param plot Draw an acceptance-rate bar plot.
-#' @return An object of class `ppt_diagnostics`.
+#' @param object An object inheriting from class `ppt`, usually returned by
+#'   [ppt_fit()]. Diagnostics depend on the fitted sampler; fields not
+#'   supplied by its backend are empty or `NA`.
+#' @param plot Logical scalar, default `FALSE`. If `TRUE`, also call the
+#'   diagnostic plot method:
+#'   \describe{
+#'     \item{SMC and PGAS}{Plot the available particle effective sample size
+#'       (ESS) history. An error is raised if no positive finite ESS values
+#'       are available.}
+#'     \item{Other samplers}{Plot the available acceptance rates as bars.
+#'       An error is raised if no acceptance summaries are available.}
+#'   }
+#' @return `ppt_diagnostics()` returns a list of class `ppt_diagnostics`
+#'   containing model and sampler labels, posterior draw and tree summaries,
+#'   acceptance rates, and available scalar histories. The print and plot
+#'   methods return their input invisibly.
+#' @md
 #' @export
 ppt_diagnostics <- function(object, plot = FALSE) {
   if (!inherits(object, "ppt")) {
@@ -16,40 +36,57 @@ ppt_diagnostics <- function(object, plot = FALSE) {
     list(
       model = object$model$label,
       sampler = object$model$sampler,
-      scale_prior = object$model$scale_prior,
+      algorithm = object$model$algorithm %||% object$model$sampler,
       draws = object$posterior$draws,
       mean_leaves = object$posterior$mean_leaves,
       mean_max_depth = object$posterior$mean_max_depth %||% NA_real_,
-      kappa = object$posterior$kappa %||% NA_real_,
-      tau = object$posterior$tau %||% NA_real_,
       acceptance = object$diagnostics$acceptance,
       gate_by_dimension = object$posterior$gate_by_dimension,
       particle_ess = object$diagnostics$particle_ess %||% NA_real_,
       ess_history = object$diagnostics$ess_history %||% numeric(),
-      unique_trees = object$diagnostics$unique_trees %||% NA_integer_
+      unique_trees = object$diagnostics$unique_trees %||% NA_integer_,
+      leaf_count_trace = object$diagnostics$leaf_count_trace %||% numeric(),
+      max_depth_trace = object$diagnostics$max_depth_trace %||% numeric(),
+      log_evidence_increment =
+        object$diagnostics$log_evidence_increment %||% numeric(),
+      log_evidence_running =
+        object$diagnostics$log_evidence_running %||% numeric()
     ),
     class = "ppt_diagnostics"
   )
+  if (identical(object$model$sampler, "pcg")) {
+    out$gate_joint_acceptance <- object$diagnostics$gate_joint_acceptance
+    out$chain_gate_joint_acceptance <-
+      object$diagnostics$chain_gate_joint_acceptance
+    out$chain_gate_joint_acceptance_probability <-
+      object$diagnostics$chain_gate_joint_acceptance_probability
+    out$ram <- object$diagnostics$ram
+  }
   if (isTRUE(plot)) plot(out)
   out
 }
 
+#' @rdname ppt_diagnostics
+#' @param x An object of class `ppt_diagnostics`, returned by
+#'   [ppt_diagnostics()].
+#' @param ... For the plot method, additional graphical arguments passed to
+#'   [graphics::plot()] for SMC/PGAS or [graphics::barplot()] for other
+#'   samplers. Arguments already supplied by the method must not be repeated:
+#'   `type`, `xlab`, `ylab`, and `main` for ESS plots; `ylim`, `ylab`, `main`,
+#'   and `las` for acceptance plots. The print method ignores `...`.
 #' @method print ppt_diagnostics
 #' @export
 print.ppt_diagnostics <- function(x, ...) {
   cat("poistree sampler diagnostics\n")
   cat("  Model       :", x$model, "\n")
   cat("  Sampler     :", x$sampler, "\n")
+  if (!identical(x$algorithm, x$sampler)) {
+    cat("  Algorithm   :", x$algorithm, "\n")
+  }
   cat("  Draws       :", x$draws, "\n")
   cat("  Mean leaves :", format(x$mean_leaves, digits = 5L), "\n")
   if (is.finite(x$mean_max_depth)) {
     cat("  Max depth   :", format(x$mean_max_depth, digits = 5L), "\n")
-  }
-  if (is.finite(x$kappa)) {
-    cat("  Kappa       :", format(x$kappa, digits = 5L), "\n")
-  }
-  if (is.finite(x$tau)) {
-    cat("  Tau         :", format(x$tau, digits = 5L), "\n")
   }
   if (is.finite(x$particle_ess)) {
     cat("  Particle ESS:", format(x$particle_ess, digits = 5L), "\n")
@@ -66,6 +103,7 @@ print.ppt_diagnostics <- function(x, ...) {
   invisible(x)
 }
 
+#' @rdname ppt_diagnostics
 #' @method plot ppt_diagnostics
 #' @export
 plot.ppt_diagnostics <- function(x, ...) {
@@ -91,7 +129,7 @@ plot.ppt_diagnostics <- function(x, ...) {
     x$acceptance,
     ylim = c(0, 1),
     ylab = "Acceptance rate",
-    main = paste(x$model, "RJ-MCMC acceptance"),
+    main = paste(x$model, x$algorithm, "acceptance"),
     las = 2,
     ...
   )
@@ -100,13 +138,33 @@ plot.ppt_diagnostics <- function(x, ...) {
 
 #' Simulate a Poisson point process by thinning
 #'
-#' @param intensity Function accepting an `n` by `d` matrix and returning
-#'   nonnegative intensities.
-#' @param region Numeric `d` by 2 observation bounds.
-#' @param lambda_max Finite upper bound for `intensity` over `region`.
-#' @param nsim Number of independent point patterns.
-#' @param seed Optional random seed.
-#' @return A matrix when `nsim = 1`, otherwise a list of matrices.
+#' Generate a homogeneous Poisson candidate pattern with rate `lambda_max`
+#' over the region, then independently retain each candidate location with
+#' probability `intensity(location) / lambda_max`.
+#'
+#' @param intensity A function accepting an `n` by `d` numeric matrix of
+#'   locations and returning one finite, nonnegative intensity per row. It
+#'   must accept any positive candidate count `n`, including a single row.
+#'   Intensities are expected point counts per unit region volume.
+#' @param region Finite numeric `d` by 2 matrix, where `d >= 1`. Column 1
+#'   contains lower bounds and column 2 contains strictly larger upper
+#'   bounds. Rows correspond to the columns accepted by `intensity`.
+#' @param lambda_max Positive finite numeric scalar bounding `intensity`
+#'   everywhere on `region`. Values evaluated above this bound raise an error
+#'   (up to floating-point tolerance); the function does not verify the bound
+#'   at unevaluated locations.
+#' @param nsim Positive integer scalar, default `1`, giving the number of
+#'   independently generated point patterns.
+#' @param seed Optional integer seed passed to [set.seed()] once before
+#'   simulation. The default, `NULL`, uses the current random-number state.
+#'   The random-number state advances normally and is not restored on return.
+#' @return The output depends on `nsim`:
+#'   \describe{
+#'     \item{`nsim = 1`}{A numeric matrix with `d` columns and one row per
+#'       retained point. A simulated empty pattern has zero rows.}
+#'     \item{`nsim > 1`}{A list of `nsim` such matrices.}
+#'   }
+#' @md
 #' @export
 ppt_sim <- function(intensity, region, lambda_max, nsim = 1L, seed = NULL) {
   if (!is.function(intensity)) {

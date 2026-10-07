@@ -7,20 +7,37 @@
 ppt_sim(intensity, region, lambda_max, nsim = 1L, seed = NULL)
 }
 \arguments{
-\item{intensity}{Function accepting an `n` by `d` matrix and returning
-nonnegative intensities.}
+\item{intensity}{A function accepting an \code{n} by \code{d} numeric matrix of
+locations and returning one finite, nonnegative intensity per row. It
+must accept any positive candidate count \code{n}, including a single row.
+Intensities are expected point counts per unit region volume.}
 
-\item{region}{Numeric `d` by 2 observation bounds.}
+\item{region}{Finite numeric \code{d} by 2 matrix, where \code{d >= 1}. Column 1
+contains lower bounds and column 2 contains strictly larger upper
+bounds. Rows correspond to the columns accepted by \code{intensity}.}
 
-\item{lambda_max}{Finite upper bound for `intensity` over `region`.}
+\item{lambda_max}{Positive finite numeric scalar bounding \code{intensity}
+everywhere on \code{region}. Values evaluated above this bound raise an error
+(up to floating-point tolerance); the function does not verify the bound
+at unevaluated locations.}
 
-\item{nsim}{Number of independent point patterns.}
+\item{nsim}{Positive integer scalar, default \code{1}, giving the number of
+independently generated point patterns.}
 
-\item{seed}{Optional random seed.}
+\item{seed}{Optional integer seed passed to \code{\link[=set.seed]{set.seed()}} once before
+simulation. The default, \code{NULL}, uses the current random-number state.
+The random-number state advances normally and is not restored on return.}
 }
 \value{
-A matrix when `nsim = 1`, otherwise a list of matrices.
+The output depends on \code{nsim}:
+\describe{
+\item{\code{nsim = 1}}{A numeric matrix with \code{d} columns and one row per
+retained point. A simulated empty pattern has zero rows.}
+\item{\code{nsim > 1}}{A list of \code{nsim} such matrices.}
+}
 }
 \description{
-Simulate a Poisson point process by thinning
+Generate a homogeneous Poisson candidate pattern with rate \code{lambda_max}
+over the region, then independently retain each candidate location with
+probability \code{intensity(location) / lambda_max}.
 }

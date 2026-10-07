@@ -2,21 +2,31 @@
 % Please edit documentation in R/ppt-methods.R
 \name{ppt_integral}
 \alias{ppt_integral}
-\title{Extract the exact posterior intensity integral}
+\title{Extract the posterior intensity integral}
 \usage{
 ppt_integral(object, type = c("mean", "draws"))
 }
 \arguments{
-\item{object}{A fitted `ppt` object.}
+\item{object}{An object inheriting from class \code{ppt}, usually returned by
+\code{\link[=ppt_fit]{ppt_fit()}}, with stored posterior intensity integrals. Fits created
+before integral storage was introduced must be refitted.}
 
-\item{type}{Return the posterior mean or all retained draw-specific
-integrals.}
+\item{type}{Character scalar selecting the returned integrals:
+\describe{
+\item{\code{"mean"}}{Stored posterior mean total intensity; the default.
+SMC fits use posterior particle weights.}
+\item{\code{"draws"}}{One total intensity per retained posterior draw, in
+the same order as the fitted posterior states.}
+}}
 }
 \value{
-A numeric scalar for `mean` or a numeric vector for `draws`.
+A numeric scalar for \code{mean} or a numeric vector for \code{draws}.
 }
 \description{
-Every posterior tree draw has an analytically evaluated total intensity 
-\eqn{A=\int_{\mathcal D}\lambda(x)\,dx}. The hard-tree model uses exact box
-volumes; no numerical grid is used by this accessor.
+Every posterior tree draw has a stored total intensity
+\eqn{A=\int_{\mathcal D}\lambda(x)\,dx}. Ordinary hard-tree fits use exact
+box volumes. Fits from \code{\link[=ppt_fit_quadrature]{ppt_fit_quadrature()}} instead store the weighted
+background sum over the physical domain. This accessor returns the stored
+integrals without performing additional numerical integration.
 }
+\keyword{internal}
