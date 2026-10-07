@@ -125,6 +125,18 @@ ppt_marginal_state <- function(state_nodes, state_gate, region, grid, variable, 
     .Call(`_poistree_ppt_marginal_state`, state_nodes, state_gate, region, grid, variable, gate_mode, gate_depth, average)
 }
 
+qpp_set_quadrature <- function(background, weights, region) {
+    invisible(.Call(`_poistree_qpp_set_quadrature`, background, weights, region))
+}
+
+qpp_clear_quadrature <- function() {
+    invisible(.Call(`_poistree_qpp_clear_quadrature`))
+}
+
+qpp_box_exposure_r <- function(box) {
+    .Call(`_poistree_qpp_box_exposure_r`, box)
+}
+
 base_mloglik <- function(n, area, a = 1e-3, b = 1e-3) {
     .Call(`_poistree_base_mloglik`, n, area, a, b)
 }

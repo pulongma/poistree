@@ -10,6 +10,7 @@
 // [[Rcpp::plugins(cpp11)]]
 #endif
 #include "hard_smc.h"
+#include "spatial_quadrature.h"
 
 static inline double hard_lse(const std::vector<double>& v) {
   double mx = -std::numeric_limits<double>::infinity();
@@ -45,7 +46,11 @@ int HardSMCtree::make_root() {
   root.pts.resize(n);
   for (int i = 0; i < n; ++i) root.pts[i] = i;
   root.m = n;
-  root.area = arma::prod(region.col(1) - region.col(0));
+  root.area = qpp_box_exposure(region);
+  if (qpp_active) {
+    root.qrows.resize(qpp_weights.n_elem);
+    for (arma::uword i = 0; i < qpp_weights.n_elem; ++i) root.qrows[i] = i;
+  }
   store.push_back(std::move(root));
   return 0;
 }
@@ -61,9 +66,22 @@ int HardSMCtree::make_child(int parent, int cand, int side, std::vector<int>&& p
   c.box(par.cand_axis[cand], side < 0 ? 1 : 0) = par.cand_cut[cand];
   c.m = pts.size();
   c.pts = std::move(pts);
-  c.area = arma::prod(c.box.col(1) - c.box.col(0));
+  if (qpp_active) {
+    const int j = par.cand_axis[cand];
+    const double cut = par.cand_cut[cand];
+    const double* x = qpp_background.colptr(j);
+    for (int i : par.qrows) if ((x[i] < cut) == (side < 0)) c.qrows.push_back(i);
+    c.area = rows_exposure(c.qrows);
+  } else c.area = qpp_box_exposure(c.box);
   store.push_back(std::move(c));
   return (int)store.size() - 1;
+}
+
+// Same increasing-row summation order as qpp_box_exposure().
+double HardSMCtree::rows_exposure(const std::vector<int>& rows) const {
+  double area = 0.0;
+  for (int i : rows) area += qpp_weights[i];
+  return area;
 }
 
 // Candidate cuts and scores of one box (the one-step lookahead ingredients of
@@ -102,7 +120,11 @@ void HardSMCtree::expand_node(int v) {
         if (!hard_good_shape(boxL, max_aspect) || !hard_good_shape(boxR, max_aspect)) return;
         // Interior ties go right on every axis, matching the dense engine.
         const int nL = (int)(std::lower_bound(xs.begin(), xs.end(), cut) - xs.begin()), nR = A.m - nL;
-        const double areaL = arma::prod(boxL.col(1) - boxL.col(0)), areaR = arma::prod(boxR.col(1) - boxR.col(0));
+        double areaL = 0.0, areaR = 0.0;
+        if (qpp_active) {
+          const double* x = qpp_background.colptr(j);
+          for (int i : A.qrows) (x[i] < cut ? areaL : areaR) += qpp_weights[i];
+        } else { areaL = qpp_box_exposure(boxL); areaR = qpp_box_exposure(boxR); }
         if (nL < min_leaf || nR < min_leaf || areaL <= 0.0 || areaR <= 0.0) return;
         A.cand_axis.push_back(j); A.cand_cut.push_back(cut); A.cand_nL.push_back(nL);
         A.score.push_back(logQ0(nL, areaL) + logQ0(nR, areaR));
@@ -169,7 +191,7 @@ bool HardSMCtree::sample_position(int t) {
     particles[p].rec[2 * t + 1] = HardRecord{rid, -1, -1};
   }
   // observation sets of decided nodes are no longer needed
-  for (int v : touched) { std::vector<int>().swap(store[v].pts); }
+  for (int v : touched) { std::vector<int>().swap(store[v].pts); std::vector<int>().swap(store[v].qrows); }
   return advanced;
 }
 
@@ -255,7 +277,7 @@ Rcpp::List HardSMCtree::export_particles(const arma::mat& grid, arma::mat& lam_d
         Rcpp::Named("region") = v.box, Rcpp::Named("depth") = v.depth,
         Rcpp::Named("is_leaf") = leaf, Rcpp::Named("S") = leaf ? 0 : 1,
         Rcpp::Named("J") = J, Rcpp::Named("L") = L,
-        Rcpp::Named("lambda") = lam, Rcpp::Named("m") = v.m);
+        Rcpp::Named("lambda") = lam, Rcpp::Named("m") = v.m, Rcpp::Named("exposure") = v.area);
     }
     out[p] = nodes;
     loglik[p] = ll; integral[p] = tot;

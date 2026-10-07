@@ -17,7 +17,7 @@ struct PPSTSurrogateEntry {
 };
 
 class PPSTSurrogate {
-  const arma::mat &pts_,&region_;
+  const arma::mat &pts_;
   PPSTCutsCache&cuts_;
   const double a_,b_,alpha_,eta_,tau_,eps_;
   std::unordered_map<std::string,PPSTSurrogateEntry> entries_;
@@ -49,9 +49,9 @@ class PPSTSurrogate {
     total=arma::prod(box.col(1)-box.col(0));
   }
 public:
-  PPSTSurrogate(const arma::mat&pts,const arma::mat&region,PPSTCutsCache&cuts,
+  PPSTSurrogate(const arma::mat&pts,PPSTCutsCache&cuts,
       double a,double b,double alpha,double eta,double tau,double eps)
-    :pts_(pts),region_(region),cuts_(cuts),a_(a),b_(b),alpha_(alpha),eta_(eta),
+    :pts_(pts),cuts_(cuts),a_(a),b_(b),alpha_(alpha),eta_(eta),
      tau_(tau),eps_(eps){}
   double tau() const {return tau_;}
   double eps() const {return eps_;}

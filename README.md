@@ -310,7 +310,34 @@ over axis-aligned boxes for hard gates and using the fitted compact/logistic
 path integrals for soft gates. A user-supplied uniform reference design remains
 available as an explicit approximation; see `?ppt_marginal`.
 
-### Prediction performance (0.5.2)
+### Physical-domain quadrature and informed PCG
+
+`ppt_fit_quadrature()` integrates intensity over supplied background covariates
+and physical exposure weights. In version 0.5.7 this API is part of the main
+package as well as the real-data adapter. For example:
+
+```r
+fit <- ppt_fit_quadrature(
+  x = X_train, region = region,
+  background = Q, weights = q_weights,
+  gating = "soft", sampler = "pcg",
+  informed = TRUE,
+  proposal_temperature = 0.5,
+  proposal_defensive = 0.1,
+  gate_scale = "node"
+)
+fit$control$informed
+```
+
+Other controls, including chains, iterations, seed, and prediction locations,
+are passed through to `ppt_fit()`. `informed = FALSE` remains the default.
+Both root- and node-scaled gates are supported. The wrapper supports soft PCG
+and hard shared SMC; informed RJ-MCMC and PGAS are separate algorithms and are
+not enabled by this quadrature wrapper. `ppt_integral()` and `ppt_lppd()` use
+the saved weighted integrals. `ppt_marginal()` still integrates over the
+covariate box and is not a physical-domain marginal for these fits.
+
+## Prediction performance (0.5.2)
 
 Post-hoc soft prediction shares ancestor calculations across leaves, for root
 and node logistic scales and compact gates. It needs only one scalar per

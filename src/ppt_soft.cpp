@@ -42,6 +42,7 @@
 #include <limits>
 #include <memory>
 #include "soft_logistic.h"
+#include "spatial_quadrature.h"
 using namespace Rcpp;
 
 struct PPSTGate {
@@ -359,6 +360,12 @@ static inline double ppst_phi(const PPSTNode&nd,const arma::rowvec&x,
 
 static double ppst_exposure(const PPSTNode&nd,const arma::mat&region,
     const arma::vec&gate,int gate_family){
+  if (qpp_active) {
+    double H = 0.0;
+    for (arma::uword i = 0; i < qpp_weights.n_elem; ++i)
+      H += qpp_weights[i] * ppst_phi(nd, qpp_background.row(i), region, gate, gate_family);
+    return H;
+  }
   if(gate_family==2) return ppst_exposure_logistic_node(nd,region,gate);
   return gate_family==0
     ? ppst_exposure_logistic(nd,region,gate)
@@ -681,7 +688,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
   PPSTCutsCache cuts(pts,nmin,mode,ncand);
   PPSTCutsCache*cuts_cache=cache_cuts&&!exact_informed?&cuts:nullptr;
   if(surrogate_informed&&!cuts_cache) stop("informed pcg requires cache_cuts");
-  PPSTSurrogate surrogate(pts,region,cuts,a,b,alpha,eta,tau,eps);
+  PPSTSurrogate surrogate(pts,cuts,a,b,alpha,eta,tau,eps);
   PPSTree T; PPSTNode root;
   root.box=region; root.idx=arma::regspace<arma::uvec>(0,n-1);
   root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;
@@ -979,7 +986,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   const bool exact_informed=informed&&!pcg,surrogate_informed=informed&&pcg;
   PPSTCutsCache*cuts_cache=cache_cuts&&!exact_informed?&cuts:nullptr;
   if(surrogate_informed&&!cuts_cache) stop("informed pcg requires cache_cuts");
-  PPSTSurrogate surrogate(X,region,cuts,a,b,alpha,eta,proposal_temperature,proposal_defensive);
+  PPSTSurrogate surrogate(X,cuts,a,b,alpha,eta,proposal_temperature,proposal_defensive);
   PPSTree T; PPSTNode root;
   root.box=region; root.idx=arma::regspace<arma::uvec>(0,n-1);
   root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;

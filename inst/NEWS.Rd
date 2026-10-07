@@ -1,6 +1,17 @@
 \name{NEWS}
 \title{News for Package \pkg{poistree}}
 
+\section{Changes in poistree version 0.5.7 (2026-10-06)}{
+  \itemize{
+    \item Exported \code{ppt_fit_quadrature()} in the main package, with
+      weighted physical-domain integration for soft PCG and hard shared SMC.
+    \item Added explicit \code{informed}, \code{proposal_temperature}, and
+      \code{proposal_defensive} quadrature controls for soft PCG, with both
+      root- and node-scaled gates. The default remains uninformed PCG.
+    \item Removed the unused surrogate region reference from compiled code.
+  }
+}
+
 \section{Changes in poistree version 0.5.6 (2026-10-06)}{
   \itemize{
     \item PCG accepts \code{informed = TRUE}: grow, prune, and change proposals

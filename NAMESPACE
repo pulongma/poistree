@@ -22,3 +22,6 @@ S3method(print, ppt)
 S3method(print, ppt_diagnostics)
 S3method(print, summary.ppt)
 S3method(summary, ppt)
+
+export(ppt_fit_quadrature)
+export(ppt_quadrature_geometry)

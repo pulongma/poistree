@@ -20,6 +20,7 @@ struct HardNode {
   int heap = 1, depth = 0, parent = -1, cand = -1;   // cand: candidate index at the parent
   arma::mat box;                                     // d x 2
   std::vector<int> pts;                              // observation indices (released after expansion)
+  std::vector<int> qrows;                            // quadrature rows in the box (released with pts)
   int m = 0;
   double area = 1.0;
   bool expanded = false;
@@ -67,6 +68,7 @@ public:
 
   int make_root();
   int make_child(int parent, int cand, int side, std::vector<int>&& pts);
+  double rows_exposure(const std::vector<int>& rows) const;
   void expand_node(int v);
   bool sample_position(int t);
   void resample();

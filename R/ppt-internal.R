@@ -353,7 +353,7 @@
     )
     sum(vapply(leaves, function(node) {
       box <- as.matrix(node$region)
-      as.numeric(node$lambda) * prod(box[, 2L] - box[, 1L])
+      as.numeric(node$lambda) * (node$exposure %||% prod(box[, 2L] - box[, 1L]))
     }, numeric(1)))
   }, numeric(1))
   lppd <- NA_real_
@@ -383,7 +383,7 @@
   }
   log_target_normalizer <- NA_real_
   if (b > 0 && is.finite(log_relative_normalizer)) {
-    root_volume <- prod(region[, 2L] - region[, 1L])
+    root_volume <- qpp_box_exposure_r(region)
     log_root <- lgamma(nrow(x) + a) - lgamma(a) + a * log(b) -
       (nrow(x) + a) * log(b + root_volume)
     log_target_normalizer <- log_relative_normalizer + log_root
@@ -799,7 +799,7 @@
     )
     sum(vapply(leaves, function(node) {
       box <- as.matrix(node$region)
-      as.numeric(node$lambda) * prod(box[, 2L] - box[, 1L])
+      as.numeric(node$lambda) * (node$exposure %||% prod(box[, 2L] - box[, 1L]))
     }, numeric(1)))
   }, numeric(1))
   pgas_ess <- apply(conditional_weights, 2L, function(weights) {

@@ -635,6 +635,38 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// qpp_set_quadrature
+void qpp_set_quadrature(const arma::mat& background, const arma::vec& weights, const arma::mat& region);
+RcppExport SEXP _poistree_qpp_set_quadrature(SEXP backgroundSEXP, SEXP weightsSEXP, SEXP regionSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type background(backgroundSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type region(regionSEXP);
+    qpp_set_quadrature(background, weights, region);
+    return R_NilValue;
+END_RCPP
+}
+// qpp_clear_quadrature
+void qpp_clear_quadrature();
+RcppExport SEXP _poistree_qpp_clear_quadrature() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    qpp_clear_quadrature();
+    return R_NilValue;
+END_RCPP
+}
+// qpp_box_exposure_r
+double qpp_box_exposure_r(const arma::mat& box);
+RcppExport SEXP _poistree_qpp_box_exposure_r(SEXP boxSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type box(boxSEXP);
+    rcpp_result_gen = Rcpp::wrap(qpp_box_exposure_r(box));
+    return rcpp_result_gen;
+END_RCPP
+}
 // base_mloglik
 double base_mloglik(int n, double area, double a, double b);
 RcppExport SEXP _poistree_base_mloglik(SEXP nSEXP, SEXP areaSEXP, SEXP aSEXP, SEXP bSEXP) {
@@ -712,6 +744,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poistree_ppstree_training_background_inspect", (DL_FUNC) &_poistree_ppstree_training_background_inspect, 4},
     {"_poistree_ppt_eval_state", (DL_FUNC) &_poistree_ppt_eval_state, 6},
     {"_poistree_ppt_marginal_state", (DL_FUNC) &_poistree_ppt_marginal_state, 8},
+    {"_poistree_qpp_set_quadrature", (DL_FUNC) &_poistree_qpp_set_quadrature, 3},
+    {"_poistree_qpp_clear_quadrature", (DL_FUNC) &_poistree_qpp_clear_quadrature, 0},
+    {"_poistree_qpp_box_exposure_r", (DL_FUNC) &_poistree_qpp_box_exposure_r, 1},
     {"_poistree_base_mloglik", (DL_FUNC) &_poistree_base_mloglik, 4},
     {"_poistree_split_mloglik", (DL_FUNC) &_poistree_split_mloglik, 8},
     {"_poistree_log_sum_exp_two", (DL_FUNC) &_poistree_log_sum_exp_two, 2},
