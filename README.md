@@ -9,11 +9,10 @@ intensity curves, and evaluate predictions on held-out point patterns.
 | Model | Gating | Available samplers |
 | --- | --- | --- |
 | PPT | Hard | SMC (`smc`), RJ-MCMC (`rjmcmc`) |
-| S-PPT | Soft | partially collapsed Gibbs (`pcg`) |
+| S-PPT | Soft | partially collapsed Gibbs (`pcg`), RJ-MCMC (`rjmcmc`) |
 
 Both models use terminal-leaf intensities. `ppt_fit()` defaults to S-PPT with
-RJ-MCMC. For hard PPT, the `pgas` option uses Particle Gibbs without ancestor
-sampling.
+RJ-MCMC. 
 
 ## Main functions
 
