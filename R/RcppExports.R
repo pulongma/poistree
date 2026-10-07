@@ -85,12 +85,12 @@ ppstree_geometry <- function(axis, cut, parent_width, side, points, region, gate
     .Call(`_poistree_ppstree_geometry`, axis, cut, parent_width, side, points, region, gate, gate_scale)
 }
 
-ppstree_multi <- function(X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose, informed = FALSE, pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L, cache_geometry = TRUE, cache_cuts = TRUE) {
-    .Call(`_poistree_ppstree_multi`, X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose, informed, pcg, ram_target, ram_decay, ram_adapt, cache_geometry, cache_cuts)
+ppstree_multi <- function(X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose, informed = FALSE, pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L, cache_geometry = TRUE, cache_cuts = TRUE, proposal_temperature = 0.5, proposal_defensive = 0.1) {
+    .Call(`_poistree_ppstree_multi`, X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose, informed, pcg, ram_target, ram_decay, ram_adapt, cache_geometry, cache_cuts, proposal_temperature, proposal_defensive)
 }
 
-ppstree_diag <- function(X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, informed = FALSE, verbose = FALSE, pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L, cache_geometry = TRUE, cache_cuts = TRUE) {
-    .Call(`_poistree_ppstree_diag`, X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, informed, verbose, pcg, ram_target, ram_decay, ram_adapt, cache_geometry, cache_cuts)
+ppstree_diag <- function(X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, informed = FALSE, verbose = FALSE, pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L, cache_geometry = TRUE, cache_cuts = TRUE, proposal_temperature = 0.5, proposal_defensive = 0.1) {
+    .Call(`_poistree_ppstree_diag`, X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, informed, verbose, pcg, ram_target, ram_decay, ram_adapt, cache_geometry, cache_cuts, proposal_temperature, proposal_defensive)
 }
 
 ppstree_informed_transition <- function(X, region, splits, labels, gate, a, b, alpha, eta, Dmax, nmin, cut_mode, ncand, gate_family, kind) {

@@ -166,7 +166,22 @@
 #' after a rejected gate proposal; discard the temporary intensities; run
 #' standard collapsed grow/prune and change tree updates; and draw fresh
 #' intensities when retaining output. The tree target and candidate rules are
-#' those of soft RJ-MCMC. This sampler does not use informed tree proposals.
+#' those of soft RJ-MCMC.
+#'
+#' With `sampler = "pcg"` and `informed = TRUE`, the grow, prune, and change
+#' proposals are informed by a hard surrogate instead of uniform draws. Every
+#' candidate split of a node is scored once, from the node's hard-routed
+#' counts and the box exposures of its two children (the one-step lookahead
+#' score of the hard SMC, with the same tree prior), and the proposal mixes a
+#' tempered draw \eqn{\propto \exp(	au\,	ilde s)} with a uniform draw over
+#' all candidates: `proposal_temperature` is \eqn{	au\in(0,1]} (default 0.5,
+#' the square-root balancing function of Zanella 2020) and
+#' `proposal_defensive` is the uniform weight in \eqn{[0,1)} (default 0.1).
+#' Prune proposals use the negated score of each cherry's current split. The
+#' acceptance ratio uses the true soft exposures and the exact forward and
+#' reverse proposal probabilities, so the posterior is the same as with
+#' `informed = FALSE`; only the proposal law changes. The soft exposures of
+#' the two proposed children remain the cost of each move.
 #'
 #' PCG starts with log-gate proposal factor \eqn{L_0=\mathrm{diag}(sd\_gate)}.
 #' At gate step \eqn{t=0,1,\ldots}, draw \eqn{u\sim N(0,I)} and propose
@@ -206,6 +221,10 @@
 #' @references Vihola, M. (2012). Robust adaptive Metropolis algorithm with
 #' coerced acceptance rate. \emph{Statistics and Computing}, 22, 997--1008.
 #' \doi{10.1007/s11222-011-9269-5}.
+#'
+#' Zanella, G. (2020). Informed proposals for local MCMC in discrete spaces.
+#' \emph{Journal of the American Statistical Association}, 115, 852--865.
+#' \doi{10.1080/01621459.2019.1585255}.
 #' @export
 #'
 #' @examples

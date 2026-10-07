@@ -642,6 +642,7 @@ static int ppst_change_cut(PPSTree&T,std::vector<int>&labels,
 }
 
 #include "ppt_soft_informed.h"
+#include "ppt_soft_surrogate.h"
 
 // ---- posterior draws and chain ---------------------------------------------
 static double ppst_eval_intensity(const PPSTree&T,
@@ -668,14 +669,19 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
     arma::vec&gate_accept,
     std::vector<arma::mat>&state_nodes,arma::mat&state_gate,bool informed,bool verbose,
     bool pcg,double ram_target,double ram_decay,int ram_adapt,PPSTPCGStats&pcg_stats,
-    bool cache_geometry,bool cache_cuts){
+    bool cache_geometry,bool cache_cuts,double tau,double eps){
   int n=pts.n_rows,si=0; double nls=0.0,mds=0.0;
+  // informed=TRUE means the exact neighborhood sampler for RJ-MCMC and the
+  // hard-surrogate proposals for PCG.
+  const bool exact_informed=informed&&!pcg,surrogate_informed=informed&&pcg;
   arma::vec gate=gate0,gs(gate0.n_elem,arma::fill::zeros);
   if(pcg) pcg_stats.initialize(sd_gate,gate_shared);
   PPSTGeometryCache geometry(pts,region,gate,gate_family,&grid,cache_geometry);
   PPSTGeometryCache*cache=cache_geometry?&geometry:nullptr;
   PPSTCutsCache cuts(pts,nmin,mode,ncand);
-  PPSTCutsCache*cuts_cache=cache_cuts&&!informed?&cuts:nullptr;
+  PPSTCutsCache*cuts_cache=cache_cuts&&!exact_informed?&cuts:nullptr;
+  if(surrogate_informed&&!cuts_cache) stop("informed pcg requires cache_cuts");
+  PPSTSurrogate surrogate(pts,region,cuts,a,b,alpha,eta,tau,eps);
   PPSTree T; PPSTNode root;
   root.box=region; root.idx=arma::regspace<arma::uvec>(0,n-1);
   root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;
@@ -704,13 +710,17 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
       }
     }
     }
-    if(informed && update_gate) informed_context.clear_gate_cache();
+    if(exact_informed && update_gate) informed_context.clear_gate_cache();
     PPSTINeighborhood informed_gp,informed_change;
     bool valid_gp=false,valid_change=false;
     for(int r=0;r<nmove;r++){
       int move=-1,ok;
-      if(informed) ok=ppsti_step(T,labels,informed_context,0,
+      if(exact_informed) ok=ppsti_step(T,labels,informed_context,0,
                                 informed_gp,valid_gp,move);
+      else if(surrogate_informed) ok=ppsts_grow_prune(
+        T,labels,pts,region,a,b,gate,gate_family,alpha,eta,
+        Dmax,nmin,mode,ncand,move,cache,cuts_cache,surrogate
+      );
       else ok=ppst_grow_prune(
         T,labels,pts,region,a,b,gate,gate_family,alpha,eta,
         Dmax,nmin,mode,ncand,move,cache,cuts_cache
@@ -720,11 +730,15 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
       if(move==0){ag+=ok;tg++;}else if(move==1){ap+=ok;tp++;}
     }
     for(int r=0;r<ncc;r++){
-      if(informed){
+      if(exact_informed){
         int move=-1;
         ac+=ppsti_step(T,labels,informed_context,1,
                       informed_change,valid_change,move);
-      }else ac+=ppst_change_cut(
+      }else if(surrogate_informed) ac+=ppsts_change_cut(
+        T,labels,pts,region,a,b,gate,gate_family,alpha,eta,Dmax,nmin,
+        mode,ncand,cache,cuts_cache,surrogate
+      );
+      else ac+=ppst_change_cut(
         T,labels,pts,region,a,b,gate,gate_family,alpha,eta,Dmax,nmin,
         mode,ncand,cache,cuts_cache
       );
@@ -732,6 +746,7 @@ static int ppst_run_chain(const arma::mat&pts,const arma::mat&grid,
       if(cuts_cache) cuts_cache->trim(T);
       tc++;
     }
+    if(surrogate_informed) surrogate.trim(T);
     if(pcg) ppst_pcg_adapt(pcg_stats,it,ram_target,ram_decay,ram_adapt);
     if(it>=burn&&(it-burn)%thin==0){
       int row=row0+si; std::vector<int>leaves; ppst_leaves(T,leaves);
@@ -832,9 +847,11 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
     int cut_mode,int ncand,int update_gate,int gate_family,int chains,
     int verbose,bool informed=false,bool pcg=false,double ram_target=0.234,
     double ram_decay=0.7,int ram_adapt=0,bool cache_geometry=true,
-    bool cache_cuts=true){
+    bool cache_cuts=true,double proposal_temperature=0.5,
+    double proposal_defensive=0.1){
   const int depth = ppt_checked_depth(Dmax);
-  ppst_pcg_controls(pcg,informed,ram_target,ram_decay,ram_adapt,burn);
+  ppst_pcg_controls(pcg,informed,ram_target,ram_decay,ram_adapt,burn,
+                    proposal_temperature,proposal_defensive);
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||
      grid.n_cols!=X.n_cols||Xtest.n_cols!=X.n_cols)
@@ -876,7 +893,8 @@ List ppstree_multi(arma::mat X,arma::mat grid,arma::mat Xtest,arma::mat region,
       gate_min,gate_shared,gate_family,alpha,eta,depth,nmin,iters,burn,thin,
       nmove,ncc,cut_mode,ncand,update_gate,D,ll,llt,integrated_intensity,
       row,nl,md,gm,ak,gak,state_nodes,state_gate,informed,verbose != 0,
-      pcg,ram_target,ram_decay,ram_adapt,pcg_stats,cache_geometry,cache_cuts);
+      pcg,ram_target,ram_decay,ram_adapt,pcg_stats,cache_geometry,cache_cuts,
+      proposal_temperature,proposal_defensive);
     row+=got;leaves[k]=nl;maxdepth[k]=md;gates.row(k)=gm.t();acc.row(k)=ak.t();
     gacc.row(k)=gak.t();
     if(pcg){
@@ -928,9 +946,11 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
     int cut_mode,int ncand,int update_gate,int gate_family,bool informed=false,
     bool verbose=false,bool pcg=false,double ram_target=0.234,
     double ram_decay=0.7,int ram_adapt=0,bool cache_geometry=true,
-    bool cache_cuts=true){
+    bool cache_cuts=true,double proposal_temperature=0.5,
+    double proposal_defensive=0.1){
   const int depth = ppt_checked_depth(Dmax);
-  ppst_pcg_controls(pcg,informed,ram_target,ram_decay,ram_adapt,burn);
+  ppst_pcg_controls(pcg,informed,ram_target,ram_decay,ram_adapt,burn,
+                    proposal_temperature,proposal_defensive);
   if(X.n_rows==0||X.n_cols==0) stop("X must be a non-empty matrix");
   if(region.n_rows!=X.n_cols||region.n_cols!=2||mon.n_cols!=X.n_cols)
     stop("X, mon, and region have incompatible dimensions");
@@ -956,7 +976,10 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
   PPSTGeometryCache geometry(X,region,gate,gate_family,&mon,cache_geometry);
   PPSTGeometryCache*cache=cache_geometry?&geometry:nullptr;
   PPSTCutsCache cuts(X,nmin,cut_mode,ncand);
-  PPSTCutsCache*cuts_cache=cache_cuts&&!informed?&cuts:nullptr;
+  const bool exact_informed=informed&&!pcg,surrogate_informed=informed&&pcg;
+  PPSTCutsCache*cuts_cache=cache_cuts&&!exact_informed?&cuts:nullptr;
+  if(surrogate_informed&&!cuts_cache) stop("informed pcg requires cache_cuts");
+  PPSTSurrogate surrogate(X,region,cuts,a,b,alpha,eta,proposal_temperature,proposal_defensive);
   PPSTree T; PPSTNode root;
   root.box=region; root.idx=arma::regspace<arma::uvec>(0,n-1);
   root.cut=NA_REAL;root.axis=-1;root.depth=0;root.m=n;T[1]=root;
@@ -993,13 +1016,17 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
       }
     }
     }
-    if(informed && update_gate) informed_context.clear_gate_cache();
+    if(exact_informed && update_gate) informed_context.clear_gate_cache();
     PPSTINeighborhood informed_gp,informed_change;
     bool valid_gp=false,valid_change=false;
     for(int r=0;r<nmove;r++){
       int move=-1,ok;
-      if(informed) ok=ppsti_step(T,labels,informed_context,0,
+      if(exact_informed) ok=ppsti_step(T,labels,informed_context,0,
                                 informed_gp,valid_gp,move);
+      else if(surrogate_informed) ok=ppsts_grow_prune(
+        T,labels,X,region,a,b,gate,gate_family,alpha,eta,
+        depth,nmin,cut_mode,ncand,move,cache,cuts_cache,surrogate
+      );
       else ok=ppst_grow_prune(
         T,labels,X,region,a,b,gate,gate_family,alpha,eta,
         depth,nmin,cut_mode,ncand,move,cache,cuts_cache
@@ -1010,11 +1037,15 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
       else if(move==1){ap+=ok;tp++;}
     }
     for(int r=0;r<ncc;r++){
-      if(informed){
+      if(exact_informed){
         int move=-1;
         ac+=ppsti_step(T,labels,informed_context,1,
                       informed_change,valid_change,move);
-      }else ac+=ppst_change_cut(
+      }else if(surrogate_informed) ac+=ppsts_change_cut(
+        T,labels,X,region,a,b,gate,gate_family,alpha,eta,depth,nmin,
+        cut_mode,ncand,cache,cuts_cache,surrogate
+      );
+      else ac+=ppst_change_cut(
         T,labels,X,region,a,b,gate,gate_family,alpha,eta,depth,nmin,
         cut_mode,ncand,cache,cuts_cache
       );
@@ -1023,6 +1054,7 @@ List ppstree_diag(arma::mat X,arma::mat mon,arma::mat region,
       tc++;
     }
 
+    if(surrogate_informed) surrogate.trim(T);
     if(pcg) ppst_pcg_adapt(pcg_stats,it,ram_target,ram_decay,ram_adapt);
     if(it>=burn&&(it-burn)%thin==0){
       std::vector<int>leaves;

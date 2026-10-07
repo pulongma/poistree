@@ -20,9 +20,12 @@ struct PPSTPCGStats {
 };
 
 static void ppst_pcg_controls(bool pcg,bool informed,double target,
-    double decay,int adapt,int burn){
+    double decay,int adapt,int burn,double tau,double eps){
   if(!pcg) return;
-  if(informed) stop("pcg currently uses standard collapsed tree proposals");
+  if(informed&&(!std::isfinite(tau)||tau<=0.0||tau>1.0))
+    stop("proposal_temperature must be in (0, 1]");
+  if(informed&&(!std::isfinite(eps)||eps<0.0||eps>=1.0))
+    stop("proposal_defensive must be in [0, 1)");
   if(!std::isfinite(target)||target<=0.0||target>=1.0)
     stop("ram_target must be strictly between zero and one");
   if(!std::isfinite(decay)||decay<=0.5||decay>1.0)

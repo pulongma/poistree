@@ -82,15 +82,18 @@
     cut_proposal = c("quantile", "uniform", "data"),
     cut_candidates = 50L, seed = 1L, verbose = TRUE,
     ram_target = 0.234, ram_decay = 0.7, ram_adapt = NULL,
-    gate_scale = NULL, cache_geometry = TRUE) {
+    gate_scale = NULL, cache_geometry = TRUE, informed = FALSE,
+    proposal_temperature = 0.5, proposal_defensive = 0.1) {
   .ppt_fit_soft_leaf_mcmc(
     x, region, predict_at, test, a, b, gate, a_gate, b_gate, sd_gate,
     gate_min, gate_family, gate_structure, update_gate, alpha, eta,
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose,
-    informed = FALSE, pcg = TRUE, ram_target = ram_target,
+    informed = informed, pcg = TRUE, ram_target = ram_target,
     ram_decay = ram_decay, ram_adapt = ram_adapt, gate_scale = gate_scale,
-    cache_geometry = cache_geometry
+    cache_geometry = cache_geometry,
+    proposal_temperature = proposal_temperature,
+    proposal_defensive = proposal_defensive
   )
 }
 
@@ -121,7 +124,8 @@
     max_depth, min_leaf_n, chains, iter, burn, thin, tree_moves,
     change_moves, cut_proposal, cut_candidates, seed, verbose, informed,
     pcg = FALSE, ram_target = 0.234, ram_decay = 0.7, ram_adapt = 0L,
-    gate_scale = NULL, cache_geometry = TRUE) {
+    gate_scale = NULL, cache_geometry = TRUE,
+    proposal_temperature = 0.5, proposal_defensive = 0.1) {
   gate_family <- match.arg(gate_family, c("logistic", "compact"))
   gate_scale <- .ppt_resolve_gate_scale(gate_scale, gate_family)
   gate_structure <- match.arg(gate_structure, c("dimension", "shared"))
@@ -193,8 +197,19 @@
     stop("`cache_geometry` must be a logical scalar.", call. = FALSE)
   }
 
+  if (!is.logical(informed) || length(informed) != 1L || is.na(informed)) {
+    stop("`informed` must be a logical scalar.", call. = FALSE)
+  }
   if (pcg && informed) {
-    stop("The PCG sampler uses standard collapsed tree proposals.", call. = FALSE)
+    scalar <- function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
+    if (!scalar(proposal_temperature) || proposal_temperature <= 0 ||
+        proposal_temperature > 1) {
+      stop("`proposal_temperature` must be in (0, 1].", call. = FALSE)
+    }
+    if (!scalar(proposal_defensive) || proposal_defensive < 0 ||
+        proposal_defensive >= 1) {
+      stop("`proposal_defensive` must be in [0, 1).", call. = FALSE)
+    }
   }
   ram <- .ppt_validate_ram_controls(ram_target, ram_decay, ram_adapt, burn)
 
@@ -211,7 +226,9 @@
       if (identical(gate_scale, "node")) 2L else 0L,
     as.integer(chains), as.integer(verbose), informed = informed, pcg = pcg,
     ram_target = ram$target, ram_decay = ram$decay, ram_adapt = ram$adapt,
-    cache_geometry = cache_geometry
+    cache_geometry = cache_geometry,
+    proposal_temperature = proposal_temperature,
+    proposal_defensive = proposal_defensive
   )
 
   input_names <- colnames(x)
@@ -240,7 +257,9 @@
         gating = "soft", gate_family = gate_family, gate_scale = gate_scale,
         scales = "leaf",
         sampler = if (pcg) "pcg" else if (informed) "irjmcmc" else "rjmcmc",
-        algorithm = if (pcg) "Partially collapsed Gibbs (RAM)" else
+        algorithm = if (pcg && informed) {
+          "Partially collapsed Gibbs (RAM, informed tree proposals)"
+        } else if (pcg) "Partially collapsed Gibbs (RAM)" else
           if (informed) "Informed MH" else "RJ-MCMC",
         label = "S-PPT"
       ),
@@ -332,6 +351,11 @@
     fit$control$ram_target <- ram$target
     fit$control$ram_decay <- ram$decay
     fit$control$ram_adapt <- ram$adapt
+    fit$control$informed <- informed
+    if (informed) {
+      fit$control$proposal_temperature <- proposal_temperature
+      fit$control$proposal_defensive <- proposal_defensive
+    }
     fit$diagnostics$gate_joint_acceptance <- as.numeric(raw$gate_joint_accept)
     fit$diagnostics$chain_gate_joint_acceptance <-
       as.numeric(raw$chain_gate_joint_accept)

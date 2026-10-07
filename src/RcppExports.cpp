@@ -399,8 +399,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // ppstree_multi
-List ppstree_multi(arma::mat X, arma::mat grid, arma::mat Xtest, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, int chains, int verbose, bool informed, bool pcg, double ram_target, double ram_decay, int ram_adapt, bool cache_geometry, bool cache_cuts);
-RcppExport SEXP _poistree_ppstree_multi(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP chainsSEXP, SEXP verboseSEXP, SEXP informedSEXP, SEXP pcgSEXP, SEXP ram_targetSEXP, SEXP ram_decaySEXP, SEXP ram_adaptSEXP, SEXP cache_geometrySEXP, SEXP cache_cutsSEXP) {
+List ppstree_multi(arma::mat X, arma::mat grid, arma::mat Xtest, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, int chains, int verbose, bool informed, bool pcg, double ram_target, double ram_decay, int ram_adapt, bool cache_geometry, bool cache_cuts, double proposal_temperature, double proposal_defensive);
+RcppExport SEXP _poistree_ppstree_multi(SEXP XSEXP, SEXP gridSEXP, SEXP XtestSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP chainsSEXP, SEXP verboseSEXP, SEXP informedSEXP, SEXP pcgSEXP, SEXP ram_targetSEXP, SEXP ram_decaySEXP, SEXP ram_adaptSEXP, SEXP cache_geometrySEXP, SEXP cache_cutsSEXP, SEXP proposal_temperatureSEXP, SEXP proposal_defensiveSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -438,13 +438,15 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type ram_adapt(ram_adaptSEXP);
     Rcpp::traits::input_parameter< bool >::type cache_geometry(cache_geometrySEXP);
     Rcpp::traits::input_parameter< bool >::type cache_cuts(cache_cutsSEXP);
-    rcpp_result_gen = Rcpp::wrap(ppstree_multi(X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose, informed, pcg, ram_target, ram_decay, ram_adapt, cache_geometry, cache_cuts));
+    Rcpp::traits::input_parameter< double >::type proposal_temperature(proposal_temperatureSEXP);
+    Rcpp::traits::input_parameter< double >::type proposal_defensive(proposal_defensiveSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_multi(X, grid, Xtest, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, chains, verbose, informed, pcg, ram_target, ram_decay, ram_adapt, cache_geometry, cache_cuts, proposal_temperature, proposal_defensive));
     return rcpp_result_gen;
 END_RCPP
 }
 // ppstree_diag
-List ppstree_diag(arma::mat X, arma::mat mon, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, bool informed, bool verbose, bool pcg, double ram_target, double ram_decay, int ram_adapt, bool cache_geometry, bool cache_cuts);
-RcppExport SEXP _poistree_ppstree_diag(SEXP XSEXP, SEXP monSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP informedSEXP, SEXP verboseSEXP, SEXP pcgSEXP, SEXP ram_targetSEXP, SEXP ram_decaySEXP, SEXP ram_adaptSEXP, SEXP cache_geometrySEXP, SEXP cache_cutsSEXP) {
+List ppstree_diag(arma::mat X, arma::mat mon, arma::mat region, double a, double b, arma::vec gate, arma::vec a_gate, arma::vec b_gate, arma::vec sd_gate, arma::vec gate_min, int gate_shared, double alpha, double eta, double Dmax, int nmin, int iters, int burn, int thin, int nmove, int ncc, int cut_mode, int ncand, int update_gate, int gate_family, bool informed, bool verbose, bool pcg, double ram_target, double ram_decay, int ram_adapt, bool cache_geometry, bool cache_cuts, double proposal_temperature, double proposal_defensive);
+RcppExport SEXP _poistree_ppstree_diag(SEXP XSEXP, SEXP monSEXP, SEXP regionSEXP, SEXP aSEXP, SEXP bSEXP, SEXP gateSEXP, SEXP a_gateSEXP, SEXP b_gateSEXP, SEXP sd_gateSEXP, SEXP gate_minSEXP, SEXP gate_sharedSEXP, SEXP alphaSEXP, SEXP etaSEXP, SEXP DmaxSEXP, SEXP nminSEXP, SEXP itersSEXP, SEXP burnSEXP, SEXP thinSEXP, SEXP nmoveSEXP, SEXP nccSEXP, SEXP cut_modeSEXP, SEXP ncandSEXP, SEXP update_gateSEXP, SEXP gate_familySEXP, SEXP informedSEXP, SEXP verboseSEXP, SEXP pcgSEXP, SEXP ram_targetSEXP, SEXP ram_decaySEXP, SEXP ram_adaptSEXP, SEXP cache_geometrySEXP, SEXP cache_cutsSEXP, SEXP proposal_temperatureSEXP, SEXP proposal_defensiveSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -480,7 +482,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type ram_adapt(ram_adaptSEXP);
     Rcpp::traits::input_parameter< bool >::type cache_geometry(cache_geometrySEXP);
     Rcpp::traits::input_parameter< bool >::type cache_cuts(cache_cutsSEXP);
-    rcpp_result_gen = Rcpp::wrap(ppstree_diag(X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, informed, verbose, pcg, ram_target, ram_decay, ram_adapt, cache_geometry, cache_cuts));
+    Rcpp::traits::input_parameter< double >::type proposal_temperature(proposal_temperatureSEXP);
+    Rcpp::traits::input_parameter< double >::type proposal_defensive(proposal_defensiveSEXP);
+    rcpp_result_gen = Rcpp::wrap(ppstree_diag(X, mon, region, a, b, gate, a_gate, b_gate, sd_gate, gate_min, gate_shared, alpha, eta, Dmax, nmin, iters, burn, thin, nmove, ncc, cut_mode, ncand, update_gate, gate_family, informed, verbose, pcg, ram_target, ram_decay, ram_adapt, cache_geometry, cache_cuts, proposal_temperature, proposal_defensive));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -698,8 +702,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poistree_SPPT_root_reuse_chain", (DL_FUNC) &_poistree_SPPT_root_reuse_chain, 4},
     {"_poistree_SPPT_forced_exact_probe", (DL_FUNC) &_poistree_SPPT_forced_exact_probe, 2},
     {"_poistree_ppstree_geometry", (DL_FUNC) &_poistree_ppstree_geometry, 8},
-    {"_poistree_ppstree_multi", (DL_FUNC) &_poistree_ppstree_multi, 34},
-    {"_poistree_ppstree_diag", (DL_FUNC) &_poistree_ppstree_diag, 32},
+    {"_poistree_ppstree_multi", (DL_FUNC) &_poistree_ppstree_multi, 36},
+    {"_poistree_ppstree_diag", (DL_FUNC) &_poistree_ppstree_diag, 34},
     {"_poistree_ppstree_informed_transition", (DL_FUNC) &_poistree_ppstree_informed_transition, 15},
     {"_poistree_ppstree_ram_inspect", (DL_FUNC) &_poistree_ppstree_ram_inspect, 6},
     {"_poistree_ppstree_pcg_inspect", (DL_FUNC) &_poistree_ppstree_pcg_inspect, 11},

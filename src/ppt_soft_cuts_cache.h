@@ -19,6 +19,7 @@ class PPSTCutsCache {
   const int nmin_,mode_,ncand_;
   std::unordered_map<std::string,PPSTCutsEntry> entries_;
 
+public:
   static std::string key(const PPSTNode&node){
     std::string out;
     const size_t fields=2*sizeof(int)+2*sizeof(double);
@@ -35,6 +36,7 @@ class PPSTCutsCache {
                node.box.n_elem*sizeof(double));
     return out;
   }
+private:
   PPSTCutsEntry& entry(const PPSTNode&node){
     return entries_.try_emplace(key(node),points_.n_cols).first->second;
   }

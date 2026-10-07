@@ -1,6 +1,20 @@
 \name{NEWS}
 \title{News for Package \pkg{poistree}}
 
+\section{Changes in poistree version 0.5.6 (2026-10-06)}{
+  \itemize{
+    \item PCG accepts \code{informed = TRUE}: grow, prune, and change proposals
+      are drawn from a hard surrogate (hard-routed counts and box exposures of
+      every candidate split, scored once per node) through the mixture
+      \eqn{(1-\epsilon)\exp(\tau \tilde s)/\sum + \epsilon/N}, with
+      \code{proposal_temperature} \eqn{\tau} (default 0.5) and
+      \code{proposal_defensive} \eqn{\epsilon} (default 0.1). The acceptance
+      ratio uses the true soft exposures and exact proposal probabilities, so
+      the posterior is unchanged. \code{informed = FALSE} is bit-identical to
+      0.5.5. New test file \code{test-soft-pcg-informed.R}.
+  }
+}
+
 \section{Changes in poistree version 0.5.5 (2026-10-06)}{
   \itemize{
     \item Soft gates with a quadrature background (private adapter): background
